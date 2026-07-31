@@ -230,6 +230,27 @@ async function main(): Promise<void> {
     .onConflictDoNothing();
 
   await db
+    .insert(schema.assessmentPolicies)
+    .values({
+      id: "00000000-0000-7000-8000-000000000032",
+      organizationId: ORG_ID,
+      name: "확인테스트 기본",
+      purpose: "confirmation",
+      poolWeights: { anchor: 70, cumulative: 30 },
+      questionCount: 5,
+      timeLimitMinutes: 20,
+      constraints: { noRepeatWithinDays: 7 },
+      passingRules: {
+        passRatio: 0.7,
+        maxAttempts: 2,
+        // 재시험은 동일 문항 재노출 금지 — 같은 개념의 동등 문항 (2N)
+        retryExcludesSameQuestions: true,
+      },
+      automationLevel: "approve_first",
+    })
+    .onConflictDoNothing();
+
+  await db
     .insert(schema.masteryPolicyVersions)
     .values({
       id: MASTERY_POLICY_ID,

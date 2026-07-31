@@ -5,6 +5,7 @@ import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import type { IsoDate } from "@su-maek/core/shared";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import {
+  generateConfirmationTest,
   generateDailyTest,
   type GenerateResult,
 } from "@/lib/domain/assessment";
@@ -40,7 +41,10 @@ export async function generateDailyTestAction(
     };
   }
 
-  const result = await generateDailyTest({
+  const purpose = String(formData.get("purpose") ?? "formative");
+  const generator =
+    purpose === "confirmation" ? generateConfirmationTest : generateDailyTest;
+  const result = await generator({
     organizationId: user.organizationId,
     learningGroupId,
     targetDate,

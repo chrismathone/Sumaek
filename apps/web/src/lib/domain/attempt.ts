@@ -342,6 +342,19 @@ export async function submitAndGrade(options: {
     await recomputeMastery(organizationId, learnerId, conceptId, policy);
   }
 
+  /* 6) 확인테스트 통과 판정 — 미통과면 재시험 계획 생성 (2N·인수 10).
+   * 한 번의 실패를 즉시 전체 과정 실패로 해석하지 않는다 — 재확인 정책. */
+  if (needsReview === 0) {
+    await evaluateConfirmationOutcome(
+      organizationId,
+      assessmentId,
+      attemptId,
+      learnerId,
+      totalScore,
+      maxScore,
+    );
+  }
+
   return {
     ok: true,
     message:
@@ -353,6 +366,106 @@ export async function submitAndGrade(options: {
     maxScore,
     needsReview,
   };
+}
+
+/** 확인테스트 결과 판정 — 미통과 시 재시험 계획 + 알림. 멱등. */
+async function evaluateConfirmationOutcome(
+  organizationId: string,
+  assessmentId: string,
+  attemptId: string,
+  learnerId: string,
+  totalScore: number,
+  maxScore: number,
+): Promise<void> {
+  const sql = getSharedSql();
+  const [assessment] = await sql<
+    {
+      purpose: string;
+      scheduled_date: string | null;
+      learning_group_id: string | null;
+      generation_context: { passingRules?: { passRatio?: number; maxAttempts?: number } } | null;
+    }[]
+  >`
+    select purpose, scheduled_date::text, learning_group_id, generation_context
+    from assessment_instances
+    where id = ${assessmentId} and organization_id = ${organizationId}
+  `;
+  if (!assessment || assessment.purpose !== "confirmation") return;
+
+  const rules = assessment.generation_context?.passingRules ?? {};
+  const passRatio = rules.passRatio ?? 0.7;
+  const maxAttempts = rules.maxAttempts ?? 2;
+  const ratio = maxScore > 0 ? totalScore / maxScore : 0;
+  if (ratio >= passRatio) return; // 통과 — 다음 개념 진행
+
+  /* 멱등: 이 응시에 대한 계획이 이미 있으면 종료 */
+  const [existingPlan] = await sql<{ id: string }[]>`
+    select id from retry_plans
+    where failed_attempt_id = ${attemptId}
+  `;
+  if (existingPlan) return;
+
+  const [priorPlans] = await sql<{ cnt: number }[]>`
+    select count(*)::int as cnt from retry_plans
+    where organization_id = ${organizationId}
+      and learner_id = ${learnerId}
+      and failed_assessment_id = ${assessmentId}
+  `;
+  const attemptNumber = (priorPlans?.cnt ?? 0) + 1;
+  if (attemptNumber > maxAttempts) return; // 최대 횟수 초과 — 교사 판단 영역
+
+  /* 다음 수업일 = 재시험 예정일 */
+  const [nextSession] = await sql<{ session_date: string }[]>`
+    select min(session_date)::text as session_date from sessions
+    where organization_id = ${organizationId}
+      and learning_group_id = ${assessment.learning_group_id}
+      and session_date > coalesce(${assessment.scheduled_date}::date, current_date)
+  `;
+
+  await sql.begin(async (tx) => {
+    await tx`
+      insert into retry_plans (
+        id, organization_id, learner_id, failed_assessment_id, failed_attempt_id,
+        attempt_number, max_attempts, scheduled_on, status
+      ) values (
+        ${uuidv7()}, ${organizationId}, ${learnerId}, ${assessmentId}, ${attemptId},
+        ${attemptNumber}, ${maxAttempts}, ${nextSession?.session_date ?? null}, 'planned'
+      )
+    `;
+    /* 교사 알림 — 미통과는 판단이 필요한 예외 (원칙 6) */
+    const teachers = await tx<{ user_id: string }[]>`
+      select user_id from memberships
+      where organization_id = ${organizationId} and status = 'active'
+        and role in ('owner', 'program_director', 'teacher')
+    `;
+    for (const t of teachers) {
+      await tx`
+        insert into notifications (
+          id, organization_id, recipient_user_id, kind, title, body, link_path,
+          related_type, related_id
+        ) values (
+          ${uuidv7()}, ${organizationId}, ${t.user_id}, 'learner_risk',
+          '확인테스트 미통과 — 재시험이 계획되었습니다',
+          ${tx.json({
+            what: `점수 ${totalScore}/${maxScore} (통과 기준 ${Math.round(passRatio * 100)}%)`,
+            why: "확인테스트 통과 기준 미달",
+            action: `재시험 ${attemptNumber}/${maxAttempts}회차${nextSession?.session_date ? ` — ${nextSession.session_date} 예정` : ""}. 같은 목표의 동등 문항으로 구성됩니다.`,
+          } as never)},
+          '/app/tests', 'attempt', ${attemptId}
+        )
+      `;
+    }
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, action, target_type, target_id, reason, after
+      ) values (
+        ${uuidv7()}, ${organizationId}, 'automation',
+        'assessment.confirmation-failed', 'attempt', ${attemptId},
+        '확인테스트 미통과 자동 판정',
+        ${tx.json({ ratio, passRatio, attemptNumber, scheduledOn: nextSession?.session_date ?? null } as never)}
+      )
+    `;
+  });
 }
 
 export interface ResolveExceptionInput {

@@ -48,6 +48,19 @@ export function GenerateForm({
           </select>
         </div>
         <div>
+          <label htmlFor="gen-purpose" className="block text-sm font-medium">
+            유형
+          </label>
+          <select
+            id="gen-purpose"
+            name="purpose"
+            className="mt-1 rounded-[var(--radius-control)] border border-rule bg-surface px-3 py-2 text-sm"
+          >
+            <option value="formative">일일테스트</option>
+            <option value="confirmation">확인테스트</option>
+          </select>
+        </div>
+        <div>
           <label htmlFor="gen-date" className="block text-sm font-medium">
             수업 날짜
           </label>
