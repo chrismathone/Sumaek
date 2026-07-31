@@ -217,6 +217,46 @@ export async function materializeGroupSchedule(options: {
 
   const result = calculateSchedule(input);
 
+  /* ── 검증 게이트 (인수 22·2H) — 배치 불가 충돌이 있으면 어떤 세션도
+   * 바꾸지 않고 이전 활성 리비전을 유지한다. 실패한 변경안은 기록만 남긴다
+   * — 실패한 중간 결과를 일정으로 노출하지 않는다. ── */
+  if (result.conflicts.length > 0) {
+    const failedProposalId = uuidv7();
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into schedule_change_proposals (
+          id, organization_id, scope_type, scope_id, trigger_type, status,
+          input_snapshot, input_hash, engine_version, seed, cutoff_at,
+          diff, reason_codes, conflicts, output_hash, failure_reason
+        ) values (
+          ${failedProposalId}, ${organizationId}, 'learning_group', ${learningGroupId},
+          'manual', 'failed',
+          ${tx.json({ summary: result.summary, itemCount: result.items.length } as never)},
+          ${result.inputHash}, ${input.engineVersion}, ${input.seed}, ${new Date()},
+          ${tx.json(result.diff as never)}, ${tx.json(result.reasonCodes as never)},
+          ${tx.json(result.conflicts as never)}, ${result.outputHash},
+          ${`배치 불가 ${result.conflicts.length}건 — 이전 활성 리비전 유지`}
+        )
+      `;
+      await tx`
+        insert into audit_events (
+          id, organization_id, actor_type, actor_id, action, target_type, target_id,
+          reason, after, rule_version
+        ) values (
+          ${uuidv7()}, ${organizationId},
+          ${options.actorUserId ? "user" : "automation"}, ${options.actorUserId},
+          'schedule.materialize-rejected', 'learning_group', ${learningGroupId},
+          '검증 실패 — 기존 일정 유지', ${tx.json(result.conflicts as never)},
+          ${ENGINE_VERSION}
+        )
+      `;
+    });
+    const first = result.conflicts[0]!;
+    return fail(
+      `배치 불가 ${result.conflicts.length}건 — 기존 일정을 유지합니다. ${first.detail} 과정 기간·수업 시간을 늘리거나 루트를 줄이세요.`,
+    );
+  }
+
   /* ── 적용: 제안 기록 + 세션 교체 (원자적) ── */
   const proposalId = uuidv7();
   const revisionId = uuidv7();

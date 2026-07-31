@@ -1,5 +1,6 @@
 import { v7 as uuidv7 } from "uuid";
 import {
+  checkpointJob,
   deferSignal,
   getSharedSql,
   isFeatureEnabled,
@@ -35,11 +36,13 @@ export async function handleScheduleRecalculate(
     return deferSignal("kill switch: auto_reschedule 중지 — 복구 후 재개");
   }
 
-  /* Inbox 멱등 — at-least-once 전달 방어 */
+  /* Inbox 멱등 — at-least-once 전달 방어. 체크포인트가 있으면 같은 작업의
+   * 재개(lease 만료 회수)이므로 중복이 아니라 이어서 처리한다 (인수 21). */
+  const checkpoint = parseCheckpoint(job.checkpoint);
   const fresh = await sql.begin((tx) =>
     tryMarkInbox(tx as never, "schedule.recalculate", data.eventId),
   );
-  if (!fresh) return { skipped: "중복 이벤트 (inbox)" };
+  if (!fresh && !checkpoint) return { skipped: "중복 이벤트 (inbox)" };
 
   /* 대상 학습 그룹 해석 */
   const groupIds = new Set<string>();
@@ -62,8 +65,14 @@ export async function handleScheduleRecalculate(
   const timezone = org?.timezone ?? "Asia/Seoul";
   const today = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
 
+  /* 그룹 단위 체크포인트 — 배치 경계마다 기록해 중단 지점부터 재개 */
+  const done = new Set(checkpoint?.doneGroupIds ?? []);
   const results: Record<string, unknown> = {};
-  for (const groupId of groupIds) {
+  for (const groupId of [...groupIds].sort()) {
+    if (done.has(groupId)) {
+      results[groupId] = { skipped: "체크포인트 완료분" };
+      continue;
+    }
     const result = await materializeGroupSchedule({
       organizationId,
       learningGroupId: groupId,
@@ -76,8 +85,27 @@ export async function handleScheduleRecalculate(
       created: result.createdSessions,
       conflicts: result.conflicts,
     };
+    done.add(groupId);
+    await checkpointJob(sql, job.id, { doneGroupIds: [...done] });
   }
   return results;
+}
+
+function parseCheckpoint(
+  value: unknown,
+): { doneGroupIds: string[] } | null {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { doneGroupIds?: unknown }).doneGroupIds)
+  ) {
+    return {
+      doneGroupIds: (value as { doneGroupIds: unknown[] }).doneGroupIds.filter(
+        (v): v is string => typeof v === "string",
+      ),
+    };
+  }
+  return null;
 }
 
 /** 앱 내 알림 생성 — 외부 공급자와 무관하게 업무함은 항상 동작 (22장) */
