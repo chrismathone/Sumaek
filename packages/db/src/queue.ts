@@ -161,6 +161,27 @@ export async function checkpointJob(
   `;
 }
 
+/**
+ * 작업 연기 — kill switch 등으로 실행을 미룰 때. 클레임이 올린 시도 수를
+ * 되돌려 DLQ로 밀리지 않게 한다 (스위치 복구 시 그대로 재개).
+ */
+export async function deferJob(
+  sql: postgres.Sql,
+  jobId: string,
+  reason: string,
+  delaySeconds = 300,
+): Promise<void> {
+  await sql`
+    update jobs
+    set status = 'retry_scheduled',
+        attempts = greatest(attempts - 1, 0),
+        last_error = ${reason},
+        run_at = now() + make_interval(secs => ${delaySeconds}),
+        updated_at = now()
+    where id = ${jobId}
+  `;
+}
+
 /** 지수 백오프 + 전체 지터 (28장). retryable=false면 즉시 최종 실패. */
 export async function failJob(
   sql: postgres.Sql,

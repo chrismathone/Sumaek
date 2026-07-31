@@ -4,8 +4,12 @@ import {
   claimJobs,
   completeJob,
   createSql,
+  deferJob,
   dispatchOutbox,
   failJob,
+  filterTopicsBySwitches,
+  isDeferSignal,
+  loadGloballyDisabledSwitches,
   type ClaimedJob,
 } from "@su-maek/db";
 
@@ -69,9 +73,24 @@ async function main(): Promise<void> {
         console.log(`[outbox] ${dispatched}건 디스패치`);
       }
 
-      // 2) 작업 클레임·실행
+      // 2) kill switch 게이트 (인수 40) — 전역으로 중지된 스위치의 토픽은
+      //    클레임하지 않는다. 작업은 큐에 남아 스위치 복구 시 그대로 재개.
+      const disabled = await loadGloballyDisabledSwitches(sql);
+      const activeTopics = filterTopicsBySwitches(
+        [...handlers.keys()],
+        disabled,
+      );
+      if (disabled.size > 0 && activeTopics.length < handlers.size) {
+        console.log(
+          `[kill-switch] 중지: ${[...disabled].join(", ")} — 토픽 ${
+            handlers.size - activeTopics.length
+          }개 클레임 제외`,
+        );
+      }
+
+      // 3) 작업 클레임·실행
       const jobs = await claimJobs(sql, {
-        topics: [...handlers.keys()],
+        topics: activeTopics,
         workerId: WORKER_ID,
         limit: CONCURRENCY,
       });
@@ -90,6 +109,12 @@ async function main(): Promise<void> {
           }
           try {
             const result = await handler(job);
+            if (isDeferSignal(result)) {
+              // 조직 스코프 kill switch 등 — 시도 소모 없이 뒤로 미룬다
+              await deferJob(sql, job.id, result.reason);
+              console.log(`[job:${job.topic}] ${job.id} 연기: ${result.reason}`);
+              return;
+            }
             await completeJob(sql, job.id, result);
           } catch (error) {
             const message =

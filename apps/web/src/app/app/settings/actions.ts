@@ -168,6 +168,88 @@ export async function addLearner(
   return { ok: true, message: `학습자 "${parsed.data.displayName}"을 등록했습니다.` };
 }
 
+const KILL_SWITCH_KEYS = [
+  "auto_reschedule",
+  "auto_publish_questions",
+  "auto_grading",
+  "curriculum_release",
+  "formula_autofix",
+  "document_export",
+  "external_notifications",
+] as const;
+
+const killSwitchSchema = z.object({
+  key: z.enum(KILL_SWITCH_KEYS),
+  action: z.enum(["disable", "enable"]),
+  reason: z.string().default(""),
+});
+
+/**
+ * 조직 스코프 kill switch 전환 (28장·인수 40) — 자동화만 멈추고 수동
+ * 운영·확정 데이터 열람은 계속 가능하다. 전역 스위치는 운영 CLI
+ * (`pnpm kill-switch`)의 몫이다.
+ */
+export async function toggleKillSwitch(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "kill switch를 변경할 권한이 없습니다." };
+  }
+  const parsed = killSwitchSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, message: "대상 스위치가 올바르지 않습니다." };
+  }
+  const { key, action } = parsed.data;
+  const reason = parsed.data.reason.trim();
+  if (action === "disable" && !reason) {
+    return { ok: false, message: "중지 사유를 입력하세요 (감사 기록에 남습니다)." };
+  }
+
+  const sql = getSharedSql();
+  const enabled = action === "enable";
+  await sql.begin(async (tx) => {
+    const [existing] = await tx<{ id: string }[]>`
+      select id from kill_switches
+      where organization_id = ${user.organizationId} and key = ${key}
+    `;
+    if (existing) {
+      await tx`
+        update kill_switches
+        set enabled = ${enabled}, reason = ${reason || null},
+            changed_by = ${user.userId}, updated_at = now()
+        where id = ${existing.id}
+      `;
+    } else {
+      await tx`
+        insert into kill_switches (id, organization_id, key, enabled, reason, changed_by)
+        values (${uuidv7()}, ${user.organizationId}, ${key}, ${enabled},
+                ${reason || null}, ${user.userId})
+      `;
+    }
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id,
+        reason, after
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
+        'settings.kill-switch', 'kill_switch', ${existing?.id ?? null},
+        ${reason || null},
+        ${tx.json({ key, enabled } as never)}
+      )
+    `;
+  });
+
+  revalidatePath("/app/settings");
+  return {
+    ok: true,
+    message: enabled
+      ? `"${key}" 자동화를 재개했습니다.`
+      : `"${key}" 자동화를 중지했습니다. 수동 운영은 계속 가능합니다.`,
+  };
+}
+
 async function audit(
   organizationId: string,
   actorId: string,

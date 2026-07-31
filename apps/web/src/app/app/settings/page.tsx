@@ -1,9 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
+import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { todayInTimeZone } from "@/lib/format";
 import { GroupForm, LearnerForm, PeriodForm } from "./SetupForms";
+import { KillSwitchControls, type SwitchView } from "./KillSwitchControls";
+
+/** 사람이 끌 수 있는 자동화 스위치 — 키·라벨 (28장) */
+const KILL_SWITCH_LABELS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "auto_reschedule", label: "자동 일정 재계산" },
+  { key: "auto_publish_questions", label: "문항 자동 게시" },
+  { key: "auto_grading", label: "자동 채점" },
+  { key: "curriculum_release", label: "교육과정 릴리스 발행" },
+  { key: "formula_autofix", label: "수식 자동 정규화" },
+  { key: "document_export", label: "문서 출력 (PDF·HWPX)" },
+  { key: "external_notifications", label: "외부 알림 발송" },
+];
 
 export const metadata: Metadata = { title: "설정" };
 
@@ -28,8 +41,16 @@ export default async function SettingsPage() {
       select count(*)::int as cnt from learning_groups
       where organization_id = ${user.organizationId}
     `,
-    sql<{ key: string; enabled: boolean }[]>`
-      select key, enabled from kill_switches
+    sql<
+      {
+        key: string;
+        enabled: boolean;
+        reason: string | null;
+        organization_id: string | null;
+        expires_at: Date | null;
+      }[]
+    >`
+      select key, enabled, reason, organization_id, expires_at from kill_switches
       where organization_id is null or organization_id = ${user.organizationId}
       order by key
     `,
@@ -139,21 +160,41 @@ export default async function SettingsPage() {
 
       <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
         <h2 className="font-semibold">Kill Switch</h2>
-        {killSwitches.length === 0 ? (
-          <p className="mt-2 text-sm text-ink-soft">
-            설정된 스위치가 없습니다 (전부 기본 활성). 자동 일정 재계산, 자동
-            게시, 자동 채점 등을 장애 시 독립적으로 중지할 수 있습니다.
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-1 font-mono text-sm">
-            {killSwitches.map((k) => (
-              <li key={k.key} className="flex justify-between">
-                <span>{k.key}</span>
-                <span>{k.enabled ? "켜짐" : "꺼짐"}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="mt-1 text-sm text-ink-soft">
+          자동화만 멈춥니다 — 수동 운영과 확정 데이터 열람은 계속 가능합니다.
+          중지된 자동화의 작업은 큐에 남아 재개 시 그대로 이어집니다.
+        </p>
+        {(() => {
+          const now = Date.now();
+          const active = killSwitches.filter(
+            (k) =>
+              !k.enabled &&
+              (k.expires_at === null || new Date(k.expires_at).getTime() > now),
+          );
+          const views: SwitchView[] = KILL_SWITCH_LABELS.map(({ key, label }) => {
+            const rows = active.filter((k) => k.key === key);
+            const globallyDisabled = rows.some((k) => k.organization_id === null);
+            return {
+              key,
+              label,
+              enabled: rows.length === 0,
+              reason: rows.find((k) => k.reason)?.reason ?? null,
+              globallyDisabled,
+            };
+          });
+          return canWrite(DEFAULT_MATRIX, user.role, "settings") ? (
+            <KillSwitchControls switches={views} />
+          ) : (
+            <ul className="mt-2 space-y-1 font-mono text-sm">
+              {views.map((v) => (
+                <li key={v.key} className="flex justify-between">
+                  <span>{v.key}</span>
+                  <span>{v.enabled ? "동작 중" : "중지됨"}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
       </section>
 
       <p className="mt-4 text-sm text-ink-soft">

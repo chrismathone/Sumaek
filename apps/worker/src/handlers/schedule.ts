@@ -1,5 +1,11 @@
 import { v7 as uuidv7 } from "uuid";
-import { getSharedSql, tryMarkInbox, type ClaimedJob } from "@su-maek/db";
+import {
+  deferSignal,
+  getSharedSql,
+  isFeatureEnabled,
+  tryMarkInbox,
+  type ClaimedJob,
+} from "@su-maek/db";
 import { materializeGroupSchedule } from "@su-maek/db/domain";
 
 /* ─────────────────────────────────────────────────────────────
@@ -22,6 +28,12 @@ export async function handleScheduleRecalculate(
   const data = job.payload as EventJobPayload;
   const organizationId = job.organization_id;
   if (!organizationId) return { skipped: "조직 없음" };
+
+  /* 조직 스코프 kill switch (인수 40) — Inbox 마킹 전에 확인해야
+   * 스위치 복구 후 이벤트가 소비될 수 있다 */
+  if (!(await isFeatureEnabled(sql, "auto_reschedule", organizationId))) {
+    return deferSignal("kill switch: auto_reschedule 중지 — 복구 후 재개");
+  }
 
   /* Inbox 멱등 — at-least-once 전달 방어 */
   const fresh = await sql.begin((tx) =>
