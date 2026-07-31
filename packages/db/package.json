@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./domain": "./src/domain/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
+    "@su-maek/core": "workspace:*",
     "@supabase/supabase-js": "^2.111.0",
     "drizzle-orm": "^0.45.0",
     "postgres": "^3.4.5",
@@ -26,7 +28,6 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@su-maek/core": "workspace:*",
     "@types/node": "^22.15.0",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.0",

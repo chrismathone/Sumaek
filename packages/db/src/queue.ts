@@ -248,7 +248,9 @@ export const EVENT_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   GradeFinalized: ["mastery.update"],
   MasteryUpdated: ["review.plan", "schedule.recalculate"],
   ScheduleProposalCreated: ["notification.dispatch"],
-  ScheduleProposalApplied: ["schedule.materialize", "notification.dispatch"],
+  // 주의: 여기서 schedule.materialize를 다시 부르면 적용→이벤트→재적용의
+  // 무한 피드백 루프가 된다 (실측 발견) — 적용 완료는 알림만.
+  ScheduleProposalApplied: ["notification.dispatch"],
   ContentApproved: ["readmodel.refresh"],
   CurriculumReleasePublished: ["curriculum.impact-analysis"],
   FormulaReviewRequired: ["notification.dispatch"],

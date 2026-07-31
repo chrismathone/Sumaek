@@ -138,11 +138,13 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
     const [row] = await sql<{ id: string }[]>`
       select id from audit_events where organization_id = ${orgA} limit 1
     `;
+    const auditId = row?.id as string;
+    expect(auditId).toBeTruthy();
     await expect(
-      sql`update audit_events set action = 'tampered' where id = ${row?.id}`,
+      sql`update audit_events set action = 'tampered' where id = ${auditId}`,
     ).rejects.toThrow(/append-only/);
     await expect(
-      sql`delete from audit_events where id = ${row?.id}`,
+      sql`delete from audit_events where id = ${auditId}`,
     ).rejects.toThrow(/append-only/);
   });
 

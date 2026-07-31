@@ -1,3 +1,5 @@
+import { config } from "dotenv";
+config({ path: [".env", "../../.env"] });
 import {
   claimJobs,
   completeJob,
@@ -24,9 +26,21 @@ function register(topic: string, handler: JobHandler): void {
   handlers.set(topic, handler);
 }
 
-// 핸들러 골격 — 각 도메인 태스크에서 실제 구현으로 교체된다.
 // 등록되지 않은 토픽의 작업은 클레임되지 않으므로 유실되지 않는다.
-register("readmodel.refresh", async () => ({ refreshed: true }));
+import {
+  handleNotificationDispatch,
+  handleScheduleRecalculate,
+  makeInboxNoop,
+} from "./handlers/schedule";
+
+register("schedule.recalculate", handleScheduleRecalculate);
+register("schedule.materialize", handleScheduleRecalculate);
+register("notification.dispatch", handleNotificationDispatch);
+// 인라인으로 파생이 이미 갱신된 이벤트 — 소비 확인만
+register("mastery.update", makeInboxNoop("mastery.update"));
+register("review.plan", makeInboxNoop("review.plan"));
+register("grading.auto", makeInboxNoop("grading.auto"));
+register("readmodel.refresh", makeInboxNoop("readmodel.refresh"));
 
 const WORKER_ID = `worker-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY ?? 4);
