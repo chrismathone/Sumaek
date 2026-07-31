@@ -1,7 +1,2 @@
-/**
- * 결정론적 일정 엔진.
- * 입력: 불변 스냅샷(루트 버전, 달력 버전, 소속, 오버라이드, cutoff, 정책, 시간대, 엔진 버전, 시드)
- * 출력: ScheduleChangeProposal (diff, 이유 코드, 충돌, 입력·출력 해시)
- * 엔진 내부에서 현재 시각·비정렬 조회·비고정 난수를 사용하지 않는다.
- */
-export {};
+export * from "./types";
+export { calculateSchedule, ENGINE_VERSION } from "./engine";
