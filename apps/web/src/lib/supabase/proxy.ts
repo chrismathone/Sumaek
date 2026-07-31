@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env";
 
 /**
  * 세션 갱신 (eywa 검증 패턴 이식 — docs/phase0/survey/eywa-allinone.md).
@@ -12,10 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       cookies: {
         getAll() {
           return request.cookies.getAll();

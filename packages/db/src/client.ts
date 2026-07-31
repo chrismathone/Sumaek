@@ -14,7 +14,8 @@ export function createSql(options?: { pooled?: boolean }): postgres.Sql {
       "DATABASE_URL이 설정되지 않았습니다. .env를 확인하세요 (.env.example 참고).",
     );
   }
-  return postgres(url, {
+  // CLI 주입 환경변수의 잔여 개행(\r) 방어 — eywa 실사고 반영
+  return postgres(url.trim(), {
     prepare: options?.pooled ? false : true,
     max: options?.pooled ? 10 : 4,
     idle_timeout: 30,

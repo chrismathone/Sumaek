@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { cache } from "react";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env";
 
 /**
  * 서버 클라이언트 — 요청당 1개 (cache).
@@ -9,10 +10,7 @@ import { cache } from "react";
  */
 export const createClient = cache(async () => {
   const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       cookies: {
         getAll() {
           return cookieStore.getAll();

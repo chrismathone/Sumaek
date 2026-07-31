@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    // DOM 은 Playwright `page.evaluate` 콜백 때문에 필요하다 — 그 함수들은
+    // 브라우저 안에서 실행되므로 document·window 를 참조한다.
+    // 워커 본체(잡 루프·DB)는 DOM API 를 쓰지 않는다.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   "include": ["src", "test"]
 }

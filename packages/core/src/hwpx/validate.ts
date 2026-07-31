@@ -18,6 +18,11 @@
 
 import { unzipSync } from "fflate";
 
+import {
+  type ValidationSeverity,
+  type ValidationStatus,
+  deriveValidationStatus,
+} from "../export/report";
 import { findElements, parseXml } from "./parse";
 import { readZipEntries } from "./read";
 import { EQUATION_BASE_LINE, MIMETYPE } from "./template";
@@ -50,7 +55,7 @@ export type HwpxIssueCode =
  * `fatal` 은 산출물을 폐기한다(document_exports.status = failed).
  * `review` 는 사람이 봐야 하지만 파일 자체는 열린다(review_required).
  */
-export type HwpxIssueSeverity = "fatal" | "review";
+export type HwpxIssueSeverity = ValidationSeverity;
 
 export interface HwpxValidationIssue {
   readonly code: HwpxIssueCode;
@@ -70,7 +75,7 @@ export interface HwpxValidationMetrics {
 
 export interface HwpxValidationReport {
   /** `passed` 만 게시 게이트 G-08 을 통과한다. */
-  readonly status: "passed" | "review_required" | "failed";
+  readonly status: ValidationStatus;
   readonly issues: readonly HwpxValidationIssue[];
   readonly metrics: HwpxValidationMetrics;
 }
@@ -260,12 +265,7 @@ function report(
   issues: readonly HwpxValidationIssue[],
   metrics: HwpxValidationMetrics,
 ): HwpxValidationReport {
-  const status = issues.some((i) => i.severity === "fatal")
-    ? "failed"
-    : issues.length > 0
-      ? "review_required"
-      : "passed";
-  return { status, issues, metrics };
+  return { status: deriveValidationStatus(issues), issues, metrics };
 }
 
 function describeError(error: unknown): string {

@@ -20,6 +20,25 @@ export type {
   DocumentExportState,
 } from "./state-machine";
 
+export { deriveValidationStatus } from "./report";
+export type {
+  ValidationIssue,
+  ValidationSeverity,
+  ValidationStatus,
+} from "./report";
+
+export { PDF_POSITION_TOLERANCE, validatePdfLayout } from "./pdf-validate";
+export type {
+  MeasuredBox,
+  PdfBoxKind,
+  PdfIssueCode,
+  PdfPageGeometry,
+  PdfValidationInput,
+  PdfValidationIssue,
+  PdfValidationMetrics,
+  PdfValidationReport,
+} from "./pdf-validate";
+
 export { CROSS_FORMAT_TARGETS, verifyCrossFormat } from "./cross-format";
 export type {
   CrossFormatInput,
