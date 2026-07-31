@@ -2,11 +2,14 @@ import { sql } from "drizzle-orm";
 import {
   date,
   index,
+  integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { id, organizationId, timestamps } from "./_shared";
@@ -177,6 +180,52 @@ export const operatorAccessGrants = pgTable(
   (t) => [
     index("operator_grants_org_idx").on(t.organizationId, t.expiresAt),
   ],
+);
+
+/**
+ * AI 사용량 이벤트 (골프롬프트 28장 · 인수 37) — 조직별 비용 집계의 원본.
+ * 목 공급자도 실제와 같은 형태로 기록해 한도 로직이 처음부터 검증된다.
+ */
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    operation: text("operation").notNull(), // extract_questions | ...
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    /** 추정 비용 (USD) — 가격표 버전과 함께 기록해 재계산 가능 */
+    estimatedCostUsd: numeric("estimated_cost_usd", { precision: 10, scale: 6 })
+      .notNull()
+      .default("0"),
+    pricingVersion: text("pricing_version").notNull(),
+    relatedType: text("related_type"),
+    relatedId: uuid("related_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("ai_usage_org_created_idx").on(t.organizationId, t.createdAt),
+  ],
+);
+
+/** 조직별 월 AI 예산 — 80% 경고, 100% 차단 (인수 37) */
+export const aiBudgets = pgTable(
+  "ai_budgets",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    monthlyLimitUsd: numeric("monthly_limit_usd", { precision: 10, scale: 2 })
+      .notNull(),
+    warnRatio: numeric("warn_ratio", { precision: 3, scale: 2 })
+      .notNull()
+      .default("0.8"),
+    ...timestamps(),
+  },
+  (t) => [uniqueIndex("ai_budgets_org_uq").on(t.organizationId)],
 );
 
 export const deletionRequestStatus = pgEnum("deletion_request_status", [

@@ -27,7 +27,7 @@ export default async function SettingsPage() {
   const user = (await getCurrentUser())!;
   const sql = getSharedSql();
 
-  const [policies, masteryPolicies, groups, killSwitches, periods, groupList] =
+  const [policies, masteryPolicies, groups, killSwitches, periods, groupList, aiUsage] =
     await Promise.all([
     sql<{ name: string; purpose: string; version: number; is_active: boolean }[]>`
       select name, purpose, version, is_active from assessment_policies
@@ -63,6 +63,23 @@ export default async function SettingsPage() {
       select id, name from learning_groups
       where organization_id = ${user.organizationId} and status = 'operating'
       order by name
+    `,
+    sql<
+      { month_to_date: string; calls: number; limit_usd: string | null }[]
+    >`
+      select
+        coalesce((
+          select sum(estimated_cost_usd) from ai_usage_events
+          where organization_id = ${user.organizationId}
+            and created_at >= date_trunc('month', now())
+        ), 0)::text as month_to_date,
+        coalesce((
+          select count(*)::int from ai_usage_events
+          where organization_id = ${user.organizationId}
+            and created_at >= date_trunc('month', now())
+        ), 0) as calls,
+        (select monthly_limit_usd::text from ai_budgets
+          where organization_id = ${user.organizationId}) as limit_usd
     `,
   ]);
 
@@ -195,6 +212,28 @@ export default async function SettingsPage() {
             </ul>
           );
         })()}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">AI 사용량 (이번 달)</h2>
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <dt className="text-ink-soft">추정 비용</dt>
+          <dd className="font-mono">
+            ${Number(aiUsage[0]?.month_to_date ?? 0).toFixed(4)}
+          </dd>
+          <dt className="text-ink-soft">호출 수</dt>
+          <dd className="font-mono">{aiUsage[0]?.calls ?? 0}건</dd>
+          <dt className="text-ink-soft">월 한도</dt>
+          <dd className="font-mono">
+            {aiUsage[0]?.limit_usd
+              ? `$${Number(aiUsage[0].limit_usd).toFixed(2)} (80% 경고 · 100% 차단)`
+              : "미설정 — 기록만 하고 차단하지 않음"}
+          </dd>
+        </dl>
+        <p className="mt-2 text-xs text-ink-soft">
+          모든 AI 호출이 가격표 버전과 함께 기록됩니다. 목 공급자도 같은
+          경로로 기록되어 한도 로직이 처음부터 검증됩니다.
+        </p>
       </section>
 
       <p className="mt-4 text-sm text-ink-soft">

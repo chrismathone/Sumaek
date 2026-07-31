@@ -4,6 +4,7 @@ import {
   getSharedBreaker,
   withCircuitBreaker,
 } from "@su-maek/core/ai";
+import { checkAiBudget, recordAiUsage } from "./ai-usage";
 import { normalizeMixedText, renderMixedText } from "@su-maek/core/math";
 import { getSharedSql } from "../client";
 
@@ -88,6 +89,17 @@ export async function processSourceFile(options: {
     where id = ${sourceFileId}
   `;
 
+  /* 비용 한도 (인수 37) — 월 예산 100% 도달 조직은 새 AI 작업 차단.
+   * 예산 미설정이면 기록만 하고 막지 않는다. */
+  const budget = await checkAiBudget(organizationId);
+  if (!budget.allowed) {
+    await sql`
+      update source_files set status = 'uploaded', updated_at = now()
+      where id = ${sourceFileId}
+    `;
+    throw new Error(budget.message);
+  }
+
   /* 회로 차단기 (인수 23) — 공급자 장애 시 빠른 실패로 격리하고,
    * 파일은 uploaded로 되돌려 복구 후 재시도 가능하게 한다 */
   const rawProvider = createAiProvider(process.env.AI_PROVIDER);
@@ -109,6 +121,18 @@ export async function processSourceFile(options: {
     `;
     throw error;
   }
+
+  /* 사용량 기록 (인수 37) — 목 공급자도 같은 경로로 기록 */
+  await recordAiUsage({
+    organizationId,
+    provider: extraction.provider,
+    model: extraction.model,
+    operation: "extract_questions",
+    inputTokens: extraction.usage.inputTokens,
+    outputTokens: extraction.usage.outputTokens,
+    relatedType: "source_file",
+    relatedId: sourceFileId,
+  });
 
   let gatePassed = 0;
   let quarantined = 0;

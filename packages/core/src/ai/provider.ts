@@ -31,6 +31,8 @@ export interface ExtractionResult {
   promptVersion: string;
   pages: number;
   questions: ExtractedQuestion[];
+  /** 토큰 사용량 — 비용 집계·한도(인수 37)의 입력. 목도 실제 형태로 채운다 */
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 export interface AiProvider {
@@ -120,6 +122,11 @@ export class MockAiProvider implements AiProvider {
       promptVersion: "mock/1.0.0",
       pages: input.pageCount,
       questions,
+      // 실측 근사: 페이지당 이미지 토큰 + 문항당 구조화 출력 (결정론적)
+      usage: {
+        inputTokens: input.pageCount * 1_600,
+        outputTokens: questions.length * 350,
+      },
     };
   }
 }
