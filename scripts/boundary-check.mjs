@@ -71,6 +71,17 @@ async function* walk(dir) {
   }
 }
 
+/**
+ * 검사 의도: 금지 "기능이 존재"하는 것을 잡는다.
+ * 경계 자체를 서술하는 문구("전자출결 기능이 아니다", "비범위: 수납")는
+ * 정당하다 — 부정·비범위 문맥이면 통과시킨다.
+ */
+const NEGATION_CONTEXT =
+  /아니|아님|않|없|금지|비범위|제외|미수집|만들지|복제하지|보관하지|폐기|거부|\bskip\b/;
+
+/** 주석 줄 (스키마·SQL 설명) — 식별자 검사에서 제외 */
+const COMMENT_LINE = /^\s*(?:\/\/|\/?\*|--|#)/;
+
 const violations = [];
 
 for (const scanDir of SCAN_DIRS) {
@@ -81,14 +92,19 @@ for (const scanDir of SCAN_DIRS) {
     const lines = text.split("\n");
     lines.forEach((line, i) => {
       if (line.includes(ALLOW_MARKER)) return;
-      for (const pattern of FORBIDDEN_IDENTIFIERS) {
-        if (pattern.test(line)) {
-          violations.push({ file: rel, line: i + 1, match: pattern.source, text: line.trim().slice(0, 120) });
+      const negated = NEGATION_CONTEXT.test(line);
+      if (!COMMENT_LINE.test(line) && !negated) {
+        for (const pattern of FORBIDDEN_IDENTIFIERS) {
+          if (pattern.test(line)) {
+            violations.push({ file: rel, line: i + 1, match: pattern.source, text: line.trim().slice(0, 120) });
+          }
         }
       }
-      for (const copy of FORBIDDEN_COPY) {
-        if (line.includes(copy)) {
-          violations.push({ file: rel, line: i + 1, match: copy, text: line.trim().slice(0, 120) });
+      if (!negated) {
+        for (const copy of FORBIDDEN_COPY) {
+          if (line.includes(copy)) {
+            violations.push({ file: rel, line: i + 1, match: copy, text: line.trim().slice(0, 120) });
+          }
         }
       }
     });

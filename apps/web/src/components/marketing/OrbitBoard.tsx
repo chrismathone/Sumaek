@@ -15,13 +15,13 @@ import { useId, useState } from "react";
  */
 
 const DAYS = [
-  { key: "0728", label: "7/28 월", x: 70, past: true },
-  { key: "0730", label: "7/30 수", x: 175, past: true },
+  { key: "0728", label: "7/28 월", x: 70, past: true, today: false },
+  { key: "0730", label: "7/30 수", x: 175, past: true, today: false },
   { key: "0803", label: "8/3 월", x: 280, past: false, today: true },
-  { key: "0805", label: "8/5 수", x: 385, past: false },
-  { key: "0807", label: "8/7 금", x: 490, past: false },
-  { key: "0810", label: "8/10 월", x: 595, past: false },
-  { key: "0812", label: "8/12 수", x: 700, past: false },
+  { key: "0805", label: "8/5 수", x: 385, past: false, today: false },
+  { key: "0807", label: "8/7 금", x: 490, past: false, today: false },
+  { key: "0810", label: "8/10 월", x: 595, past: false, today: false },
+  { key: "0812", label: "8/12 수", x: 700, past: false, today: false },
 ] as const;
 
 const LANE_COMMON = 78;
