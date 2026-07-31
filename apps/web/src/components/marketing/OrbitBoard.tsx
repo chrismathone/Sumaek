@@ -85,13 +85,15 @@ export function OrbitBoard({ interactive = true }: { interactive?: boolean }) {
           className="min-w-[640px]"
         >
           <title id={titleId}>
-            수업 궤도판: 반 공통 경로와 학생별 분기.
-            {absenceApplied
-              ? " 정하린 학생은 8월 3일 불참으로 8월 5일 보강 후 8월 10일 반 경로에 재합류합니다."
-              : " 정하린 학생은 반 공통 경로를 따릅니다."}
-            {scoreApplied
-              ? " 이도윤 학생은 5·7번 오답 반영으로 8월 7일 확인테스트가 예약되었습니다."
-              : ""}
+            {`수업 궤도판: 반 공통 경로와 학생별 분기.${
+              absenceApplied
+                ? " 정하린 학생은 8월 3일 불참으로 8월 5일 보강 후 8월 10일 반 경로에 재합류합니다."
+                : " 정하린 학생은 반 공통 경로를 따릅니다."
+            }${
+              scoreApplied
+                ? " 이도윤 학생은 5·7번 오답 반영으로 8월 7일 확인테스트가 예약되었습니다."
+                : ""
+            }`}
           </title>
 
           {/* 날짜 축 */}

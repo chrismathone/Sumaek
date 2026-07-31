@@ -59,7 +59,50 @@ async function main(): Promise<void> {
       update learning_groups set home_teacher_user_id = ${userId}
       where organization_id = ${ORG_ID}
     `;
-    console.log(`[demo-account] 준비 완료 — ${EMAIL} / (비밀번호는 환경변수 또는 기본값)`);
+
+    /* 데모 학생 계정 — 박서윤 학습자에 연결 */
+    const STUDENT_EMAIL = "demo-student@su-maek.app";
+    const STUDENT_PASSWORD =
+      process.env.DEMO_STUDENT_PASSWORD ?? "sumaek-student-2026!";
+    const LEARNER_ID = "00000000-0000-7000-8000-000000000101"; // 박서윤
+
+    let studentId: string | null = null;
+    const { data: sCreated, error: sError } = await admin.auth.admin.createUser({
+      email: STUDENT_EMAIL,
+      password: STUDENT_PASSWORD,
+      email_confirm: true,
+      user_metadata: { display_name: "박서윤" },
+    });
+    if (sError) {
+      if (!/already|exists|registered/i.test(sError.message)) throw sError;
+      const { data: list2 } = await admin.auth.admin.listUsers({ perPage: 200 });
+      studentId = list2.users.find((u) => u.email === STUDENT_EMAIL)?.id ?? null;
+      if (!studentId) throw new Error("기존 학생 계정을 찾지 못했습니다.");
+      await admin.auth.admin.updateUserById(studentId, {
+        password: STUDENT_PASSWORD,
+      });
+    } else {
+      studentId = sCreated.user.id;
+    }
+    await sql`
+      insert into users (id, email, display_name, default_organization_id)
+      values (${studentId}, ${STUDENT_EMAIL}, ${"박서윤"}, ${ORG_ID})
+      on conflict (id) do update
+        set display_name = excluded.display_name,
+            default_organization_id = excluded.default_organization_id
+    `;
+    await sql`
+      insert into memberships (id, organization_id, user_id, role, status, joined_at)
+      values (${uuidv7()}, ${ORG_ID}, ${studentId}, 'student', 'active', now())
+      on conflict (organization_id, user_id) do update set status = 'active'
+    `;
+    await sql`
+      update learners set user_id = ${studentId} where id = ${LEARNER_ID}
+    `;
+
+    console.log(
+      `[demo-account] 준비 완료 — 교사 ${EMAIL} / 학생 ${STUDENT_EMAIL}`,
+    );
   } finally {
     await sql.end();
   }

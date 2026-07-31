@@ -14,7 +14,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/index.ts",
-    "demo-account": "tsx src/seed/demo-account.ts"
+    "demo-account": "tsx src/seed/demo-account.ts",
+    "recompute-mastery": "tsx src/seed/recompute-mastery.ts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
@@ -25,6 +26,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@su-maek/core": "workspace:*",
     "@types/node": "^22.15.0",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.0",

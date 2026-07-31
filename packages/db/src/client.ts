@@ -1,5 +1,7 @@
 import postgres from "postgres";
 
+export type { Sql, TransactionSql } from "postgres";
+
 /**
  * 서버 전용 DB 클라이언트. 클라이언트 번들에 포함되어서는 안 된다.
  * DATABASE_URL: Supabase Direct 연결(마이그레이션·워커),
