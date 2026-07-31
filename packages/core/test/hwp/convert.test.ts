@@ -576,3 +576,13 @@ describe("latexToHwpEq — 미지원 토큰 리포팅", () => {
     expect(typeof r.script).toBe("string");
   });
 });
+
+describe("수맥 수정: min 함수/단위 구분 (원본 잠재 결함)", () => {
+  it("\\min 함수는 로만체화하지 않는다", () => {
+    expect(latexToHwpEq("\\min(a, b)").script).toBe("min (a,~b)");
+    expect(latexToHwpEq("\\min_{x} f(x)").script).toBe("min _{x} f(x)");
+  });
+  it("분(minute) 단위 min은 여전히 로만체화한다", () => {
+    expect(latexToHwpEq("20 min").script).toBe("20 rm`min");
+  });
+});
