@@ -136,6 +136,25 @@ export const importJobs = pgTable(
 );
 
 /**
+ * 도입 문의 (공개 랜딩 /request-demo). 테넌트 이전 데이터 — 조직 스코프 없음.
+ * RLS: authenticated 정책 없음 (서버 전용 쓰기·운영 콘솔 조회).
+ */
+export const demoRequests = pgTable(
+  "demo_requests",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    organizationName: text("organization_name"),
+    role: text("role"), // 개인 교사 | 교무·교육과정 책임자 | 콘텐츠팀 | 기타
+    message: text("message"),
+    status: text("status").notNull().default("new"), // new | contacted | closed
+    ...timestamps(),
+  },
+  (t) => [index("demo_requests_status_idx").on(t.status, t.createdAt)],
+);
+
+/**
  * break-glass 운영자 접근 승인 (27장). 시간 제한·사유·승인·감사.
  * 일반 관리자는 감사 로그를 수정할 수 없다.
  */

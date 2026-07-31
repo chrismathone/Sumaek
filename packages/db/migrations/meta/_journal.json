@@ -8,6 +8,13 @@
       "when": 1785490162806,
       "tag": "0000_zippy_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785491984994,
+      "tag": "0001_chief_flatman",
+      "breakpoints": true
     }
   ]
 }

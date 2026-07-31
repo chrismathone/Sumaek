@@ -1,11 +1,122 @@
+import {
+  claimJobs,
+  completeJob,
+  createSql,
+  dispatchOutbox,
+  failJob,
+  type ClaimedJob,
+} from "@su-maek/db";
+
 /**
- * 수맥 백그라운드 워커 진입점.
- * 일정·평가·리포트 워커, mathg-gen OCR·AI 워커, 수식 검증·PDF·HWP 출력 워커가
- * 하나의 프로세스 그룹에서 큐 토픽별로 실행된다. (독립 배포·확장 가능)
+ * 수맥 백그라운드 워커 (2B).
+ * - 일정·평가·리포트 / mathg-gen OCR·AI / 수식 검증·PDF·HWP 출력 워커가
+ *   토픽 핸들러로 등록되어 하나의 프로세스에서 실행된다 (독립 배포·확장 가능).
+ * - Outbox 디스패처가 이벤트를 소비자 작업으로 변환한다.
+ * - 실시간 채점(grading.*)이 대량 OCR보다 높은 우선순위를 가진다.
  */
+
+type JobHandler = (job: ClaimedJob) => Promise<unknown>;
+
+const handlers = new Map<string, JobHandler>();
+
+/** 토픽 핸들러 등록 — 도메인 모듈 구현이 이 레지스트리에 연결된다 */
+function register(topic: string, handler: JobHandler): void {
+  handlers.set(topic, handler);
+}
+
+// 핸들러 골격 — 각 도메인 태스크에서 실제 구현으로 교체된다.
+// 등록되지 않은 토픽의 작업은 클레임되지 않으므로 유실되지 않는다.
+register("readmodel.refresh", async () => ({ refreshed: true }));
+
+const WORKER_ID = `worker-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY ?? 4);
+const POLL_INTERVAL_MS = 2_000;
+
+let shuttingDown = false;
+
 async function main(): Promise<void> {
-  // 구현 예정: SKIP LOCKED 기반 작업 큐 폴링 루프 (packages/db의 job 테이블)
-  console.log("[su-maek worker] 부팅 — 큐 소비자는 DB 스키마 구축 후 연결된다.");
+  const sql = createSql();
+  console.log(
+    `[su-maek worker] ${WORKER_ID} 시작 — 토픽 ${handlers.size}개, 동시성 ${CONCURRENCY}`,
+  );
+
+  process.on("SIGINT", () => {
+    shuttingDown = true;
+  });
+  process.on("SIGTERM", () => {
+    shuttingDown = true;
+  });
+
+  while (!shuttingDown) {
+    try {
+      // 1) Outbox → 소비자 작업 변환
+      const dispatched = await dispatchOutbox(sql);
+      if (dispatched > 0) {
+        console.log(`[outbox] ${dispatched}건 디스패치`);
+      }
+
+      // 2) 작업 클레임·실행
+      const jobs = await claimJobs(sql, {
+        topics: [...handlers.keys()],
+        workerId: WORKER_ID,
+        limit: CONCURRENCY,
+      });
+
+      if (jobs.length === 0 && dispatched === 0) {
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
+
+      await Promise.all(
+        jobs.map(async (job) => {
+          const handler = handlers.get(job.topic);
+          if (!handler) {
+            await failJob(sql, job, `핸들러 없음: ${job.topic}`, false);
+            return;
+          }
+          try {
+            const result = await handler(job);
+            await completeJob(sql, job.id, result);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            const retryable = isRetryable(error);
+            const outcome = await failJob(sql, job, message, retryable);
+            console.error(
+              `[job:${job.topic}] ${job.id} 실패 (${outcome}): ${message}`,
+            );
+          }
+        }),
+      );
+    } catch (error) {
+      console.error("[su-maek worker] 루프 오류", error);
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+
+  console.log("[su-maek worker] 종료 중 — 실행 중 작업은 lease 만료 후 재개된다");
+  await sql.end();
+}
+
+/** 408·429·일시적 5xx·네트워크 오류만 재시도 (28장) */
+function isRetryable(error: unknown): boolean {
+  if (error instanceof Error) {
+    const status = (error as { status?: number }).status;
+    if (status === 408 || status === 429) return true;
+    if (status !== undefined && status >= 500) return true;
+    if (/ECONNREFUSED|ETIMEDOUT|ECONNRESET|fetch failed/i.test(error.message)) {
+      return true;
+    }
+    // 명시적 재시도 불가 표시
+    if ((error as { retryable?: boolean }).retryable === false) return false;
+    if ((error as { retryable?: boolean }).retryable === true) return true;
+  }
+  // 알 수 없는 오류는 재시도 (최대 시도 한도가 폭주를 막는다)
+  return true;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch((error) => {

@@ -118,7 +118,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['outbox_events','inbox_events','jobs','idempotency_keys','schedule_leases'] loop
+  foreach t in array array['outbox_events','inbox_events','jobs','idempotency_keys','schedule_leases','demo_requests'] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
 end $$;
