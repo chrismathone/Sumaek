@@ -69,8 +69,20 @@ export default async function AppLayout({
 
   const matrix = DEFAULT_MATRIX;
 
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    title: group.title,
+    items: group.items.filter((item) => canAccess(matrix, user.role, item.menu)),
+  })).filter((group) => group.items.length > 0);
+
   return (
     <div className="flex min-h-dvh bg-paper">
+      {/* 키보드 사용자용 스킵 링크 (인수 15) */}
+      <a
+        href="#main-content"
+        className="sr-only z-50 focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded-[var(--radius-control)] focus:bg-ink focus:px-3 focus:py-2 focus:text-sm focus:text-white"
+      >
+        본문으로 건너뛰기
+      </a>
       {/* 좌측 내비 */}
       <aside className="hidden w-56 shrink-0 flex-col border-r border-rule-soft bg-ink text-white/85 lg:flex">
         <div className="px-4 py-4">
@@ -82,31 +94,25 @@ export default async function AppLayout({
           </p>
         </div>
         <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4" aria-label="주요 메뉴">
-          {NAV_GROUPS.map((group) => {
-            const visible = group.items.filter((item) =>
-              canAccess(matrix, user.role, item.menu),
-            );
-            if (visible.length === 0) return null;
-            return (
-              <div key={group.title}>
-                <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-white/50">
-                  {group.title}
-                </p>
-                <ul>
-                  {visible.map((item) => (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className="block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-white/10 hover:text-white"
-                      >
-                        {item.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
+          {visibleGroups.map((group) => (
+            <div key={group.title}>
+              <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-white/50">
+                {group.title}
+              </p>
+              <ul>
+                {group.items.map((item) => (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className="block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-white/10 hover:text-white"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
         <div className="border-t border-white/10 px-4 py-3">
           <p className="truncate text-sm text-white">{user.displayName}</p>
@@ -124,9 +130,50 @@ export default async function AppLayout({
           <p className="font-mono text-xs text-ink-soft">
             2026학년도 2학기 · {user.organizationName}
           </p>
-          <p className="text-sm lg:hidden">{user.displayName}</p>
+          {/* 모바일 내비 (인수 15) — details 기반: JS 없이 키보드 접근 가능 */}
+          <details className="relative lg:hidden">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-control)] border border-rule px-3 py-1.5 text-sm [&::-webkit-details-marker]:hidden">
+              메뉴
+              <span aria-hidden="true" className="text-xs">☰</span>
+            </summary>
+            <nav
+              aria-label="모바일 메뉴"
+              className="absolute right-0 top-[calc(100%+0.5rem)] z-50 max-h-[80dvh] w-64 overflow-y-auto rounded-lg border border-rule bg-ink p-3 text-white/85 shadow-lg"
+            >
+              {visibleGroups.map((group) => (
+                <div key={group.title} className="mb-3 last:mb-0">
+                  <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-white/50">
+                    {group.title}
+                  </p>
+                  <ul>
+                    {group.items.map((item) => (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          className="block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-white/10 hover:text-white"
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <div className="mt-2 border-t border-white/10 px-2 pt-2">
+                <p className="truncate text-sm text-white">{user.displayName}</p>
+                <form action={signOut}>
+                  <button
+                    type="submit"
+                    className="mt-1 text-xs text-white/60 hover:text-white"
+                  >
+                    로그아웃
+                  </button>
+                </form>
+              </div>
+            </nav>
+          </details>
         </header>
-        <main className="p-4 lg:p-6">{children}</main>
+        <main id="main-content" className="p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

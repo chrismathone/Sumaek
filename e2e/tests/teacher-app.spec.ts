@@ -76,3 +76,26 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     await expect(page.getByText("연립방정식의 활용").first()).toBeVisible();
   });
 });
+
+/** 인수 15: 1024px 미만에서도 메뉴 디스클로저로 전 화면에 도달할 수 있다 */
+test("모바일(390px): 메뉴 디스클로저 → 화면 이동 + 스킵 링크 존재", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+
+  // 데스크톱 사이드바는 숨고, 헤더의 메뉴 디스클로저가 대신한다
+  await expect(
+    page.getByRole("navigation", { name: "주요 메뉴" }),
+  ).toBeHidden();
+  await page.locator("summary").filter({ hasText: "메뉴" }).click();
+  const mobileNav = page.getByRole("navigation", { name: "모바일 메뉴" });
+  await expect(mobileNav).toBeVisible();
+  await mobileNav.getByRole("link", { name: "학습 루트" }).click();
+  await expect(page).toHaveURL(/\/app\/routes/, { timeout: 30_000 });
+
+  // 키보드 스킵 링크 — 포커스 시에만 드러난다
+  const skip = page.getByRole("link", { name: "본문으로 건너뛰기" });
+  await skip.focus();
+  await expect(skip).toBeVisible();
+});
