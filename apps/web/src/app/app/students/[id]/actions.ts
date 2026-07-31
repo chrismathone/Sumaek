@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
+import { executeLearnerErasure } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -142,6 +143,112 @@ const cancelSchema = z.object({
   overrideId: z.uuid(),
   learnerId: z.uuid(),
 });
+
+/* ── 개인정보 삭제 요청 (ADR-0015 §5 · 인수 39) ──
+ * 소유자 전용 위험 작업 (data.delete). 요청 기록 → 이름 확인 후 집행. */
+
+const requestDeletionSchema = z.object({
+  learnerId: z.uuid(),
+  reason: z.string().min(1, "삭제 요청 사유를 입력하세요."),
+});
+
+export async function requestDeletion(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "삭제 요청은 소유자만 접수할 수 있습니다." };
+  }
+  const parsed = requestDeletionSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "입력을 확인하세요." };
+  }
+  const sql = getSharedSql();
+  const [learner] = await sql<{ id: string; display_name: string }[]>`
+    select id, display_name from learners
+    where id = ${parsed.data.learnerId} and organization_id = ${user.organizationId}
+  `;
+  if (!learner) return { ok: false, message: "학습자를 찾을 수 없습니다." };
+
+  const [open] = await sql<{ id: string }[]>`
+    select id from data_deletion_requests
+    where organization_id = ${user.organizationId}
+      and learner_id = ${learner.id}
+      and status in ('received', 'processing')
+  `;
+  if (open) return { ok: false, message: "이미 접수된 삭제 요청이 있습니다." };
+
+  const requestId = uuidv7();
+  await sql.begin(async (tx) => {
+    await tx`
+      insert into data_deletion_requests (
+        id, organization_id, subject_type, learner_id, requested_by, reason, status, due_on
+      ) values (
+        ${requestId}, ${user.organizationId}, 'learner', ${learner.id},
+        ${user.userId}, ${parsed.data.reason}, 'received',
+        (now() + interval '14 days')::date
+      )
+    `;
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id, reason
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
+        'privacy.request', 'learner', ${learner.id}, ${parsed.data.reason}
+      )
+    `;
+  });
+  revalidatePath(`/app/students/${learner.id}`);
+  return {
+    ok: true,
+    message: "삭제 요청을 접수했습니다. 처리 기한은 영업일 10일입니다 (달력 14일로 기록).",
+  };
+}
+
+const executeDeletionSchema = z.object({
+  requestId: z.uuid(),
+  learnerId: z.uuid(),
+  confirmName: z.string().default(""),
+});
+
+export async function executeDeletion(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "익명화 집행은 소유자만 할 수 있습니다." };
+  }
+  const parsed = executeDeletionSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, message: "대상 요청이 지정되지 않았습니다." };
+  }
+  const sql = getSharedSql();
+  const [learner] = await sql<{ id: string; display_name: string }[]>`
+    select id, display_name from learners
+    where id = ${parsed.data.learnerId} and organization_id = ${user.organizationId}
+  `;
+  if (!learner) return { ok: false, message: "학습자를 찾을 수 없습니다." };
+
+  // 위험 작업 재확인 (4장 data.delete) — 표시명을 정확히 입력해야 집행
+  if (parsed.data.confirmName.trim() !== learner.display_name) {
+    return {
+      ok: false,
+      message: `확인을 위해 학습자 표시명("${learner.display_name}")을 정확히 입력하세요.`,
+    };
+  }
+
+  const result = await executeLearnerErasure({
+    organizationId: user.organizationId,
+    requestId: parsed.data.requestId,
+    executedBy: user.userId,
+  });
+  revalidatePath(`/app/students/${learner.id}`);
+  revalidatePath("/app/students");
+  revalidatePath("/app/classes");
+  return { ok: result.ok, message: result.message };
+}
 
 export async function cancelOverride(
   _prev: ActionResult | null,

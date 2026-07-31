@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  date,
   index,
   jsonb,
   pgEnum,
@@ -175,5 +176,44 @@ export const operatorAccessGrants = pgTable(
   },
   (t) => [
     index("operator_grants_org_idx").on(t.organizationId, t.expiresAt),
+  ],
+);
+
+export const deletionRequestStatus = pgEnum("deletion_request_status", [
+  "received",
+  "processing",
+  "completed",
+  "rejected",
+]);
+
+/**
+ * 개인정보 삭제 요청 (ADR-0015 §5·§7 · 인수 39).
+ * 처리 방식은 익명화다 — display_name 토큰 치환 + 서술 답안 본문 삭제,
+ * 점수·학습 증거는 안정 토큰(UUID)으로 보존한다.
+ * PITR 복원 후 "미처리 삭제 요청 재실행" 목록이기도 하다 (F-5).
+ */
+export const dataDeletionRequests = pgTable(
+  "data_deletion_requests",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    subjectType: text("subject_type").notNull().default("learner"), // learner | organization
+    learnerId: uuid("learner_id"),
+    requestedBy: uuid("requested_by").notNull(),
+    reason: text("reason").notNull(),
+    status: deletionRequestStatus("status").notNull().default("received"),
+    /** 처리 기한 — 영업일 10일 (ADR-0015 §5) */
+    dueOn: date("due_on").notNull(),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    executedBy: uuid("executed_by"),
+    /** 백업(PITR) 만료 예정일 — 요청자 고지 의무 (ADR-0015 §7) */
+    backupExpiresOn: date("backup_expires_on"),
+    /** 처리 요약: 토큰화·본문 삭제·보존 항목 수 */
+    summary: jsonb("summary"),
+    ...timestamps(),
+  },
+  (t) => [
+    index("deletion_requests_org_idx").on(t.organizationId, t.status),
+    index("deletion_requests_learner_idx").on(t.learnerId),
   ],
 );

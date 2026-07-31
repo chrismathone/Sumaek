@@ -12,7 +12,16 @@ import {
   todayInTimeZone,
   trimScore,
 } from "@/lib/format";
+import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
+import { DeletionExecuteForm, DeletionRequestForm } from "./PrivacyForm";
+
+const DELETION_STATUS_LABEL: Record<string, string> = {
+  received: "접수됨",
+  processing: "처리 중",
+  completed: "완료",
+  rejected: "반려",
+};
 
 const OVERRIDE_KIND_LABEL: Record<string, string> = {
   remediation: "취약 개념 보충",
@@ -89,7 +98,7 @@ export default async function StudentDetailPage({
   `;
   if (!learner) notFound();
 
-  const [masteries, attempts, reviewItems, baseRoute, overrides] = await Promise.all([
+  const [masteries, attempts, reviewItems, baseRoute, overrides, deletionRequests] = await Promise.all([
     sql<
       {
         id: string;
@@ -197,7 +206,29 @@ export default async function StudentDetailPage({
       order by created_at desc
       limit 10
     `,
+    sql<
+      {
+        id: string;
+        status: string;
+        reason: string;
+        due_on: string;
+        backup_expires_on: string | null;
+        executed_at: Date | null;
+      }[]
+    >`
+      select id, status, reason, due_on::text as due_on,
+             backup_expires_on::text as backup_expires_on, executed_at
+      from data_deletion_requests
+      where organization_id = ${user.organizationId} and learner_id = ${id}
+      order by created_at desc
+      limit 5
+    `,
   ]);
+
+  const canManagePrivacy = canWrite(DEFAULT_MATRIX, user.role, "settings");
+  const openDeletionRequest = deletionRequests.find(
+    (r) => r.status === "received" || r.status === "processing",
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -425,6 +456,46 @@ export default async function StudentDetailPage({
           )}
         </div>
       </section>
+
+      {canManagePrivacy && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">개인정보 삭제 요청</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            처리 방식은 익명화입니다 — 표시명은 토큰으로 치환되고 서술 답안
+            본문은 삭제되며, 점수·학습 증거는 안정 토큰으로 보존됩니다
+            (ADR-0015). 백업(PITR)은 최대 35일 뒤 만료됩니다.
+          </p>
+          <div className="mt-3 rounded-lg border border-rule bg-surface p-5">
+            {deletionRequests.length > 0 && (
+              <ul className="divide-y divide-rule-soft">
+                {deletionRequests.map((r) => (
+                  <li key={r.id} className="py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm">
+                        <span className="font-medium">{r.reason}</span>
+                        <span className="ml-2 font-mono text-xs text-ink-soft">
+                          기한 {r.due_on}
+                          {r.backup_expires_on &&
+                            ` · 백업 만료 ${r.backup_expires_on}`}
+                        </span>
+                      </p>
+                      <span className="rounded-[var(--radius-control)] border border-rule px-2 py-0.5 font-mono text-xs">
+                        {DELETION_STATUS_LABEL[r.status] ?? r.status}
+                      </span>
+                    </div>
+                    {(r.status === "received" || r.status === "processing") && (
+                      <DeletionExecuteForm requestId={r.id} learnerId={learner.id} />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!openDeletionRequest && (
+              <DeletionRequestForm learnerId={learner.id} />
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

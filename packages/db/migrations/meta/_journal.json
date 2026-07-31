@@ -15,6 +15,13 @@
       "when": 1785491984994,
       "tag": "0001_chief_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785506316307,
+      "tag": "0002_clever_bishop",
+      "breakpoints": true
     }
   ]
 }
