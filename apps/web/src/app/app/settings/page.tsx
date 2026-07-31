@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { todayInTimeZone } from "@/lib/format";
+import { GroupForm, LearnerForm, PeriodForm } from "./SetupForms";
 
 export const metadata: Metadata = { title: "설정" };
 
@@ -12,7 +14,8 @@ export default async function SettingsPage() {
   const user = (await getCurrentUser())!;
   const sql = getSharedSql();
 
-  const [policies, masteryPolicies, groups, killSwitches] = await Promise.all([
+  const [policies, masteryPolicies, groups, killSwitches, periods, groupList] =
+    await Promise.all([
     sql<{ name: string; purpose: string; version: number; is_active: boolean }[]>`
       select name, purpose, version, is_active from assessment_policies
       where organization_id = ${user.organizationId} order by name
@@ -29,6 +32,16 @@ export default async function SettingsPage() {
       select key, enabled from kill_switches
       where organization_id is null or organization_id = ${user.organizationId}
       order by key
+    `,
+    sql<{ id: string; name: string }[]>`
+      select id, name from course_periods
+      where organization_id = ${user.organizationId} and status = 'active'
+      order by starts_on desc
+    `,
+    sql<{ id: string; name: string }[]>`
+      select id, name from learning_groups
+      where organization_id = ${user.organizationId} and status = 'operating'
+      order by name
     `,
   ]);
 
@@ -48,6 +61,38 @@ export default async function SettingsPage() {
           <dt className="text-ink-soft">내 역할</dt>
           <dd>{user.role}</dd>
         </dl>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">과정 기간 만들기</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          학년도·학기의 운영 구간입니다. 반과 일정은 이 기간 안에 배치됩니다.
+        </p>
+        <PeriodForm defaultYear={2026} />
+      </section>
+
+      <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">반 만들기</h2>
+        {periods.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-soft">
+            먼저 과정 기간을 만드세요. 반은 과정 기간에 속합니다.
+          </p>
+        ) : (
+          <GroupForm periods={periods} />
+        )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">학습자 등록</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          최소 데이터 원칙: 표시명·학년·소속만 받습니다. 보호자 연락처·주소는
+          수집하지 않습니다.
+        </p>
+        {groupList.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-soft">먼저 반을 만드세요.</p>
+        ) : (
+          <LearnerForm groups={groupList} today={todayInTimeZone(user.timezone)} />
+        )}
       </section>
 
       <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
@@ -112,7 +157,7 @@ export default async function SettingsPage() {
       </section>
 
       <p className="mt-4 text-sm text-ink-soft">
-        정책·달력·구성원 편집 화면은 준비 중입니다. 외부 연동은{" "}
+        정책 편집·휴일 달력·교직원 초대 화면은 준비 중입니다. 외부 연동은{" "}
         <Link href="/app/settings/integrations" className="text-pen underline underline-offset-4">
           외부 명단 연동
         </Link>

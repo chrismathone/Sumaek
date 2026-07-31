@@ -11,9 +11,18 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
 
+  // 선행 조건 자립: 8/3 수업이 없으면 먼저 일정을 실체화한다 (순서 의존 제거)
+  await page.goto("/app/routes");
+  await page.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
+  await expect(page.getByRole("status")).toContainText(/미래 수업 \d+건/, {
+    timeout: 30_000,
+  });
+
   await page.goto("/app/tests");
   await expect(page.getByRole("heading", { name: "일일·확인테스트" })).toBeVisible();
 
+  // 대상 반 명시 선택 (다른 테스트가 만든 반이 기본 선택을 가로채지 않게)
+  await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
   // 첫 수업일(8/3)로 생성
   await page.getByLabel("수업 날짜").fill("2026-08-03");
   await page.getByRole("button", { name: "생성·게시" }).click();
@@ -30,6 +39,7 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
   await expect(page.getByText("게시됨").first()).toBeVisible();
 
   // 멱등: 같은 날짜 재생성 → 중복 생성 안 함
+  await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
   await page.getByLabel("수업 날짜").fill("2026-08-03");
   await page.getByRole("button", { name: "생성·게시" }).click();
   await expect(page.getByRole("status")).toContainText(
@@ -38,6 +48,7 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
   );
 
   // 수업 없는 날짜는 정직한 오류
+  await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
   await page.getByLabel("수업 날짜").fill("2026-08-02"); // 일요일
   await page.getByRole("button", { name: "생성·게시" }).click();
   await expect(page.getByRole("status")).toContainText(
