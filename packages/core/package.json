@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
+    "fflate": "^0.8.3",
     "katex": "^0.16.22",
     "uuid": "^11.1.0"
   },

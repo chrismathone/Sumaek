@@ -57,10 +57,16 @@ export default function DemoPage() {
         <p className="font-[MaruBuri] text-xl font-semibold">
           내 반의 학습 루트로 시작해 보세요.
         </p>
-        <div className="mt-4 flex justify-center gap-3">
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/demo/test"
+            className="rounded-[var(--radius-control)] bg-pen px-5 py-2.5 font-medium text-white transition-colors hover:bg-ink"
+          >
+            학생 화면으로 일일테스트 응시하기
+          </Link>
           <Link
             href="/request-demo"
-            className="rounded-[var(--radius-control)] bg-pen px-5 py-2.5 font-medium text-white transition-colors hover:bg-ink"
+            className="rounded-[var(--radius-control)] border border-rule px-5 py-2.5 font-medium hover:border-pen"
           >
             도입 문의
           </Link>
