@@ -87,17 +87,10 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
   });
 
   afterAll(async () => {
-    // 역순 정리 — 감사·불변 테이블은 두되(불변 조건 15) 픽스처 본체 제거
-    await sql`delete from review_items where learner_id = ${ids.learner}`;
-    await sql`delete from concept_masteries where learner_id = ${ids.learner}`;
-    // mastery_evidences는 append-only 불변 트리거 — 남겨둔다 (테스트 학습자 소속)
-    await sql`delete from grading_exceptions where attempt_id in (select id from attempts where learner_id = ${ids.learner})`;
-    await sql`delete from grade_decisions where response_id in (select r.id from responses r join attempts t on t.id = r.attempt_id where t.learner_id = ${ids.learner})`;
-    await sql`delete from responses where attempt_id in (select id from attempts where learner_id = ${ids.learner})`;
-    await sql`delete from attempts where learner_id = ${ids.learner}`;
-    await sql`delete from assignments where assessment_id = ${ids.assessment}`;
-    await sql`delete from assessment_questions where assessment_id = ${ids.assessment}`;
-    await sql`delete from assessment_instances where id = ${ids.assessment}`;
+    // 정리하지 않는다 — mastery_evidences는 append-only 불변이라 지울 수 없고,
+    // 그 부모(grade_decisions→responses→attempts→assessment_*)를 지우면
+    // 고아 참조가 남는다 (verify-recovery R-01 실측). 실행마다 무작위
+    // 학습자 ID를 쓰므로 잔재가 다른 실행·스펙과 간섭하지 않는다.
   });
 
   it("단위 누락 답 → 예외함 → 교사 정답 판정 → 점수·숙련도 갱신", async () => {

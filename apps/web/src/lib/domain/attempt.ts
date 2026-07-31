@@ -329,7 +329,7 @@ export async function submitAndGrade(options: {
       update attempts
       set status = ${finalStatus},
           total_score = ${totalScore}, max_score = ${maxScore},
-          finalized_at = ${needsReview > 0 ? null : new Date()},
+          finalized_at = case when ${needsReview > 0} then null else now() end,
           updated_at = now()
       where id = ${attemptId}
     `;
@@ -537,19 +537,28 @@ export async function resolveGradingException(
       select coalesce(max(version), 0) + 1 as v from grade_decisions
       where response_id = ${exception.response_id}
     `;
+    /* 기존 최종 결정 해제 — 최종은 답안당 하나(부분 유니크)이고, 이 해제가
+     * append-only 가드가 허용하는 유일한 변경이다. 새 결정이 이전 결정을
+     * supersedes로 가리켜 이력이 사슬로 남는다 (ADR-0015). */
+    const [prevFinal] = await tx<{ id: string }[]>`
+      update grade_decisions set is_final = false
+      where response_id = ${exception.response_id} and is_final = true
+      returning id
+    `;
     const decisionId = uuidv7();
     await tx`
       insert into grade_decisions (
         id, organization_id, response_id, version, source,
         is_correct, score, max_score, confidence, rationale, is_final,
-        decided_by, change_reason
+        decided_by, supersedes_id, change_reason
       ) values (
         ${decisionId}, ${input.organizationId}, ${exception.response_id}, ${next?.v ?? 1},
         'human',
         ${input.verdict === "correct" ? true : input.verdict === "incorrect" ? false : null},
         ${score}, ${maxPoints}, 1.0,
         ${tx.json([`교사 판정: ${input.verdict}`, input.note ?? ""] as never)},
-        true, ${input.resolverUserId}, ${input.note ?? "채점 예외 판정"}
+        true, ${input.resolverUserId}, ${prevFinal?.id ?? null},
+        ${input.note ?? "채점 예외 판정"}
       )
     `;
 
@@ -612,7 +621,7 @@ export async function resolveGradingException(
       update attempts
       set total_score = ${totals?.total ?? "0"},
           status = ${openLeft?.cnt === 0 ? "finalized" : "review_required"},
-          finalized_at = ${openLeft?.cnt === 0 ? new Date() : null},
+          finalized_at = case when ${openLeft?.cnt === 0} then now() else null end,
           updated_at = now()
       where id = ${exception.attempt_id}
     `;

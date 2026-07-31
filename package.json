@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "pnpm --filter @su-maek/web dev",
     "dev:worker": "pnpm --filter @su-maek/worker dev",
-    "build": "pnpm -r build",
+    "build": "node scripts/boundary-check.mjs && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r --filter !@su-maek/e2e test",
@@ -22,6 +22,10 @@
     "db:generate": "pnpm --filter @su-maek/db generate",
     "db:migrate": "pnpm --filter @su-maek/db migrate",
     "db:seed": "pnpm --filter @su-maek/db seed",
-    "boundary:check": "node scripts/boundary-check.mjs"
+    "boundary:check": "node scripts/boundary-check.mjs",
+    "kill-switch": "pnpm --filter @su-maek/db exec tsx scripts/kill-switch.mts",
+    "requeue-dlq": "pnpm --filter @su-maek/db exec tsx scripts/requeue-dead-letters.mts",
+    "verify:recovery": "node scripts/verify-recovery.mjs",
+    "rebuild:readmodels": "node scripts/rebuild-read-models.mjs"
   }
 }

@@ -75,9 +75,25 @@ async function* walk(dir) {
  * 검사 의도: 금지 "기능이 존재"하는 것을 잡는다.
  * 경계 자체를 서술하는 문구("전자출결 기능이 아니다", "비범위: 수납")는
  * 정당하다 — 부정·비범위 문맥이면 통과시킨다.
+ *
+ * 한글 활용형 주의: "아니"로는 "아닙니다"가 걸리지 않는다. 한글은 음절 단위로
+ * 합성되므로 아·닙·니·다에 "아니"라는 연속 부분열이 없다. 활용형을 직접 나열한다.
  */
 const NEGATION_CONTEXT =
-  /아니|아님|않|없|금지|비범위|제외|미수집|만들지|복제하지|보관하지|폐기|거부|\bskip\b/;
+  /아니|아닌|아님|아닙|않|없|금지|비범위|제외|미수집|만들지|복제하지|보관하지|폐기|거부|\bskip\b/;
+
+/**
+ * 부정어 판정 범위를 앞뒤 한 줄까지 넓힌다.
+ * JSX·마크다운의 한글 산문은 자동 줄바꿈되어 금지어와 부정어가 다른 줄에 놓인다
+ * (예: "…결제·상담·전자출결\n원장·보호자 연락처는 수신하지 않고 폐기합니다").
+ * 줄 단위로만 보면 이런 문장이 전부 거짓 양성이 된다.
+ */
+function isNegated(lines, index) {
+  for (let i = Math.max(0, index - 1); i <= Math.min(lines.length - 1, index + 1); i += 1) {
+    if (NEGATION_CONTEXT.test(lines[i])) return true;
+  }
+  return false;
+}
 
 /** 주석 줄 (스키마·SQL 설명) — 식별자 검사에서 제외 */
 const COMMENT_LINE = /^\s*(?:\/\/|\/?\*|--|#)/;
@@ -92,7 +108,7 @@ for (const scanDir of SCAN_DIRS) {
     const lines = text.split("\n");
     lines.forEach((line, i) => {
       if (line.includes(ALLOW_MARKER)) return;
-      const negated = NEGATION_CONTEXT.test(line);
+      const negated = isNegated(lines, i);
       if (!COMMENT_LINE.test(line) && !negated) {
         for (const pattern of FORBIDDEN_IDENTIFIERS) {
           if (pattern.test(line)) {

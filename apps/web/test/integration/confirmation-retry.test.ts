@@ -88,18 +88,9 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
   });
 
   afterAll(async () => {
-    await sql`delete from retry_plans where learner_id = ${ids.learner}`;
-    await sql`delete from review_items where learner_id = ${ids.learner}`;
-    await sql`delete from concept_masteries where learner_id = ${ids.learner}`;
-    await sql`delete from grade_decisions where response_id in (
-      select r.id from responses r join attempts t on t.id = r.attempt_id
-      where t.learner_id = ${ids.learner})`;
-    await sql`delete from responses where attempt_id in (
-      select id from attempts where learner_id = ${ids.learner})`;
-    await sql`delete from attempts where learner_id = ${ids.learner}`;
-    await sql`delete from assignments where assessment_id = ${ids.assessment}`;
-    await sql`delete from assessment_questions where assessment_id = ${ids.assessment}`;
-    await sql`delete from assessment_instances where id = ${ids.assessment}`;
+    // 정리하지 않는다 — append-only 사슬(evidences→decisions→responses→
+    // attempts→assessment_*)을 지우면 고아 참조가 남는다 (R-01 실측).
+    // 실행마다 무작위 학습자 ID라 잔재가 간섭하지 않는다.
   });
 
   it("50% 득점(기준 70%) → finalized + 재시험 계획 + 교사 알림 + 감사", async () => {

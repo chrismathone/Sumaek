@@ -16,7 +16,11 @@
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/index.ts",
     "demo-account": "tsx src/seed/demo-account.ts",
-    "recompute-mastery": "tsx src/seed/recompute-mastery.ts"
+    "recompute-mastery": "tsx src/seed/recompute-mastery.ts",
+    "kill-switch": "tsx scripts/kill-switch.mts",
+    "requeue-dlq": "tsx scripts/requeue-dead-letters.mts",
+    "verify-recovery": "tsx scripts/verify-recovery.mts",
+    "rebuild-read-models": "tsx scripts/rebuild-read-models.mts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
