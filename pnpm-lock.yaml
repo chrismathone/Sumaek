@@ -65,6 +65,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.0
         version: 19.2.4(@types/react@19.2.18)
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       postcss:
         specifier: ^8.5.0
         version: 8.5.25

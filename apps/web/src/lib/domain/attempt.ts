@@ -336,11 +336,10 @@ export async function submitAndGrade(options: {
   });
 
   /* 5) 숙련도 재계산 — 파생 (트랜잭션 밖 최종 일관성, 실패해도 원본 보존).
-   * cutoff은 반드시 트랜잭션 커밋 이후 시각 — 방금 만든 증거가 포함되어야 한다. */
-  const nowIso = new Date(Date.now() + 1000).toISOString();
+   * cutoff은 DB 시계 기준으로 recomputeMastery가 직접 잡는다. */
   const policy = await loadActivePolicy(organizationId);
   for (const conceptId of touchedConcepts) {
-    await recomputeMastery(organizationId, learnerId, conceptId, policy, nowIso);
+    await recomputeMastery(organizationId, learnerId, conceptId, policy);
   }
 
   return {
@@ -354,6 +353,191 @@ export async function submitAndGrade(options: {
     maxScore,
     needsReview,
   };
+}
+
+export interface ResolveExceptionInput {
+  organizationId: string;
+  exceptionId: string;
+  resolverUserId: string;
+  timezone: string;
+  verdict: "correct" | "incorrect" | "partial";
+  /** partial일 때 획득 점수 */
+  partialScore?: number;
+  note?: string;
+}
+
+/**
+ * 채점 예외 판정 (시퀀스 5 · 19장).
+ * 사람 판정 → 새 GradeDecision(최종) → 응시 점수·상태 재계산 →
+ * 숙련도 증거·복습 반영. 변경 전후를 감사 로그에 남긴다.
+ */
+export async function resolveGradingException(
+  input: ResolveExceptionInput,
+): Promise<{ ok: boolean; message: string }> {
+  const sql = getSharedSql();
+
+  const [exception] = await sql<
+    {
+      id: string;
+      response_id: string;
+      attempt_id: string;
+      status: string;
+      learner_id: string;
+      aq_id: string;
+      points: string;
+      concept_weights: Record<string, number>;
+      band: string | null;
+      question_id: string;
+    }[]
+  >`
+    select ge.id, ge.response_id, ge.attempt_id, ge.status,
+           t.learner_id, aq.id as aq_id, aq.points::text, aq.concept_weights,
+           v.difficulty->>'band' as band, aq.question_id
+    from grading_exceptions ge
+    join attempts t on t.id = ge.attempt_id
+    join responses r on r.id = ge.response_id
+    join assessment_questions aq on aq.id = r.assessment_question_id
+    join question_versions v on v.id = aq.question_version_id
+    where ge.id = ${input.exceptionId}
+      and ge.organization_id = ${input.organizationId}
+  `;
+  if (!exception) return { ok: false, message: "예외 항목을 찾을 수 없습니다." };
+  if (exception.status === "resolved") {
+    return { ok: false, message: "이미 판정된 예외입니다." };
+  }
+
+  const maxPoints = Number(exception.points);
+  const score =
+    input.verdict === "correct"
+      ? maxPoints
+      : input.verdict === "incorrect"
+        ? 0
+        : Math.max(0, Math.min(maxPoints, input.partialScore ?? 0));
+  const ratio = maxPoints > 0 ? score / maxPoints : 0;
+  const evidenceDate = new Date().toLocaleDateString("en-CA", {
+    timeZone: input.timezone,
+  });
+  const touched = Object.keys(exception.concept_weights ?? {});
+
+  await sql.begin(async (tx) => {
+    const [next] = await tx<{ v: number }[]>`
+      select coalesce(max(version), 0) + 1 as v from grade_decisions
+      where response_id = ${exception.response_id}
+    `;
+    const decisionId = uuidv7();
+    await tx`
+      insert into grade_decisions (
+        id, organization_id, response_id, version, source,
+        is_correct, score, max_score, confidence, rationale, is_final,
+        decided_by, change_reason
+      ) values (
+        ${decisionId}, ${input.organizationId}, ${exception.response_id}, ${next?.v ?? 1},
+        'human',
+        ${input.verdict === "correct" ? true : input.verdict === "incorrect" ? false : null},
+        ${score}, ${maxPoints}, 1.0,
+        ${tx.json([`교사 판정: ${input.verdict}`, input.note ?? ""] as never)},
+        true, ${input.resolverUserId}, ${input.note ?? "채점 예외 판정"}
+      )
+    `;
+
+    await tx`
+      update grading_exceptions
+      set status = 'resolved',
+          resolution = ${tx.json({ verdict: input.verdict, score, note: input.note ?? null } as never)},
+          resolved_by = ${input.resolverUserId}, resolved_at = now(), updated_at = now()
+      where id = ${exception.id}
+    `;
+
+    /* 숙련도 증거 — 결정당 1회 */
+    for (const conceptId of touched) {
+      await tx`
+        insert into mastery_evidences (
+          id, organization_id, learner_id, concept_id, grade_decision_id,
+          kind, signal, mapping_confidence, evidence_date, occurred_at, recorded_by
+        ) values (
+          ${uuidv7()}, ${input.organizationId}, ${exception.learner_id}, ${conceptId},
+          ${decisionId}, 'graded_response',
+          ${tx.json({
+            correct: ratio >= 1,
+            scoreRatio: ratio,
+            difficulty: BAND_DIFFICULTY[exception.band ?? "mid"] ?? 0.5,
+            dimension: "procedural",
+          } as never)},
+          1.0, ${evidenceDate}, now(), ${input.resolverUserId}
+        )
+        on conflict do nothing
+      `;
+      if (ratio < 1) {
+        const review = nextReviewDate(DEFAULT_MASTERY_POLICY, 0, false, evidenceDate);
+        if (review) {
+          await tx`
+            insert into review_items (
+              id, organization_id, learner_id, concept_id, source_kind,
+              source_response_id, question_id, due_on, interval_days, status
+            ) values (
+              ${uuidv7()}, ${input.organizationId}, ${exception.learner_id}, ${conceptId},
+              'wrong_answer', ${exception.response_id}, ${exception.question_id},
+              ${review.dueOn}, ${DEFAULT_MASTERY_POLICY.reviewIntervalsDays[0] ?? 1}, 'scheduled'
+            )
+          `;
+        }
+      }
+    }
+
+    /* 응시 점수·상태 재계산 — 남은 예외 없으면 finalized */
+    const [openLeft] = await tx<{ cnt: number }[]>`
+      select count(*)::int as cnt from grading_exceptions
+      where attempt_id = ${exception.attempt_id} and status <> 'resolved'
+    `;
+    const [totals] = await tx<{ total: string | null }[]>`
+      select sum(d.score)::text as total
+      from grade_decisions d
+      join responses r on r.id = d.response_id
+      where r.attempt_id = ${exception.attempt_id} and d.is_final = true
+    `;
+    await tx`
+      update attempts
+      set total_score = ${totals?.total ?? "0"},
+          status = ${openLeft?.cnt === 0 ? "finalized" : "review_required"},
+          finalized_at = ${openLeft?.cnt === 0 ? new Date() : null},
+          updated_at = now()
+      where id = ${exception.attempt_id}
+    `;
+
+    await tx`
+      insert into outbox_events (
+        id, organization_id, aggregate_type, aggregate_id, aggregate_version,
+        event_type, occurred_at, payload
+      ) values (
+        ${uuidv7()}, ${input.organizationId}, 'attempt', ${exception.attempt_id}, 1,
+        'GradeFinalized', now(),
+        ${tx.json({ attemptId: exception.attempt_id, responseId: exception.response_id, gradeDecisionId: decisionId, decisionVersion: next?.v ?? 1, isRegrade: false } as never)}
+      )
+    `;
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id, reason, after
+      ) values (
+        ${uuidv7()}, ${input.organizationId}, 'user', ${input.resolverUserId},
+        'grading.resolve-exception', 'response', ${exception.response_id},
+        ${input.note ?? "채점 예외 판정"},
+        ${tx.json({ verdict: input.verdict, score } as never)}
+      )
+    `;
+  });
+
+  /* 숙련도 파생 재계산 — cutoff은 DB 시계 기준 */
+  const policy = await loadActivePolicy(input.organizationId);
+  for (const conceptId of touched) {
+    await recomputeMastery(
+      input.organizationId,
+      exception.learner_id,
+      conceptId,
+      policy,
+    );
+  }
+
+  return { ok: true, message: "판정을 반영했습니다. 점수·숙련도·복습이 갱신되었습니다." };
 }
 
 async function insertException(
@@ -386,15 +570,20 @@ async function loadActivePolicy(
   return row ?? { id: null, spec: DEFAULT_MASTERY_POLICY };
 }
 
-/** 개념 숙련도 재계산 — 원본 증거 + 정책 버전 + cutoff (불변 조건 11) */
+/** 개념 숙련도 재계산 — 원본 증거 + 정책 버전 + cutoff (불변 조건 11).
+ * cutoff은 DB 시계 기준 — 로컬·DB 시계 skew로 방금 증거가 제외되지 않게 한다. */
 export async function recomputeMastery(
   organizationId: string,
   learnerId: string,
   conceptId: string,
   policy: { id: string | null; spec: MasteryPolicySpec },
-  asOf: string,
+  asOfOverride?: string,
 ): Promise<void> {
   const sql = getSharedSql();
+  const [clock] = await sql<{ t: Date }[]>`
+    select now() + interval '1 second' as t
+  `;
+  const asOf = asOfOverride ?? new Date(clock?.t ?? Date.now()).toISOString();
   const evidences = await sql<
     {
       id: string;
