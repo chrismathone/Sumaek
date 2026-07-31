@@ -1,0 +1,26 @@
+{
+  "name": "su-maek",
+  "private": true,
+  "version": "0.1.0",
+  "description": "수맥(Su-Maek) — 수학 수업 설계·평가 자동화 플랫폼",
+  "packageManager": "pnpm@10.33.1",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @su-maek/web dev",
+    "dev:worker": "pnpm --filter @su-maek/worker dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm --filter @su-maek/core --filter @su-maek/contracts --filter @su-maek/db test",
+    "db:generate": "pnpm --filter @su-maek/db generate",
+    "db:migrate": "pnpm --filter @su-maek/db migrate",
+    "db:seed": "pnpm --filter @su-maek/db seed",
+    "boundary:check": "node scripts/boundary-check.mjs"
+  }
+}

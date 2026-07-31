@@ -1,0 +1,34 @@
+{
+  "name": "@su-maek/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./scheduling": "./src/scheduling/index.ts",
+    "./assessment": "./src/assessment/index.ts",
+    "./grading": "./src/grading/index.ts",
+    "./mastery": "./src/mastery/index.ts",
+    "./math": "./src/math/index.ts",
+    "./curriculum": "./src/curriculum/index.ts",
+    "./authz": "./src/authz/index.ts",
+    "./shared": "./src/shared/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@su-maek/contracts": "workspace:*",
+    "katex": "^0.16.22",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@fast-check/vitest": "^0.2.1",
+    "@types/katex": "^0.16.7",
+    "@types/node": "^22.15.0",
+    "fast-check": "^4.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

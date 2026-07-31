@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/*
+ * 수맥(Su-Maek) 디자인 토큰 — "좌표 노트 위에 그려지는 수업 궤도"
+ * 그라데이션 금지. 상태는 색상+아이콘+선 모양+라벨로 함께 구분한다.
+ */
+@theme {
+  /* 컬러 */
+  --color-paper: #f3f6f6; /* 교사용지 — 기본 배경 */
+  --color-ink: #162338; /* 잉크 네이비 — 본문, 제목, 앱 셸 */
+  --color-pen: #2257d7; /* 볼펜 블루 — 현재 진도, 주요 CTA, 활성 경로 */
+  --color-grade: #c9453d; /* 채점 레드 — 오류, 학습 지연, 검토 필요 (제한 사용) */
+  --color-highlight: #f1d66a; /* 형광 노랑 — 자동 추천, 변경 예정 영역 */
+  --color-rule: #aab8c2; /* 괘선 그레이 — 모눈, 경계선, 비활성 경로 */
+
+  /* 파생 톤 (알파 아님 — 단색 유지) */
+  --color-ink-soft: #3d4b63;
+  --color-pen-soft: #dbe5fa;
+  --color-grade-soft: #f7e3e1;
+  --color-highlight-soft: #faf3d9;
+  --color-rule-soft: #e2e8ec;
+  --color-surface: #ffffff;
+
+  /* 타이포그래피 */
+  --font-display: "MaruBuri", "Pretendard Variable", serif;
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI",
+    "Malgun Gothic", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* 모서리 — 컨트롤 기본 4~8px */
+  --radius-control: 6px;
+  --radius-panel: 8px;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* 모눈(좌표 노트) 배경 유틸리티 */
+.grid-paper {
+  background-image: linear-gradient(var(--color-rule-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-rule-soft) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* 모션 감소 존중 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
