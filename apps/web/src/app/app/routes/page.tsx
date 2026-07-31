@@ -1,12 +1,22 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { MaterializeButton } from "./MaterializeButton";
+import { NewRouteForm } from "./RouteBuilderForms";
 
 export const metadata: Metadata = { title: "학습 루트" };
 
-/* 학습 루트 목록 (13장 축소판) — 게시 상태·노드·일정 실체화.
- * 루트 빌더 편집 화면은 후속 단계. */
+/* 학습 루트 (13장) — 목록·새 루트 생성·일정 실체화.
+ * 노드 편집·검증·게시는 각 루트의 빌더 화면에서 한다. */
+
+const PLAN_STATUS_LABEL: Record<string, string> = {
+  draft: "초안",
+  needs_fix: "수정 필요",
+  publishable: "게시 가능",
+  published: "게시됨",
+  archived: "보관",
+};
 
 export default async function RoutesPage() {
   const user = (await getCurrentUser())!;
@@ -39,6 +49,19 @@ export default async function RoutesPage() {
     order by p.updated_at desc
   `;
 
+  const [groups, learners] = await Promise.all([
+    sql<{ id: string; name: string }[]>`
+      select id, name from learning_groups
+      where organization_id = ${user.organizationId} and status = 'operating'
+      order by name
+    `,
+    sql<{ id: string; name: string }[]>`
+      select id, display_name as name from learners
+      where organization_id = ${user.organizationId} and status = 'active'
+      order by display_name
+    `,
+  ]);
+
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="font-[MaruBuri] text-2xl font-semibold">학습 루트</h1>
@@ -47,11 +70,26 @@ export default async function RoutesPage() {
         과거와 잠긴 일정은 변경되지 않습니다.
       </p>
 
+      <section className="mt-6 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">새 루트 만들기</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          반 공통 루트 또는 학생 독립 루트를 만듭니다. 노드를 채운 뒤 검증을
+          통과해야 게시할 수 있습니다.
+        </p>
+        {groups.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-soft">
+            먼저 설정에서 반을 만드세요.
+          </p>
+        ) : (
+          <NewRouteForm groups={groups} learners={learners} />
+        )}
+      </section>
+
       {routes.length === 0 ? (
         <div className="mt-6 rounded-lg border border-rule bg-surface p-6 text-center">
           <p className="font-medium">아직 학습 루트가 없습니다.</p>
           <p className="mt-1.5 text-sm text-ink-soft">
-            루트 템플릿에서 반 루트를 만들어 게시하세요.
+            위에서 반 루트를 만들어 게시하세요.
           </p>
         </div>
       ) : (
@@ -60,11 +98,18 @@ export default async function RoutesPage() {
             <li key={r.plan_id} className="rounded-lg border border-rule bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="font-semibold">{r.name}</p>
+                  <Link
+                    href={`/app/routes/${r.plan_id}`}
+                    className="font-semibold hover:underline"
+                  >
+                    {r.name}
+                  </Link>
                   <p className="mt-1 font-mono text-xs text-ink-soft">
                     {r.group_name ?? "그룹 미지정"} ·{" "}
-                    {r.version_number !== null ? `v${r.version_number} 게시됨` : "미게시"} ·
-                    노드 {r.node_count}개
+                    {r.version_number !== null
+                      ? `v${r.version_number} 게시됨`
+                      : (PLAN_STATUS_LABEL[r.status] ?? r.status)}{" "}
+                    · 노드 {r.node_count}개
                     {r.target_end_date && ` · 목표 ${r.target_end_date}`}
                   </p>
                   <p className="mt-1 font-mono text-xs text-ink-soft">

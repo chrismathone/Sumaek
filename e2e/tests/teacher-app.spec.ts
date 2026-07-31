@@ -28,7 +28,8 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     await page.goto("/app/classes");
     await expect(page.getByText("중2 심화 A")).toBeVisible();
     await page.getByRole("link", { name: /중2 심화 A/ }).click();
-    await expect(page.getByText("박서윤")).toBeVisible();
+    // 학생 명단 링크로 스코프 — 불참 폼의 학생 선택 옵션에도 이름이 있다
+    await expect(page.getByRole("link", { name: /박서윤/ })).toBeVisible();
 
     // 학습자 목록 → 상세 (숙련도 근거 표시)
     await page.goto("/app/students");

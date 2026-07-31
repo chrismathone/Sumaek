@@ -12,14 +12,18 @@ test("루트 → 미래 일정 생성 → 오늘 운영실 반영", async ({ pag
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
 
-  // 학습 루트 목록 — 시드된 게시 루트
+  // 학습 루트 목록 — 시드된 게시 루트 카드로 스코프
+  //  (루트 빌더 E2E가 만든 다른 게시 루트와 구분한다)
   await page.goto("/app/routes");
-  await expect(page.getByText("중2 심화 A — 연립방정식 단원")).toBeVisible();
-  await expect(page.getByText(/v1 게시됨 · 노드 6개/)).toBeVisible();
+  const card = page
+    .locator("li")
+    .filter({ hasText: "중2 심화 A — 연립방정식 단원" });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(/v1 게시됨 · 노드 6개/)).toBeVisible();
 
   // 일정 생성 실행
-  await page.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
-  const status = page.getByRole("status");
+  await card.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
+  const status = card.getByRole("status");
   await expect(status).toContainText(/미래 수업 \d+건을 생성했습니다/, {
     timeout: 30_000,
   });
@@ -32,13 +36,18 @@ test("루트 → 미래 일정 생성 → 오늘 운영실 반영", async ({ pag
   const firstCount = Number(match?.[1] ?? 0);
   expect(firstCount).toBeGreaterThan(0);
 
-  await page.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
-  await expect(page.getByRole("status")).toContainText(
+  await card.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
+  await expect(card.getByRole("status")).toContainText(
     `미래 수업 ${firstCount}건을 생성했습니다`,
     { timeout: 30_000 },
   );
 
   // 루트 목록의 미래 수업 수 반영
   await page.reload();
-  await expect(page.getByText(`예정된 미래 수업 ${firstCount}건`)).toBeVisible();
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: "중2 심화 A — 연립방정식 단원" })
+      .getByText(`예정된 미래 수업 ${firstCount}건`),
+  ).toBeVisible();
 });

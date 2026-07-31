@@ -12,6 +12,19 @@ import {
   todayInTimeZone,
   trimScore,
 } from "@/lib/format";
+import { AvailabilityForm, DismissButton } from "./AvailabilityForm";
+
+const AVAILABILITY_KIND_LABEL: Record<string, string> = {
+  learner_absence: "학습 불참",
+  learner_unavailable: "수업 불가",
+  group_cancelled: "휴강",
+};
+
+const AVAILABILITY_STATUS_LABEL: Record<string, string> = {
+  received: "접수됨",
+  applied: "반영됨",
+  dismissed: "무시됨",
+};
 
 export const metadata: Metadata = { title: "반 상세" };
 
@@ -59,7 +72,7 @@ export default async function ClassDetailPage({
   `;
   if (!group) notFound();
 
-  const [learners, assessments, upcoming] = await Promise.all([
+  const [learners, assessments, upcoming, availabilityEvents] = await Promise.all([
     sql<
       {
         id: string;
@@ -141,6 +154,26 @@ export default async function ClassDetailPage({
         and s.session_date >= ${today}::date
       order by s.starts_at
       limit 10
+    `,
+    sql<
+      {
+        id: string;
+        kind: string;
+        starts_on: string;
+        ends_on: string;
+        reason: string | null;
+        status: string;
+        learner_name: string | null;
+      }[]
+    >`
+      select e.id, e.kind, e.starts_on::text as starts_on, e.ends_on::text as ends_on,
+             e.reason, e.status, l.display_name as learner_name
+      from learning_availability_events e
+      left join learners l on l.id = e.learner_id
+      where e.organization_id = ${user.organizationId}
+        and e.learning_group_id = ${id}
+      order by e.created_at desc
+      limit 12
     `,
   ]);
 
@@ -237,6 +270,53 @@ export default async function ClassDetailPage({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">불참·휴강</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          이미 확정된 사실만 접수합니다 (전자출결이 아닙니다). 휴강은 다음 일정
+          재계산부터 해당 날짜를 비우고, 불참은 반 공통 일정을 바꾸지 않습니다.
+        </p>
+        <div className="mt-3 rounded-lg border border-rule bg-surface p-5">
+          <AvailabilityForm
+            learningGroupId={group.id}
+            learners={learners.map((l) => ({ id: l.id, name: l.display_name }))}
+            today={today}
+          />
+          {availabilityEvents.length > 0 && (
+            <ul className="mt-4 divide-y divide-rule-soft border-t border-rule-soft">
+              {availabilityEvents.map((e) => (
+                <li
+                  key={e.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                >
+                  <p className="text-sm">
+                    <span className="font-medium">
+                      {AVAILABILITY_KIND_LABEL[e.kind] ?? e.kind}
+                    </span>
+                    {e.learner_name && ` · ${e.learner_name}`}
+                    <span className="ml-2 font-mono text-xs text-ink-soft">
+                      {e.starts_on}
+                      {e.ends_on !== e.starts_on && ` ~ ${e.ends_on}`}
+                    </span>
+                    {e.reason && (
+                      <span className="ml-2 text-xs text-ink-soft">{e.reason}</span>
+                    )}
+                  </p>
+                  <span className="flex items-center gap-2">
+                    <span className="rounded-[var(--radius-control)] border border-rule px-2 py-0.5 font-mono text-xs">
+                      {AVAILABILITY_STATUS_LABEL[e.status] ?? e.status}
+                    </span>
+                    {e.status !== "dismissed" && (
+                      <DismissButton eventId={e.id} learningGroupId={group.id} />
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <section className="mt-8">

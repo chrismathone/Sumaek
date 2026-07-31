@@ -3,12 +3,13 @@ import { getSharedSql } from "../client";
 import {
   ENGINE_VERSION,
   calculateSchedule,
+  type BusyInterval,
   type LessonSlotRule,
   type RouteNodeInput,
   type ScheduleEngineInput,
   type ScheduledItem,
 } from "@su-maek/core/scheduling";
-import { zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
+import { eachDate, zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 일정 실체화 — 게시된 루트 버전 → 실제 수업(sessions) 생성.
@@ -111,6 +112,33 @@ export async function materializeGroupSchedule(options: {
       and (learning_group_id is null or learning_group_id = ${learningGroupId})
   `;
 
+  /* 휴강(group_cancelled) 이벤트 — 해당 날짜 전체를 하드 충돌로 넣어 배치를
+   * 막는다 (인수 2·5의 재계산 입력). 학생 불참(learner_absence)은 반 공통
+   * 일정을 움직이지 않으므로 여기서 소비하지 않는다 — 학생 오버라이드의 입력. */
+  const cancellations = await sql<
+    { id: string; starts_on: string; ends_on: string; reason: string | null }[]
+  >`
+    select id, starts_on::text, ends_on::text, reason
+    from learning_availability_events
+    where organization_id = ${organizationId}
+      and learning_group_id = ${learningGroupId}
+      and kind = 'group_cancelled'
+      and status <> 'dismissed'
+      and ends_on >= ${today}::date
+    order by starts_on
+  `;
+  const busy: BusyInterval[] = [];
+  for (const c of cancellations) {
+    for (const d of eachDate(c.starts_on as IsoDate, c.ends_on as IsoDate)) {
+      busy.push({
+        date: d,
+        startTime: "00:00",
+        endTime: "23:59",
+        label: c.reason ? `휴강: ${c.reason}` : "휴강",
+      });
+    }
+  }
+
   const existingSessions = await sql<
     {
       id: string;
@@ -180,7 +208,7 @@ export async function materializeGroupSchedule(options: {
     overrides: [],
     lessonSlots,
     holidays: holidays.map((h) => ({ from: h.starts_on, to: h.ends_on })),
-    busy: [],
+    busy,
     existingItems,
     completedNodeIds: [...completedNodeIds],
     maxMinutesPerDay: 120,
@@ -258,6 +286,16 @@ export async function materializeGroupSchedule(options: {
           ${zonedTimeToUtc(s.date, s.endTime, timezone)},
           'planned', ${revisionId}, ${tx.json(s.nodeIds as never)}
         )
+      `;
+    }
+
+    // 소비한 휴강 이벤트를 반영됨으로 전이 (어느 변경안이 반영했는지 추적)
+    if (cancellations.length > 0) {
+      await tx`
+        update learning_availability_events
+        set status = 'applied', schedule_proposal_id = ${proposalId}, updated_at = now()
+        where id = any(${cancellations.map((c) => c.id)}::uuid[])
+          and status = 'received'
       `;
     }
 

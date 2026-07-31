@@ -12,9 +12,13 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
   await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
 
   // 선행 조건 자립: 8/3 수업이 없으면 먼저 일정을 실체화한다 (순서 의존 제거)
+  //  시드 루트 카드로 스코프 — 다른 E2E가 만든 게시 루트와 구분
   await page.goto("/app/routes");
-  await page.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
-  await expect(page.getByRole("status")).toContainText(/미래 수업 \d+건/, {
+  const card = page
+    .locator("li")
+    .filter({ hasText: "중2 심화 A — 연립방정식 단원" });
+  await card.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
+  await expect(card.getByRole("status")).toContainText(/미래 수업 \d+건/, {
     timeout: 30_000,
   });
 

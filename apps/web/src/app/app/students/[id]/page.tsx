@@ -12,6 +12,25 @@ import {
   todayInTimeZone,
   trimScore,
 } from "@/lib/format";
+import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
+
+const OVERRIDE_KIND_LABEL: Record<string, string> = {
+  remediation: "취약 개념 보충",
+  absence_makeup: "불참 보강",
+  temporary_advance: "일시적 선행",
+  retest_relearn: "재시험 재학습",
+  book_substitution: "교재 대체",
+  permanent_individual: "영구 개별 진도",
+  rejoin: "반 공통 재합류",
+  skip: "진도 건너뛰기",
+  deadline_change: "기한 변경",
+};
+
+const OVERRIDE_STATUS_LABEL: Record<string, string> = {
+  active: "적용 중",
+  completed: "완료",
+  cancelled: "취소됨",
+};
 
 export const metadata: Metadata = { title: "학습자 상세" };
 
@@ -70,7 +89,7 @@ export default async function StudentDetailPage({
   `;
   if (!learner) notFound();
 
-  const [masteries, attempts, reviewItems] = await Promise.all([
+  const [masteries, attempts, reviewItems, baseRoute, overrides] = await Promise.all([
     sql<
       {
         id: string;
@@ -146,6 +165,37 @@ export default async function StudentDetailPage({
         and r.status = 'scheduled'
       order by r.due_on
       limit 30
+    `,
+    sql<{ version_id: string; node_id: string; title: string }[]>`
+      select p.active_version_id as version_id, n.id as node_id, n.title
+      from learning_group_memberships m
+      join route_plans p on p.learning_group_id = m.learning_group_id
+        and p.status = 'published' and p.active_version_id is not null
+      join route_nodes n on n.route_version_id = p.active_version_id
+      where m.organization_id = ${user.organizationId}
+        and m.learner_id = ${id} and m.status = 'active'
+      order by n.sort_order
+    `,
+    sql<
+      {
+        id: string;
+        kind: string;
+        status: string;
+        reason: string;
+        goal: string | null;
+        effective_from: string | null;
+        effective_to: string | null;
+        delta: unknown;
+        created_at: Date;
+      }[]
+    >`
+      select id, kind, status, reason, goal,
+             effective_from::text as effective_from,
+             effective_to::text as effective_to, delta, created_at
+      from student_route_overrides
+      where organization_id = ${user.organizationId} and learner_id = ${id}
+      order by created_at desc
+      limit 10
     `,
   ]);
 
@@ -309,6 +359,71 @@ export default async function StudentDetailPage({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">개별 경로 오버라이드</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          반 공통 루트를 복사하지 않고 이 학생만의 차이(건너뛰기·보충)를
+          버전으로 저장합니다. 반 루트와 다른 학생에게는 영향을 주지 않습니다.
+        </p>
+        <div className="mt-3 rounded-lg border border-rule bg-surface p-5">
+          {baseRoute.length === 0 ? (
+            <p className="text-sm text-ink-soft">
+              기준이 될 게시된 반 루트가 없습니다. 학습 루트에서 반 루트를 먼저
+              게시하세요.
+            </p>
+          ) : (
+            <OverrideForm
+              learnerId={learner.id}
+              baseNodes={baseRoute.map((n) => ({ id: n.node_id, title: n.title }))}
+            />
+          )}
+          {overrides.length > 0 && (
+            <ul className="mt-4 divide-y divide-rule-soft border-t border-rule-soft">
+              {overrides.map((o) => {
+                const delta = (o.delta ?? {}) as {
+                  skipNodeIds?: string[];
+                  insertBefore?: { nodes?: Array<{ title?: string }> };
+                };
+                const skips = delta.skipNodeIds?.length ?? 0;
+                const inserts =
+                  delta.insertBefore?.nodes
+                    ?.map((n) => n.title)
+                    .filter(Boolean)
+                    .join(", ") ?? "";
+                return (
+                  <li
+                    key={o.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                  >
+                    <p className="text-sm">
+                      <span className="font-medium">
+                        {label(OVERRIDE_KIND_LABEL, o.kind)}
+                      </span>
+                      <span className="ml-2 text-xs text-ink-soft">{o.reason}</span>
+                      <span className="ml-2 font-mono text-xs text-ink-soft">
+                        {skips > 0 && `건너뛰기 ${skips}개`}
+                        {skips > 0 && inserts && " · "}
+                        {inserts && `보충: ${inserts}`}
+                        {o.effective_from &&
+                          ` · ${o.effective_from}${o.effective_to ? `~${o.effective_to}` : "~"}`}
+                      </span>
+                    </p>
+                    <span className="flex items-center gap-2">
+                      <span className="rounded-[var(--radius-control)] border border-rule px-2 py-0.5 font-mono text-xs">
+                        {label(OVERRIDE_STATUS_LABEL, o.status)}
+                      </span>
+                      {o.status === "active" && (
+                        <CancelOverrideButton overrideId={o.id} learnerId={learner.id} />
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </section>
     </div>
   );
