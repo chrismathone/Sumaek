@@ -1,2 +1,3 @@
 /** 채점 계층: 객관식 정확 일치 → 단답 정규화 → 동치 검사 → 루브릭. 저신뢰는 예외함으로. */
-export {};
+export * from "./answer-normalize";
+export * from "./grade";
