@@ -277,6 +277,11 @@ export async function materializeGroupSchedule(options: {
   }
 
   await sql.begin(async (tx) => {
+    // 같은 스코프의 동시 재계산 직렬화 (2H — 전역 잠금 금지, 스코프 단위).
+    // 동시 실행 시 revision_number max+1이 충돌한다 (워커 동시성에서 실측).
+    await tx`
+      select pg_advisory_xact_lock(hashtext(${`schedule:learning_group:${learningGroupId}`}))
+    `;
     await tx`
       insert into schedule_change_proposals (
         id, organization_id, scope_type, scope_id, trigger_type, status,

@@ -37,9 +37,12 @@ import {
   makeInboxNoop,
 } from "./handlers/schedule";
 
+import { handleRightsImpact } from "./handlers/content";
+
 register("schedule.recalculate", handleScheduleRecalculate);
 register("schedule.materialize", handleScheduleRecalculate);
 register("notification.dispatch", handleNotificationDispatch);
+register("content.rights-impact", handleRightsImpact);
 // 인라인으로 파생이 이미 갱신된 이벤트 — 소비 확인만
 register("mastery.update", makeInboxNoop("mastery.update"));
 register("review.plan", makeInboxNoop("review.plan"));

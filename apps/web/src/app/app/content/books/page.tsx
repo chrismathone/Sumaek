@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { RightActions } from "./RightActions";
 
 export const metadata: Metadata = { title: "교재" };
 
@@ -46,6 +47,7 @@ export default async function BooksPage() {
         edition_label: string | null;
         isbn: string | null;
         published_year: number | null;
+        right_id: string | null;
         right_status: string | null;
         rights_holder: string | null;
         expires_on: Date | null;
@@ -55,7 +57,7 @@ export default async function BooksPage() {
       select b.id as book_id, b.title, b.school_level, b.grade_band,
              p.name as publisher_name,
              e.id as edition_id, e.edition_label, e.isbn, e.published_year,
-             cr.status as right_status, cr.rights_holder, cr.expires_on,
+             cr.id as right_id, cr.status as right_status, cr.rights_holder, cr.expires_on,
              coalesce(
                (select count(*)::int from questions q
                  where q.book_edition_id = e.id
@@ -66,7 +68,7 @@ export default async function BooksPage() {
       left join book_editions e on e.book_id = b.id
         and e.organization_id = b.organization_id
       left join lateral (
-        select r.status::text as status, r.rights_holder, r.expires_on
+        select r.id, r.status::text as status, r.rights_holder, r.expires_on
         from content_rights r
         where r.book_edition_id = e.id
           and r.organization_id = b.organization_id
@@ -162,6 +164,13 @@ export default async function BooksPage() {
                 {r.expires_on &&
                   ` · 만료 ${new Date(r.expires_on).toLocaleDateString("ko-KR")}`}
               </p>
+              {r.right_id && (
+                <RightActions
+                  rightId={r.right_id}
+                  status={r.right_status ?? ""}
+                  holderLabel={r.rights_holder ?? r.title}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -199,6 +208,13 @@ export default async function BooksPage() {
                   <Badge
                     label={RIGHT_STATUS_LABEL[cr.status] ?? cr.status}
                     tone={cr.status === "usable" ? "ok" : "warn"}
+                  />
+                </div>
+                <div className="w-full">
+                  <RightActions
+                    rightId={cr.id}
+                    status={cr.status}
+                    holderLabel={cr.rights_holder ?? "권리자 미기재"}
                   />
                 </div>
               </li>
