@@ -43,7 +43,7 @@ export default function LandingPage() {
             실제 학생 정보 없이 샘플 데이터로 체험합니다.
           </p>
         </div>
-        <div className="lg:col-span-7">
+        <div className="min-w-0 lg:col-span-7">
           <OrbitBoard />
         </div>
       </section>

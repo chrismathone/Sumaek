@@ -1,0 +1,127 @@
+/* 인쇄 규격 (골프롬프트 2P PDF·인쇄)
+ * - A4, 여백·머리말·쪽 번호 명시
+ * - 분수·근호·다행 수식의 위아래가 행간·페이지 경계에서 잘리지 않게
+ * - 문항 번호와 첫 줄, 선택지 번호와 식, 도형 캡션과 도형은 분리 금지 */
+
+@page {
+  size: A4;
+  margin: 18mm 14mm 16mm 14mm;
+}
+
+.print-root {
+  background: white;
+  color: #111;
+  font-family: "Pretendard Variable", Pretendard, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.7; /* 수식 위아래 여유 — 클리핑 방지 */
+}
+
+.exam-sheet {
+  max-width: 182mm;
+  margin: 0 auto;
+}
+
+@media screen {
+  .print-root {
+    padding: 24px 0;
+    background: #e8ebee;
+  }
+  .exam-sheet {
+    background: white;
+    padding: 18mm 14mm;
+    box-shadow: 0 1px 6px rgb(0 0 0 / 0.15);
+  }
+}
+
+.exam-header {
+  border-bottom: 2px solid #111;
+  padding-bottom: 8px;
+  margin-bottom: 6mm;
+}
+
+.exam-header .exam-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9pt;
+  color: #444;
+  margin-bottom: 4px;
+}
+
+.exam-header h1 {
+  font-size: 15pt;
+  font-weight: 700;
+  text-align: center;
+  margin: 2mm 0;
+}
+
+.exam-header .name-line {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12mm;
+  font-size: 10pt;
+  margin-top: 2mm;
+}
+
+/* 2단 조판 — 문항은 단·페이지 경계에서 쪼개지지 않는다 */
+.exam-body {
+  column-count: 2;
+  column-gap: 8mm;
+  column-rule: 1px solid #ccc;
+}
+
+.exam-question {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 6mm;
+}
+
+.exam-question .q-head {
+  display: flex;
+  gap: 2mm;
+  break-after: avoid;
+}
+
+.exam-question .q-number {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.exam-question .q-points {
+  color: #555;
+  font-size: 9pt;
+  flex-shrink: 0;
+}
+
+/* 선택지 — 다행 수식 있으면 세로 1열 (단일 규칙: hasTallMath) */
+.choice-grid {
+  margin-top: 2.5mm;
+  display: grid;
+  gap: 1.5mm 4mm;
+}
+.choice-grid.cols-1 { grid-template-columns: 1fr; }
+.choice-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.choice-grid.cols-5 { grid-template-columns: repeat(5, auto); justify-content: start; }
+
+.choice-item {
+  display: flex;
+  gap: 1.5mm;
+  align-items: baseline;
+  break-inside: avoid;
+}
+.choice-marker { flex-shrink: 0; }
+
+/* KaTeX 인쇄 보정 — 잘림 방지 여유 */
+.exam-body .katex-display {
+  margin: 2mm 0;
+  overflow: visible;
+}
+.exam-body .katex {
+  font-size: 1.05em;
+}
+
+/* 답안란 */
+.answer-blank-line {
+  border-bottom: 1px solid #999;
+  min-width: 24mm;
+  display: inline-block;
+}

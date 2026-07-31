@@ -9,3 +9,4 @@ export * from "./fingerprint";
 export * from "./validate";
 export * from "./render";
 export * from "./pipeline";
+export * from "./mixed";

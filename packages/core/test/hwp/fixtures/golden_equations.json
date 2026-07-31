@@ -1,0 +1,674 @@
+[
+  {
+    "script": "a",
+    "width": 800,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "b",
+    "width": 800,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "b",
+    "width": 800,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "d",
+    "width": 839,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x",
+    "width": 826,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x",
+    "width": 826,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x",
+    "width": 826,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "AC",
+    "width": 1632,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "BC",
+    "width": 1581,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "6xy",
+    "width": 2031,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "ABC",
+    "width": 2318,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "a, b",
+    "width": 1912,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A - B",
+    "width": 2789,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "-x + y",
+    "width": 3460,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "-x - y",
+    "width": 3460,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2x + y",
+    "width": 3258,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "SQUARE",
+    "width": 850,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "V _{1}",
+    "width": 1263,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "V _{2}",
+    "width": 1252,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{2}",
+    "width": 1236,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{3}",
+    "width": 1259,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{4}",
+    "width": 1268,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{5}",
+    "width": 1247,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{8}",
+    "width": 1267,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2x - 2y",
+    "width": 3894,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "a+b+c+d",
+    "width": 6319,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "c, d, e",
+    "width": 2980,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "3x ^{2}y",
+    "width": 2555,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "0.1DOT {3}",
+    "width": 2340,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A = 2 ^{6}",
+    "width": 3211,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "B = 3 ^{6}",
+    "width": 3160,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "C = 5 ^{4}",
+    "width": 3174,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "a, b, c, d",
+    "width": 4174,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x=0.2DOT {1}",
+    "width": 4129,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{7} over {5}",
+    "width": 962,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{A} over {B}",
+    "width": 1068,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{a} over {b}",
+    "width": 998,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{b} over {a}",
+    "width": 998,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "a, 0.3DOT {0}",
+    "width": 3478,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{n} over {35}",
+    "width": 1503,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{x} over {90}",
+    "width": 1515,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{x} over {90}",
+    "width": 1515,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{12} over {11}",
+    "width": 1495,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "(a=0, a, b는 정수)",
+    "width": 7147,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "-{1} over {2}xy",
+    "width": 3712,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A &lt; B &lt; C",
+    "width": 4773,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A &lt; C &lt; B",
+    "width": 4715,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "B &lt; A &lt; C",
+    "width": 4720,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "B &lt; C &lt; A",
+    "width": 4654,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "C &lt; A &lt; B",
+    "width": 4662,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "50 LEQ x LEQ 100",
+    "width": 6354,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x ^{2} + 10y + 4",
+    "width": 6235,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2x ^{2} + 10y + 8",
+    "width": 6834,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2x ^{2} + 8y + 12",
+    "width": 6807,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "4x ^{2} + 8y - 12",
+    "width": 6807,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{1} over {x ^{2}}",
+    "width": 1393,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{1} over {x ^{3}}",
+    "width": 1396,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "4x ^{2} + 10y - 12",
+    "width": 7443,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "4x ^{2}y + 8y - 12",
+    "width": 7399,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{a} over {30}=0.2b",
+    "width": 5270,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2 TIMES 10 ^{3} \"mL\"",
+    "width": 5346,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2 TIMES 10 ^{4} \"mL\"",
+    "width": 5346,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2 TIMES 10 ^{6} \"mL\"",
+    "width": 5346,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "5 TIMES 10 ^{3} \"mL\"",
+    "width": 5346,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "5 TIMES 10 ^{4} \"mL\"",
+    "width": 5346,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{V _{1}} over {V _{2}}",
+    "width": 1409,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "(2a ^{3}) ^{3} = 3 ^{e}",
+    "width": 5513,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A = (12x ^{2} - 6xy) + 2x",
+    "width": 10844,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "A = 2x ^{2}y + 5xy ^{2} + y ^{3}",
+    "width": 10341,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "3 ^{3} + 3 ^{3} + 3 ^{3} = 3 ^{d}",
+    "width": 8342,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "x + {5} over {2}xy ^{2} - 3x ^{2}y",
+    "width": 8626,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "2 TIMES 2 ^{4} TIMES 2 ^{2} = 2 ^{c}",
+    "width": 7784,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "B = (35xy - 40y) TIMES {1} over {5y}",
+    "width": 11091,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "C = (x ^{3}y ^{2}) ^{2} DIV (x ^{2}y) ^{3}",
+    "width": 9742,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "B = (6x ^{3}y ^{2} + 3x ^{2}y ^{3} - 15xy) DIV 3xy",
+    "width": 16600,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "(x ^{m} y ^{n} z ^{r}) ^{t} = x ^{20} y ^{12} z ^{8}",
+    "width": 9978,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "6z - [3y + 2x - \\{3x + SQUARE - (5x - 7y)\\}] = 4x + 3y",
+    "width": 20350,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{2A - 3B - 15} over {C}\"의 곱의 계수의 합\"을 a\"라 할 때, \"a\"의 값은?\"",
+    "width": 17482,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "LEFT ( -{1} over {x ^{3}} RIGHT ) ^{5} = -{1} over {x ^{15}}",
+    "width": 10290,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "LEFT ( {-x} over {-2y} RIGHT ) ^{4} = {x ^{4}} over {16y ^{4}}",
+    "width": 11200,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "LEFT ( {2} over {x ^{3}y} RIGHT ) ^{2} = {4} over {x ^{6}y ^{2}}",
+    "width": 10290,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "LEFT ( {a ^{2}} over {2b} RIGHT ) ^{4} = {a ^{8}} over {6b ^{4}}",
+    "width": 10290,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "LEFT ( -{-2a ^{3}} over {3b} RIGHT ) ^{3} = {4a ^{9}} over {9b ^{3}}",
+    "width": 11200,
+    "height": 2400,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  },
+  {
+    "script": "{array}{|c|c|c|} x ^{8} &amp; x &amp; {x ^{2}} A &amp; x ^{5} &amp; {x ^{2}} x ^{4} &amp; 2x ^{6} &amp; x ^{2} {array}",
+    "width": 23925,
+    "height": 1200,
+    "baseLine": 85,
+    "out_margin_left": 170,
+    "out_margin_right": 170
+  }
+]
