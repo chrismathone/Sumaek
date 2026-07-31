@@ -76,6 +76,22 @@ test("루트 빌더: 반 만들기 → 노드 작성 → 검증 → 게시 → �
     addForm.getByRole("status").filter({ hasText: "확인테스트 — 일차함수" }),
   ).toBeVisible({ timeout: 30_000 });
 
+  // 4b. 낙관적 동시성 (인수 20) — 낡은 lock_version으로 제출하면
+  //     마지막 저장이 조용히 이기는 대신 VERSION_CONFLICT로 거부된다
+  await addForm
+    .locator('input[name="expectedLockVersion"]')
+    .evaluate((el) => {
+      (el as HTMLInputElement).value = "1"; // 노드 3개 추가로 이미 지나간 버전
+    });
+  await addForm.getByLabel("노드 제목").fill("충돌 유발 노드");
+  await addForm.getByRole("button", { name: "노드 추가" }).click();
+  await expect(
+    addForm.getByRole("status").filter({ hasText: "VERSION_CONFLICT" }),
+  ).toBeVisible({ timeout: 30_000 });
+  // 거부되었으므로 노드는 3개 그대로, 새로 고침 후 재시도는 성공한다
+  await page.reload();
+  await expect(page.getByText("충돌 유발 노드")).toHaveCount(0);
+
   // 검증 전에는 게시 버튼이 없다 (게이트)
   await expect(page.getByRole("button", { name: "게시", exact: true })).toHaveCount(0);
 

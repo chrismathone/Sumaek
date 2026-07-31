@@ -59,6 +59,11 @@ export const routePlans = pgTable(
     /** 현재 활성(게시) 버전 포인터 — 원자적 전환 (강한 일관성) */
     activeVersionId: uuid("active_version_id"),
     targetEndDate: date("target_end_date"),
+    /**
+     * 낙관적 동시성 토큰 (인수 20) — 편집 액션은 읽은 시점의 값을 제시하고,
+     * 불일치면 VERSION_CONFLICT로 거부된다 (마지막 저장이 조용히 이기지 않는다).
+     */
+    lockVersion: integer("lock_version").notNull().default(1),
     ...timestamps(),
   },
   (t) => [

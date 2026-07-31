@@ -89,6 +89,28 @@ function deny(): BuilderResult {
   return { ok: false, message: "학습 루트를 변경할 권한이 없습니다." };
 }
 
+/* ── 낙관적 동시성 (인수 20) — 편집 폼은 읽은 시점의 lock_version을
+ * 제시하고, 불일치면 마지막 저장이 조용히 이기는 대신 명시적으로
+ * 거부된다 (계약 오류 코드 VERSION_CONFLICT). ── */
+
+const VERSION_CONFLICT_MESSAGE =
+  "다른 사용자가 이 루트를 방금 수정했습니다 (VERSION_CONFLICT). 화면을 새로 고침해 최신 상태를 확인한 뒤 다시 시도하세요.";
+
+async function bumpLockOrConflict(
+  planId: string,
+  organizationId: string,
+  expected: number,
+): Promise<boolean> {
+  const sql = getSharedSql();
+  const updated = await sql`
+    update route_plans
+    set lock_version = lock_version + 1, updated_at = now()
+    where id = ${planId} and organization_id = ${organizationId}
+      and lock_version = ${expected}
+  `;
+  return updated.count > 0;
+}
+
 const createPlanSchema = z.object({
   name: z.string().min(1, "루트 이름을 입력하세요."),
   scope: z.enum(["group", "learner"]),
@@ -218,6 +240,7 @@ const addNodeSchema = z.object({
   kind: z.enum(NODE_KINDS),
   title: z.string().min(1, "노드 제목을 입력하세요."),
   expectedMinutes: z.coerce.number().int().min(5).max(480),
+  expectedLockVersion: z.coerce.number().int().min(1),
 });
 
 export async function addRouteNode(
@@ -245,6 +268,15 @@ export async function addRouteNode(
   if (!version) {
     return { ok: false, message: "편집 가능한 초안 버전이 없습니다. 새 버전을 만드세요." };
   }
+  if (
+    !(await bumpLockOrConflict(
+      plan.id,
+      user.organizationId,
+      parsed.data.expectedLockVersion,
+    ))
+  ) {
+    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+  }
 
   await sql`
     insert into route_nodes (
@@ -266,6 +298,7 @@ export async function addRouteNode(
 const nodeOpSchema = z.object({
   planId: z.uuid(),
   nodeId: z.uuid(),
+  expectedLockVersion: z.coerce.number().int().min(1),
 });
 
 export async function deleteRouteNode(
@@ -280,6 +313,15 @@ export async function deleteRouteNode(
   const sql = getSharedSql();
   const version = await findDraftVersion(user.organizationId, parsed.data.planId);
   if (!version) return { ok: false, message: "편집 가능한 초안 버전이 없습니다." };
+  if (
+    !(await bumpLockOrConflict(
+      parsed.data.planId,
+      user.organizationId,
+      parsed.data.expectedLockVersion,
+    ))
+  ) {
+    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+  }
   const deleted = await sql`
     delete from route_nodes
     where id = ${parsed.data.nodeId}
@@ -308,6 +350,16 @@ export async function moveRouteNode(
   const sql = getSharedSql();
   const version = await findDraftVersion(user.organizationId, parsed.data.planId);
   if (!version) return { ok: false, message: "편집 가능한 초안 버전이 없습니다." };
+
+  if (
+    !(await bumpLockOrConflict(
+      parsed.data.planId,
+      user.organizationId,
+      parsed.data.expectedLockVersion,
+    ))
+  ) {
+    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+  }
 
   const [node] = await sql<{ id: string; sort_order: number }[]>`
     select id, sort_order from route_nodes
@@ -527,13 +579,17 @@ export async function validateDraft(
       };
 }
 
+const lockedPlanOpSchema = planOpSchema.extend({
+  expectedLockVersion: z.coerce.number().int().min(1),
+});
+
 export async function publishRoute(
   _prev: BuilderResult | null,
   formData: FormData,
 ): Promise<BuilderResult> {
   const user = await getCurrentUser();
   if (!user || !canWrite(DEFAULT_MATRIX, user.role, "routes")) return deny();
-  const parsed = planOpSchema.safeParse(Object.fromEntries(formData));
+  const parsed = lockedPlanOpSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: "대상 루트가 지정되지 않았습니다." };
 
   const sql = getSharedSql();
@@ -544,6 +600,15 @@ export async function publishRoute(
     where id = ${parsed.data.planId} and organization_id = ${user.organizationId}
   `;
   if (!plan) return { ok: false, message: "루트를 찾을 수 없습니다." };
+  if (
+    !(await bumpLockOrConflict(
+      plan.id,
+      user.organizationId,
+      parsed.data.expectedLockVersion,
+    ))
+  ) {
+    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+  }
 
   const [version] = await sql<
     { id: string; version_number: number; validation_report: RouteValidationReport | null }[]

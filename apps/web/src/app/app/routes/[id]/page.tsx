@@ -68,13 +68,14 @@ export default async function RouteBuilderPage({
       status: string;
       target_end_date: string | null;
       active_version_id: string | null;
+      lock_version: number;
       group_id: string | null;
       group_name: string | null;
       learner_name: string | null;
     }[]
   >`
     select p.id, p.kind, p.name, p.status, p.target_end_date::text as target_end_date,
-           p.active_version_id,
+           p.active_version_id, p.lock_version,
            g.id as group_id, g.name as group_name,
            l.display_name as learner_name
     from route_plans p
@@ -174,7 +175,11 @@ export default async function RouteBuilderPage({
                         </span>
                       )}
                     </p>
-                    <NodeRowActions planId={plan.id} nodeId={n.id} />
+                    <NodeRowActions
+                      planId={plan.id}
+                      nodeId={n.id}
+                      lockVersion={plan.lock_version}
+                    />
                   </li>
                 );
               })}
@@ -183,7 +188,11 @@ export default async function RouteBuilderPage({
 
           <div className="mt-4 border-t border-rule-soft pt-4">
             <h3 className="text-sm font-semibold">노드 추가</h3>
-            <AddNodeForm planId={plan.id} concepts={concepts} />
+            <AddNodeForm
+              planId={plan.id}
+              lockVersion={plan.lock_version}
+              concepts={concepts}
+            />
           </div>
 
           {report && (
@@ -213,6 +222,7 @@ export default async function RouteBuilderPage({
           <ValidatePublishControls
             planId={plan.id}
             canPublish={draftVersion.status === "publishable" && report?.ok === true}
+            lockVersion={plan.lock_version}
           />
         </section>
       ) : (

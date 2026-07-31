@@ -1,0 +1,1 @@
+ALTER TABLE "route_plans" ADD COLUMN "lock_version" integer DEFAULT 1 NOT NULL;

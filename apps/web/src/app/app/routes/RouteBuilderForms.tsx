@@ -102,9 +102,11 @@ const NODE_KIND_OPTIONS = [
 
 export function AddNodeForm({
   planId,
+  lockVersion,
   concepts,
 }: {
   planId: string;
+  lockVersion: number;
   concepts: Array<{ id: string; name: string }>;
 }) {
   const [state, action, pending] = useActionState<BuilderResult | null, FormData>(
@@ -114,6 +116,7 @@ export function AddNodeForm({
   return (
     <form action={action} className="mt-3 space-y-3">
       <input type="hidden" name="planId" value={planId} />
+      <input type="hidden" name="expectedLockVersion" value={lockVersion} />
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           종류
@@ -164,9 +167,11 @@ export function AddNodeForm({
 export function NodeRowActions({
   planId,
   nodeId,
+  lockVersion,
 }: {
   planId: string;
   nodeId: string;
+  lockVersion: number;
 }) {
   const [moveState, moveAction, movePending] = useActionState<
     BuilderResult | null,
@@ -183,6 +188,7 @@ export function NodeRowActions({
       <form action={moveAction} className="inline">
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
+        <input type="hidden" name="expectedLockVersion" value={lockVersion} />
         <input type="hidden" name="direction" value="up" />
         <button type="submit" disabled={busy} aria-label="위로"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs hover:bg-paper disabled:opacity-60">
@@ -192,6 +198,7 @@ export function NodeRowActions({
       <form action={moveAction} className="inline">
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
+        <input type="hidden" name="expectedLockVersion" value={lockVersion} />
         <input type="hidden" name="direction" value="down" />
         <button type="submit" disabled={busy} aria-label="아래로"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs hover:bg-paper disabled:opacity-60">
@@ -201,6 +208,7 @@ export function NodeRowActions({
       <form action={deleteAction} className="inline">
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
+        <input type="hidden" name="expectedLockVersion" value={lockVersion} />
         <button type="submit" disabled={busy} aria-label="삭제"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs text-grade hover:bg-grade-soft disabled:opacity-60">
           삭제
@@ -214,9 +222,11 @@ export function NodeRowActions({
 export function ValidatePublishControls({
   planId,
   canPublish,
+  lockVersion,
 }: {
   planId: string;
   canPublish: boolean;
+  lockVersion: number;
 }) {
   const [validateState, validateAction, validatePending] = useActionState<
     BuilderResult | null,
@@ -239,6 +249,7 @@ export function ValidatePublishControls({
         {canPublish && (
           <form action={publishAction}>
             <input type="hidden" name="planId" value={planId} />
+            <input type="hidden" name="expectedLockVersion" value={lockVersion} />
             <button type="submit" disabled={publishPending}
               className="rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
               {publishPending ? "게시 중…" : "게시"}
