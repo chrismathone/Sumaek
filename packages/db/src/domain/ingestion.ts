@@ -1,5 +1,9 @@
 import { v7 as uuidv7 } from "uuid";
-import { createAiProvider } from "@su-maek/core/ai";
+import {
+  createAiProvider,
+  getSharedBreaker,
+  withCircuitBreaker,
+} from "@su-maek/core/ai";
 import { normalizeMixedText, renderMixedText } from "@su-maek/core/math";
 import { getSharedSql } from "../client";
 
@@ -84,12 +88,27 @@ export async function processSourceFile(options: {
     where id = ${sourceFileId}
   `;
 
-  const provider = createAiProvider(process.env.AI_PROVIDER);
-  const extraction = await provider.extractQuestions({
-    fileName: file.file_name,
-    checksum: file.checksum,
-    pageCount: file.page_count ?? 1,
-  });
+  /* 회로 차단기 (인수 23) — 공급자 장애 시 빠른 실패로 격리하고,
+   * 파일은 uploaded로 되돌려 복구 후 재시도 가능하게 한다 */
+  const rawProvider = createAiProvider(process.env.AI_PROVIDER);
+  const provider = withCircuitBreaker(
+    rawProvider,
+    getSharedBreaker(rawProvider.name),
+  );
+  let extraction: Awaited<ReturnType<typeof provider.extractQuestions>>;
+  try {
+    extraction = await provider.extractQuestions({
+      fileName: file.file_name,
+      checksum: file.checksum,
+      pageCount: file.page_count ?? 1,
+    });
+  } catch (error) {
+    await sql`
+      update source_files set status = 'uploaded', updated_at = now()
+      where id = ${sourceFileId}
+    `;
+    throw error;
+  }
 
   let gatePassed = 0;
   let quarantined = 0;
