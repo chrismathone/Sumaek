@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./scheduling": "./src/scheduling/index.ts",
+    "./routes": "./src/routes/index.ts",
     "./assessment": "./src/assessment/index.ts",
     "./grading": "./src/grading/index.ts",
     "./mastery": "./src/mastery/index.ts",
