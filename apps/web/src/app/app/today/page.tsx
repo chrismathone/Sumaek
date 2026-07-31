@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { formatTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "오늘 수업" };
 
@@ -90,7 +91,8 @@ export default async function TodayPage() {
                 <div>
                   <p className="font-medium">{s.group_name}</p>
                   <p className="font-mono text-xs text-ink-soft">
-                    {formatTime(s.starts_at)} – {formatTime(s.ends_at)}
+                    {formatTime(s.starts_at, user.timezone)} –{" "}
+                    {formatTime(s.ends_at, user.timezone)}
                   </p>
                 </div>
                 <span className="font-mono text-xs text-ink-soft">{statusLabel(s.status)}</span>
@@ -145,15 +147,6 @@ function SummaryCard({
       <p className="mt-1 font-mono text-xl font-bold">{value}</p>
     </div>
   );
-}
-
-function formatTime(d: Date): string {
-  return new Date(d).toLocaleTimeString("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Seoul",
-  });
 }
 
 function statusLabel(status: string): string {
