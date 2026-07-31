@@ -22,7 +22,7 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     // 캘린더 — 8월로 이동하면 생성된 수업이 보인다
     await page.goto("/app/calendar?month=2026-08");
     await expect(page.getByText("중2 심화 A").first()).toBeVisible();
-    await expect(page.getByText("광복절")).toBeVisible();
+    await expect(page.getByText("광복절").first()).toBeVisible();
 
     // 반 목록 → 상세
     await page.goto("/app/classes");

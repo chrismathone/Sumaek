@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { UploadForm } from "./UploadForm";
 
 export const metadata: Metadata = { title: "문제집 변환" };
 
-/* 문제집 변환 (15장 축소판) — 원본 파일과 변환 작업의 현재 상태만 보여준다.
- * 업로드·OCR 실행 UI는 아직 열려 있지 않다. 없는 기능을 있는 것처럼 그리지
- * 않는다 (26장). */
+/* 문제집 변환 (15장) — 원본 등록 → 추출 → 정규화·게이트 → 검수 대기.
+ * 원본은 체크섬과 함께 불변 보존한다. */
 
 const FILE_STATUS_LABEL: Record<string, string> = {
   uploaded: "업로드됨",
@@ -103,6 +103,10 @@ export default async function IngestionPage() {
         업로드한 원본은 체크섬과 함께 그대로 보존되고, 추출 결과는 검수를 통과한
         뒤에만 문제은행에 반영됩니다. 원본 파일은 변형되지 않습니다.
       </p>
+
+      <div className="mt-6">
+        <UploadForm />
+      </div>
 
       {/* 원본 파일 */}
       <section className="mt-6">

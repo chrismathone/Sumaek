@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { ApproveForm } from "./ApproveForm";
 
 export const metadata: Metadata = { title: "콘텐츠 검수" };
 
@@ -233,6 +234,9 @@ export default async function ContentReviewPage() {
                 <p className="mt-2 font-mono text-xs text-ink-soft">
                   {formatDateTime(c.created_at)} · 검수자 {c.reviewer_name ?? "미배정"}
                 </p>
+                {c.status === "open" && c.subject_type === "question" && (
+                  <ApproveForm questionId={c.subject_id} />
+                )}
               </li>
             ))}
           </ul>

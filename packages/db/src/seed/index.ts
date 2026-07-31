@@ -161,7 +161,8 @@ async function main(): Promise<void> {
     await db
       .insert(schema.calendarRules)
       .values({
-        id: uuidv7(),
+        // 고정 ID — 시드 재실행 멱등성 (무작위 ID + onConflictDoNothing은 중복을 만든다)
+        id: `00000000-0000-7000-8000-00000000005${weekday}`,
         organizationId: ORG_ID,
         subjectType: "learning_group",
         subjectId: GROUP_ID,
@@ -176,7 +177,7 @@ async function main(): Promise<void> {
   await db
     .insert(schema.holidays)
     .values({
-      id: uuidv7(),
+      id: "00000000-0000-7000-8000-000000000060",
       organizationId: ORG_ID,
       coursePeriodId: PERIOD_ID,
       kind: "national",
