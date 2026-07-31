@@ -1,8 +1,11 @@
-import "dotenv/config";
+import { config } from "dotenv";
 import { readdir, readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
+
+// 워크스페이스 루트의 .env를 로드 (패키지 디렉터리에서 실행되므로)
+config({ path: [".env", "../../.env"] });
 
 /**
  * SQL 마이그레이션 러너.

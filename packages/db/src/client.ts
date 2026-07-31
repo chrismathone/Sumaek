@@ -20,3 +20,16 @@ export function createSql(options?: { pooled?: boolean }): postgres.Sql {
     idle_timeout: 30,
   });
 }
+
+let sharedSql: postgres.Sql | undefined;
+
+/**
+ * 프로세스 공유 커넥션 풀 — 웹 요청 경로 표준.
+ * 요청마다 만들지 말고 이것을 사용한다. 종료하지 않는다 (프로세스 수명).
+ */
+export function getSharedSql(): postgres.Sql {
+  if (!sharedSql) {
+    sharedSql = createSql({ pooled: true });
+  }
+  return sharedSql;
+}

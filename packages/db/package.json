@@ -13,10 +13,12 @@
     "test": "vitest run",
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed/index.ts"
+    "seed": "tsx src/seed/index.ts",
+    "demo-account": "tsx src/seed/demo-account.ts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
+    "@supabase/supabase-js": "^2.111.0",
     "drizzle-orm": "^0.45.0",
     "postgres": "^3.4.5",
     "uuid": "^11.1.0",

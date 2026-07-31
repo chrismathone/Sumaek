@@ -1,4 +1,5 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: [".env", "../../.env"] });
 import { drizzle } from "drizzle-orm/postgres-js";
 import { v7 as uuidv7 } from "uuid";
 import { createSql } from "../client";

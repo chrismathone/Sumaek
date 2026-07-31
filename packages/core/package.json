@@ -13,6 +13,8 @@
     "./curriculum": "./src/curriculum/index.ts",
     "./authz": "./src/authz/index.ts",
     "./hwp": "./src/hwp/index.ts",
+    "./hwpx": "./src/hwpx/index.ts",
+    "./export": "./src/export/index.ts",
     "./shared": "./src/shared/index.ts"
   },
   "scripts": {
