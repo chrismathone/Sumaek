@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -51,15 +52,26 @@ test("등록 흐름: 반 만들기 → 학습자 등록 → 목록 반영", asyn
     learnerSection.getByRole("status").filter({ hasText: "등록했습니다" }),
   ).toBeVisible({ timeout: 30_000 });
 
-  // 반 목록·학습자 목록에 반영
-  await page.goto("/app/classes");
-  await expect(page.getByText(groupName)).toBeVisible();
-  await page.goto("/app/students");
-  await expect(page.getByText(learnerName)).toBeVisible();
+  // 반 목록·학습자 목록에 반영 (ADR-0016 이후 목록은 표 + 페이지네이션이라
+  // "목록에 있으니 첫 쪽에 보이겠지"가 성립하지 않는다 — 검색으로 좁혀 행을 잡는다)
+  const classRow = await gotoTableRow(page, "/app/classes", groupName);
+  await expect(classRow).toBeVisible();
+  // 방금 등록한 학습자가 이 반에 붙었다 — 학생 수는 별도 칸으로 쪼개졌다
+  await expect(classRow.getByRole("cell", { name: "1명" })).toBeVisible();
 
-  // 감사 로그에 기록
-  await page.goto("/app/audit");
+  const learnerRow = await gotoTableRow(page, "/app/students", learnerName);
+  await expect(learnerRow).toBeVisible();
+  // 소속 반도 별도 칸 — 학습자가 새 반에 소속됐음을 그 칸으로 확인한다
+  await expect(learnerRow.getByRole("cell", { name: groupName })).toBeVisible();
+
+  // 감사 로그에 기록 — 두 동작이 각각 남는다.
+  // 표 본문에서만 찾는다: 작업 필터 <select>의 숨은 <option>에 같은 문자열이
+  // 있어 getByText가 그쪽을 먼저 잡는다. 검색으로 좁혀 페이지네이션 뒤로
+  // 밀리는 것도 막는다 (감사 검색은 작업 이름을 훑는다).
   await expect(
-    page.getByText(/settings\.create-group|settings\.add-learner/).first(),
+    (await gotoTableRow(page, "/app/audit", "settings.create-group")).first(),
+  ).toBeVisible();
+  await expect(
+    (await gotoTableRow(page, "/app/audit", "settings.add-learner")).first(),
   ).toBeVisible();
 });

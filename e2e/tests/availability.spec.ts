@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { futureIso, isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
+import { gotoTableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -15,8 +17,8 @@ async function login(page: Page) {
 
 /** 루트 목록에서 이 스펙 전용 루트 카드의 실체화 실행 → 상태 텍스트 반환 */
 async function materialize(page: Page, routeName: string): Promise<string> {
-  await page.goto("/app/routes");
-  const card = page.locator("li").filter({ hasText: routeName });
+  // 검색으로 좁힌다 — 표에 페이지네이션이 있어 목록 상단에 있으리란 보장이 없다
+  const card = await gotoTableRow(page, "/app/routes", routeName);
   await card.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
   const status = card.getByRole("status");
   await expect(status).toContainText(/미래 수업 \d+건을 생성했습니다/, {
@@ -37,7 +39,7 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
   const groupName = `E2E휴강반-${stamp}`;
   const routeName = `E2E휴강루트-${stamp}`;
 
-  // 1. 월요일만 수업하는 반 (첫 수업일 2026-08-03이 결정론적으로 정해진다)
+  // 1. 월요일만 수업하는 반 (첫 수업일은 오늘 이후 첫 월요일로 결정된다)
   await page.goto("/app/settings");
   const groupSection = page.locator("section").filter({ hasText: "반 만들기" });
   await groupSection.getByLabel("반 이름").fill(groupName);
@@ -75,12 +77,17 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
     timeout: 30_000,
   });
 
-  // 3. 첫 실체화 — 8/3·8/10
+  // 3. 첫 실체화 — 월요일 2회분 (실제 날짜는 실행 시점에 따라 달라진다)
   const baseline = await materialize(page, routeName);
   expect(baseline).toContain("미래 수업 2건");
-  expect(baseline).toContain("2026-08-03 ~ 2026-08-10");
+  const firstLesson = nthIsoDate(baseline, 0);
+  const secondLesson = nthIsoDate(baseline, 1);
+  // 주 1회(월요일) 반이므로 두 수업은 정확히 7일 간격이다
+  expect(secondLesson).toBe(isoAddDays(firstLesson, 7));
+  // 과거를 만들지 않는다 — 실체화는 오늘 이후만 배치한다
+  expect(firstLesson >= todayIso()).toBe(true);
 
-  // 4. 휴강 접수 (첫 수업일 8/3)
+  // 4. 휴강 접수 (첫 수업일)
   await page.goto("/app/classes");
   await page.getByRole("link", { name: groupName }).click();
   await expect(
@@ -88,26 +95,27 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
   ).toBeVisible();
 
   const upcoming = page.locator("section").filter({ hasText: "다가오는 수업" });
-  await expect(upcoming.getByText("2026-08-03").first()).toBeVisible();
+  await expect(upcoming.getByText(firstLesson).first()).toBeVisible();
 
   const availability = page.locator("section").filter({ hasText: "불참·휴강" });
   await availability.getByLabel("구분").selectOption({ label: "휴강 (반 전체)" });
-  await availability.getByLabel("시작일").fill("2026-08-03");
-  await availability.getByLabel("종료일").fill("2026-08-03");
+  await availability.getByLabel("시작일").fill(firstLesson);
+  await availability.getByLabel("종료일").fill(firstLesson);
   await availability.getByLabel("사유").fill("시설 점검");
   await availability.getByRole("button", { name: "접수", exact: true }).click();
   await expect(
     availability.getByRole("status").filter({ hasText: "휴강" }),
-  ).toContainText("2026-08-03", { timeout: 30_000 });
+  ).toContainText(firstLesson, { timeout: 30_000 });
 
-  // 5. 재계산 — 8/3이 비고 8/10·8/17로 밀린다
+  // 5. 재계산 — 첫 수업일이 비고 한 주씩 밀린다
+  const shifted = `${secondLesson} ~ ${isoAddDays(secondLesson, 7)}`;
   const cancelled = await materialize(page, routeName);
-  expect(cancelled).toContain("2026-08-10 ~ 2026-08-17");
+  expect(cancelled).toContain(shifted);
 
   await page.goto("/app/classes");
   await page.getByRole("link", { name: groupName }).click();
-  await expect(upcoming.getByText("2026-08-10").first()).toBeVisible();
-  await expect(upcoming.getByText("2026-08-03")).toHaveCount(0);
+  await expect(upcoming.getByText(secondLesson).first()).toBeVisible();
+  await expect(upcoming.getByText(firstLesson)).toHaveCount(0);
 
   // 이벤트가 반영됨으로 전이 (어떤 변경안이 소비했는지 추적됨)
   const eventRow = page.locator("li").filter({ hasText: "시설 점검" }).first();
@@ -121,7 +129,7 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
 
   const afterDismiss = await materialize(page, routeName);
   expect(afterDismiss).toContain("미래 수업 2건");
-  expect(afterDismiss).toContain("2026-08-10 ~ 2026-08-17");
+  expect(afterDismiss).toContain(shifted);
 });
 
 /** 이 화면의 접수 이벤트 전부 무시 — 이전(실패한) 실행의 잔재 정리 (멱등) */
@@ -150,13 +158,14 @@ test("학습 불참: 학생 필수 검증 + 반 일정 비영향", async ({ page
   const scheduleBefore = await upcoming.innerText();
 
   const availability = page.locator("section").filter({ hasText: "불참·휴강" });
+  const absentOn = futureIso(30); // 고정 날짜 금지 — 오늘 기준 미래로 잡는다
 
   // 학생 없이 불참 접수 → 정직한 오류
   await availability
     .getByLabel("구분")
     .selectOption({ label: "학습 불참 (학생)" });
-  await availability.getByLabel("시작일").fill("2026-08-20");
-  await availability.getByLabel("종료일").fill("2026-08-20");
+  await availability.getByLabel("시작일").fill(absentOn);
+  await availability.getByLabel("종료일").fill(absentOn);
   await availability.getByRole("button", { name: "접수", exact: true }).click();
   await expect(availability.getByRole("status")).toContainText(
     "불참 학생을 선택하세요",
@@ -168,8 +177,8 @@ test("학습 불참: 학생 필수 검증 + 반 일정 비영향", async ({ page
     .getByLabel("구분")
     .selectOption({ label: "학습 불참 (학생)" });
   await availability.getByLabel("대상 학생").selectOption({ label: "박서윤" });
-  await availability.getByLabel("시작일").fill("2026-08-20");
-  await availability.getByLabel("종료일").fill("2026-08-20");
+  await availability.getByLabel("시작일").fill(absentOn);
+  await availability.getByLabel("종료일").fill(absentOn);
   await availability.getByRole("button", { name: "접수", exact: true }).click();
   await expect(availability.getByRole("status")).toContainText(
     "반 공통 일정은 유지",

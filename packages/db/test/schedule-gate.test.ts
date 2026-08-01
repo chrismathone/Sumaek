@@ -14,7 +14,10 @@ import type { IsoDate } from "@su-maek/core/shared";
  * ───────────────────────────────────────────────────────────── */
 
 const hasDb = Boolean(process.env.DATABASE_URL);
-const sql = createSql();
+/* 연결은 beforeAll에서 만든다 — 모듈 최상단에서 createSql()을 부르면
+ * DATABASE_URL이 없을 때 skipIf 판정 전에 던져 수집 단계가 통째로 깨진다
+ * (skip이 아니라 FAIL로 보고된다). */
+let sql: ReturnType<typeof createSql>;
 
 const TZ = "Asia/Seoul";
 const ORG = "ffffffff-0000-7000-8000-000000220001";
@@ -62,6 +65,7 @@ describe.skipIf(!hasDb)("일정 검증 게이트 (인수 22)", () => {
   const okWeekday = weekdayOfIso(addDaysIso(today, 1));
 
   beforeAll(async () => {
+    sql = createSql();
     await cleanupOperationalRows();
     await sql`
       insert into organizations (id, name, slug, timezone)

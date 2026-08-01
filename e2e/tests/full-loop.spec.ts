@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -70,6 +71,10 @@ test("전체 순환: 학생 응시 → 자동 채점 → 복습 배치 → 교�
 
   await expect(student.getByText("채점 결과")).toBeVisible();
   await expect(student.getByText(/\d+점/).first()).toBeVisible();
+  // 교사 목록에서 같은 테스트 행을 집기 위해 제목을 확보한다
+  const testTitle = (
+    await student.getByRole("heading", { level: 1 }).innerText()
+  ).trim();
   // 오답이 있으면 복습 배치 안내
   const wrongBadge = student.getByText("오답", { exact: true });
   if ((await wrongBadge.count()) > 0) {
@@ -84,7 +89,22 @@ test("전체 순환: 학생 응시 → 자동 채점 → 복습 배치 → 교�
   const teacher = await teacherCtx.newPage();
   await login(teacher, TEACHER);
   await expect(teacher).toHaveURL(/\/app\/today/, { timeout: 30_000 });
-  await teacher.goto("/app/tests");
-  await expect(teacher.getByText(/제출 [1-9]\d*명/).first()).toBeVisible();
+  // 목록이 표로 바뀌면서 "제출 N명" 한 줄이 배정·제출 칸으로 쪼개졌다 (ADR-0016).
+  // 페이지네이션(기본 10행)에 밀리지 않도록 학생이 응시한 테스트 제목으로 좁힌다.
+  const testRows = await gotoTableRow(teacher, "/app/tests", testTitle);
+  await expect(testRows.first()).toBeVisible();
+
+  // '제출' 열이 몇 번째 칸인지 열 머리에서 읽는다 (열 순서 변경에 흔들리지 않게)
+  const headers = await teacher.locator("table thead th").allInnerTexts();
+  const submittedIndex = headers.findIndex((h) => h.startsWith("제출"));
+  expect(submittedIndex).toBeGreaterThan(-1);
+
+  // 같은 제목의 행 중 최소 하나는 제출 인원이 1명 이상 — 학생 제출이 교사 화면에 반영됐다
+  const submittedCells = testRows.locator(
+    `td:nth-child(${submittedIndex + 1})`,
+  );
+  await expect(
+    submittedCells.filter({ hasText: /^[1-9]\d*명$/ }).first(),
+  ).toBeVisible();
   await teacherCtx.close();
 });

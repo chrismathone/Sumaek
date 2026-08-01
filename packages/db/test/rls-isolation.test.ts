@@ -12,7 +12,10 @@ import { createSql } from "../src/client";
  * ───────────────────────────────────────────────────────────── */
 
 const hasDb = Boolean(process.env.DATABASE_URL);
-const sql = createSql();
+/* 연결은 beforeAll에서 만든다 — 모듈 최상단에서 createSql()을 부르면
+ * DATABASE_URL이 없을 때 skipIf 판정 전에 던져 수집 단계가 통째로 깨진다
+ * (skip이 아니라 FAIL로 보고된다). */
+let sql: ReturnType<typeof createSql>;
 
 const orgA = uuidv7();
 const orgB = uuidv7();
@@ -46,6 +49,7 @@ async function asUser<T>(
 
 describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
   beforeAll(async () => {
+    sql = createSql();
     await sql`insert into organizations (id, name, slug) values
       (${orgA}, 'RLS 테스트 A', ${`rls-a-${orgA.slice(0, 8)}`}),
       (${orgB}, 'RLS 테스트 B', ${`rls-b-${orgB.slice(0, 8)}`})`;

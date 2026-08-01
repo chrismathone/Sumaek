@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -125,8 +126,9 @@ test("루트 빌더: 반 만들기 → 노드 작성 → 검증 → 게시 → �
 test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", async ({ page }) => {
   await login(page);
 
-  await page.goto("/app/students");
-  await page.getByRole("link", { name: /박서윤/ }).first().click();
+  // 학습자 목록은 표 + 페이지네이션이라 이름으로 좁힌 뒤 행의 링크로 들어간다
+  const studentRow = await gotoTableRow(page, "/app/students", "박서윤");
+  await studentRow.first().getByRole("link").first().click();
   await expect(
     page.getByRole("heading", { name: "박서윤", exact: true }),
   ).toBeVisible();
@@ -152,13 +154,19 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
   await expect(row.getByText("보충: 가감법 집중 연습")).toBeVisible();
   await expect(row.getByText("적용 중")).toBeVisible();
 
-  // 감사 로그 기록
-  await page.goto("/app/audit");
-  await expect(page.getByText("route.create-override").first()).toBeVisible();
+  // 감사 로그 기록 — 작업 필터의 <option>에도 같은 문구가 있으므로
+  // 표 본문 행에서 확인한다. 사유로 검색해 이번 실행의 기록으로 좁힌다.
+  const auditRow = await gotoTableRow(
+    page,
+    "/app/audit",
+    "가감법 확인테스트 미통과 보충",
+    "route.create-override",
+  );
+  await expect(auditRow.first()).toContainText("가감법 확인테스트 미통과 보충");
 
   // 취소 — 다음 실행의 멱등성 (이전 실행 잔재 포함 전부 정리)
-  await page.goto("/app/students");
-  await page.getByRole("link", { name: /박서윤/ }).first().click();
+  const studentRowAgain = await gotoTableRow(page, "/app/students", "박서윤");
+  await studentRowAgain.first().getByRole("link").first().click();
   const cancelButtons = page.getByRole("button", { name: "취소", exact: true });
   for (let i = 0; i < 10; i++) {
     const count = await cancelButtons.count();

@@ -32,10 +32,14 @@ function makeIds() {
 }
 
 describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", () => {
-  const sql = getSharedSql();
+  // 연결은 beforeAll에서 만든다 — vitest는 skip된 describe의 콜백도 수집
+  // 단계에서 실행하므로, 여기서 바로 부르면 DATABASE_URL이 없을 때 skip이
+  // 아니라 FAIL로 보고된다.
+  let sql: ReturnType<typeof getSharedSql>;
   const ids = makeIds();
 
   beforeAll(async () => {
+    sql = getSharedSql();
     await sql`insert into learners (id, organization_id, display_name)
       values (${ids.learner}, ${ORG_ID}, '확인테스트 학습자')`;
     await sql`insert into canonical_concepts (id, slug, name, status, evidence)

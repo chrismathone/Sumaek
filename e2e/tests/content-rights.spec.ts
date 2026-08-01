@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow, tableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -24,12 +25,9 @@ async function login(page: Page) {
  */
 test("사용 권한 중지 → 출제 제외 안내 → 복구 → 감사 기록", async ({ page }) => {
   await login(page);
-  await page.goto("/app/content/books");
-
-  const row = page
-    .locator("li")
-    .filter({ hasText: "수맥 합성 콘텐츠" })
-    .first();
+  const row = (
+    await gotoTableRow(page, "/app/content/books", "수맥 합성 콘텐츠")
+  ).first();
   await expect(row).toBeVisible();
 
   // 0. 이전 실행 잔재 정리 — 중지 상태면 먼저 복구
@@ -67,7 +65,8 @@ test("사용 권한 중지 → 출제 제외 안내 → 복구 → 감사 기록
   await expect(row.getByText("사용 가능", { exact: true })).toBeVisible();
 
   // 4. 감사 로그에 회수·복구 기록
+  // 표 본문에서만 찾는다 — 필터 <select>의 option에도 같은 문자열이 있다
   await page.goto("/app/audit");
-  await expect(page.getByText("content.rights-revoke").first()).toBeVisible();
-  await expect(page.getByText("content.rights-restore").first()).toBeVisible();
+  await expect(tableRow(page, "content.rights-revoke").first()).toBeVisible();
+  await expect(tableRow(page, "content.rights-restore").first()).toBeVisible();
 });

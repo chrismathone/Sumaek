@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
+  // 스펙이 만든 반·루트·학습자를 실행 후 정리한다 (앱에 삭제 UI가 없다)
+  globalTeardown: "./global-teardown.ts",
   // 스펙들이 하나의 라이브 DB를 공유한다 — 병렬 실행은 상태 경합으로 플레이키.
   fullyParallel: false,
   workers: 1,

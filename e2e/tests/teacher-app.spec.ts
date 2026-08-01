@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow, tableRow, tableRowIn } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -24,17 +25,22 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     await expect(page.getByText("중2 심화 A").first()).toBeVisible();
     await expect(page.getByText("광복절").first()).toBeVisible();
 
-    // 반 목록 → 상세
-    await page.goto("/app/classes");
-    await expect(page.getByText("중2 심화 A")).toBeVisible();
-    await page.getByRole("link", { name: /중2 심화 A/ }).click();
-    // 학생 명단 링크로 스코프 — 불참 폼의 학생 선택 옵션에도 이름이 있다
+    // 반 목록 → 상세 (표 + 쪽넘김 — 검색으로 좁혀야 대상 행이 1쪽에 남는다)
+    const classRow = (
+      await gotoTableRow(page, "/app/classes", "중2 심화 A")
+    ).first();
+    await expect(classRow).toBeVisible();
+    await classRow.getByRole("link", { name: /중2 심화 A/ }).click();
+    // 반 상세는 아직 표가 아니다 — 학생 명단 링크로 스코프해야 한다
+    // (불참 폼의 학생 선택 옵션에도 이름이 있다)
     await expect(page.getByRole("link", { name: /박서윤/ })).toBeVisible();
 
     // 학습자 목록 → 상세 (숙련도 근거 표시)
-    await page.goto("/app/students");
-    await expect(page.getByText("박서윤")).toBeVisible();
-    await page.getByRole("link", { name: /박서윤/ }).first().click();
+    const learnerRow = (
+      await gotoTableRow(page, "/app/students", "박서윤")
+    ).first();
+    await expect(learnerRow).toBeVisible();
+    await learnerRow.getByRole("link", { name: /박서윤/ }).click();
     await expect(page.getByText(/탐색 중/).first()).toBeVisible();
     await expect(page.getByText(/증거/).first()).toBeVisible();
 
@@ -48,10 +54,14 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
       page.getByText(/테스트가 게시되었습니다|처리할 일이 없습니다|오늘 처리할 일/).first(),
     ).toBeVisible();
 
-    // 감사 로그 — 자동·수동 기록
+    // 감사 로그 — 자동·수동 기록.
+    // 표 본문으로 스코프한다 — 작업 필터의 <option>에도 같은 문자열이 있다.
     await page.goto("/app/audit");
     await expect(
-      page.getByText(/schedule\.materialize|assessment\.generate|grading\./).first(),
+      tableRow(
+        page,
+        /schedule\.materialize|assessment\.generate|grading\./,
+      ).first(),
     ).toBeVisible();
 
     // 설정 — 정책 버전 표시
@@ -65,15 +75,30 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
       page.getByText("연결된 외부 시스템이 없습니다."),
     ).toBeVisible();
 
-    // 문제은행 — 시드 문항과 권한 상태
-    await page.goto("/app/content/questions");
-    await expect(page.getByText(/게시/).first()).toBeVisible();
-    await expect(page.getByText(/사용 가능/).first()).toBeVisible();
+    // 문제은행 — 시드 문항과 권한 상태.
+    // 검수·사용 권한이 서로 다른 칸으로 쪼개졌으므로 한 행에서 각각 단언한다.
+    // (전체 화면 getByText는 검수 상태 필터의 <option value="published">게시</option>에 먼저 걸린다)
+    const questionRow = (
+      await gotoTableRow(page, "/app/content/questions", "가감법")
+    ).first();
+    await expect(questionRow).toBeVisible();
+    await expect(questionRow.getByText("게시", { exact: true })).toBeVisible();
+    await expect(
+      questionRow.getByText("사용 가능", { exact: true }),
+    ).toBeVisible();
 
-    // 커리큘럼 — 내부 개념과 공식 구분 고지
-    await page.goto("/app/content/curriculum");
+    // 커리큘럼 — 내부 개념과 공식 구분 고지.
+    // 개념 표는 플랫폼 공유 참조 데이터라 행이 계속 쌓인다 → 검색으로 좁힌다.
+    await page.goto(
+      `/app/content/curriculum?q=${encodeURIComponent("연립방정식의 활용")}`,
+    );
     await expect(page.getByText(/공식 성취기준이 아닙니다/)).toBeVisible();
-    await expect(page.getByText("연립방정식의 활용").first()).toBeVisible();
+    const conceptSection = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "내부 개념 (canonical)" }),
+    });
+    await expect(
+      tableRowIn(conceptSection, "연립방정식의 활용").first(),
+    ).toBeVisible();
   });
 });
 

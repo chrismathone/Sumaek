@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
+import { gotoTableRow, tableRow } from "../lib/table";
 
 const DEMO_EMAIL = "demo-teacher@su-maek.app";
 const DEMO_PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";
@@ -11,24 +13,32 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
 
-  // 선행 조건 자립: 8/3 수업이 없으면 먼저 일정을 실체화한다 (순서 의존 제거)
+  // 선행 조건 자립: 먼저 일정을 실체화하고 첫 수업일을 실행 시점에서 읽는다
+  //  (고정 날짜를 적으면 그날이 지나는 순간 "예정된 수업이 없습니다"로 깨진다)
   //  시드 루트 카드로 스코프 — 다른 E2E가 만든 게시 루트와 구분
-  await page.goto("/app/routes");
-  const card = page
-    .locator("li")
-    .filter({ hasText: "중2 심화 A — 연립방정식 단원" });
+  const card = await gotoTableRow(
+    page,
+    "/app/routes",
+    "연립방정식 단원",
+    "중2 심화 A — 연립방정식 단원",
+  );
   await card.getByRole("button", { name: "미래 일정 생성·재계산" }).click();
-  await expect(card.getByRole("status")).toContainText(/미래 수업 \d+건/, {
+  const materializeStatus = card.getByRole("status");
+  await expect(materializeStatus).toContainText(/미래 수업 \d+건/, {
     timeout: 30_000,
   });
+  const lessonDate = nthIsoDate(await materializeStatus.innerText(), 0);
+  expect(lessonDate >= todayIso()).toBe(true);
+  // 월·수·금 반이므로 첫 수업 다음 날은 항상 수업이 없는 날이다
+  const noLessonDate = isoAddDays(lessonDate, 1);
 
   await page.goto("/app/tests");
   await expect(page.getByRole("heading", { name: "일일·확인테스트" })).toBeVisible();
 
   // 대상 반 명시 선택 (다른 테스트가 만든 반이 기본 선택을 가로채지 않게)
   await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
-  // 첫 수업일(8/3)로 생성
-  await page.getByLabel("수업 날짜").fill("2026-08-03");
+  // 첫 수업일로 생성
+  await page.getByLabel("수업 날짜").fill(lessonDate);
   await page.getByRole("button", { name: "생성·게시" }).click();
 
   const status = page.getByRole("status");
@@ -36,15 +46,16 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
     timeout: 30_000,
   });
 
-  // 목록에 게시 상태·배정 인원 표시
+  // 목록에 게시 상태·배정 인원 표시 (표에서는 각각 다른 칸이다 — ADR-0016)
   await page.reload();
-  await expect(page.getByText("일일테스트 · 2026-08-03")).toBeVisible();
-  await expect(page.getByText(/배정 5명/)).toBeVisible();
-  await expect(page.getByText("게시됨").first()).toBeVisible();
+  const testRow = tableRow(page, `일일테스트 · ${lessonDate}`).first();
+  await expect(testRow).toBeVisible();
+  await expect(testRow.getByText("5명", { exact: true })).toBeVisible();
+  await expect(testRow.getByText("게시됨")).toBeVisible();
 
   // 멱등: 같은 날짜 재생성 → 중복 생성 안 함
   await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
-  await page.getByLabel("수업 날짜").fill("2026-08-03");
+  await page.getByLabel("수업 날짜").fill(lessonDate);
   await page.getByRole("button", { name: "생성·게시" }).click();
   await expect(page.getByRole("status")).toContainText(
     "이미 생성된 일일테스트가 있습니다",
@@ -53,7 +64,7 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
 
   // 수업 없는 날짜는 정직한 오류
   await page.getByLabel("학습 그룹").selectOption({ label: "중2 심화 A" });
-  await page.getByLabel("수업 날짜").fill("2026-08-02"); // 일요일
+  await page.getByLabel("수업 날짜").fill(noLessonDate);
   await page.getByRole("button", { name: "생성·게시" }).click();
   await expect(page.getByRole("status")).toContainText(
     "예정된 수업이 없습니다",

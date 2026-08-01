@@ -21,7 +21,10 @@ const TEACHER_ID = "00000000-0000-7000-8000-0000000000a1";
 const hasDb = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
-  const sql = getSharedSql();
+  // 연결은 beforeAll에서 만든다 — vitest는 skip된 describe의 콜백도 수집
+  // 단계에서 실행하므로, 여기서 바로 부르면 DATABASE_URL이 없을 때 skip이
+  // 아니라 FAIL로 보고된다.
+  let sql: ReturnType<typeof getSharedSql>;
   const ids = {
     learner: uuidv7(),
     concept: uuidv7(),
@@ -34,6 +37,7 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
   let attemptId: string;
 
   beforeAll(async () => {
+    sql = getSharedSql();
     await sql`
       insert into learners (id, organization_id, display_name, grade_level)
       values (${ids.learner}, ${ORG_ID}, '통합테스트 학습자', 'middle-2')

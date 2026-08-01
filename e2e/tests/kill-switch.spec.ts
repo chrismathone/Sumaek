@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -52,7 +53,12 @@ test("kill switch: 사유 필수 중지 → 상태 전환 → 재개 → 감사 
   await row.getByRole("button", { name: "재개" }).click();
   await expect(row.getByText("동작 중")).toBeVisible({ timeout: 30_000 });
 
-  // 감사 로그에 전환 기록
-  await page.goto("/app/audit");
-  await expect(page.getByText("settings.kill-switch").first()).toBeVisible();
+  // 감사 로그에 전환 기록 — 검색으로 좁혀야 페이지네이션 뒤로 밀리지 않고,
+  // 표 본문에서 찾아야 작업 필터 <select>의 숨은 option에 걸리지 않는다.
+  const auditRows = await gotoTableRow(page, "/app/audit", "settings.kill-switch");
+  await expect(auditRows.first()).toBeVisible();
+  // 중지 전환은 사유와 함께 남는다 — 방금 입력한 사유가 그 행에 보여야 한다.
+  await expect(
+    auditRows.filter({ hasText: "재계산 폭주 대응 훈련" }).first(),
+  ).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoTableRow, tableRow } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -49,8 +50,9 @@ test("삭제 요청 → 잘못된 확인 거부 → 익명화 → 토큰 표시�
   ).toBeVisible({ timeout: 30_000 });
 
   // 2. 학습자 상세 → 삭제 요청 접수
-  await page.goto("/app/students");
-  await page.getByRole("link", { name: learnerName }).click();
+  //    표 + 페이지네이션이라 검색으로 좁혀 행을 잡는다 (ADR-0016)
+  const learnerRow = await gotoTableRow(page, "/app/students", learnerName);
+  await learnerRow.getByRole("link", { name: learnerName }).click();
   await expect(
     page.getByRole("heading", { name: learnerName, exact: true }),
   ).toBeVisible();
@@ -78,15 +80,21 @@ test("삭제 요청 → 잘못된 확인 거부 → 익명화 → 토큰 표시�
   await expect(
     page.getByRole("heading", { name: /삭제된 학습자-[0-9a-f]{8}/ }),
   ).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("완료", { exact: true })).toBeVisible();
-  await expect(page.getByText(/백업 만료 \d{4}-\d{2}-\d{2}/)).toBeVisible();
+  await expect(privacy.getByText("완료", { exact: true })).toBeVisible();
+  await expect(privacy.getByText(/백업 만료 \d{4}-\d{2}-\d{2}/)).toBeVisible();
 
   // 5. 학습자 목록에 원래 이름이 없다
-  await page.goto("/app/students");
-  await expect(page.getByText(learnerName)).toHaveCount(0);
+  //    목록이 쪽으로 나뉘므로 "전체 목록에 없음"은 검색으로 확인해야 한다 —
+  //    그냥 1쪽만 보면 2쪽에 남아 있어도 통과하는 거짓 통과가 된다.
+  await page.goto(`/app/students?q=${encodeURIComponent(learnerName)}`);
+  await expect(tableRow(page, learnerName)).toHaveCount(0);
+  await expect(page.getByText("조건에 맞는 학습자가 없습니다.")).toBeVisible();
 
   // 6. 감사 로그 — 요청·집행 기록
-  await page.goto("/app/audit");
-  await expect(page.getByText("privacy.request").first()).toBeVisible();
-  await expect(page.getByText("privacy.erase").first()).toBeVisible();
+  //    표의 필터 <option>에도 같은 작업명이 있으므로 본문 행(tbody tr)만 본다.
+  //    감사는 건수가 많아 검색으로 좁힌 뒤 확인한다.
+  await expect(
+    (await gotoTableRow(page, "/app/audit", "privacy", "privacy.request")).first(),
+  ).toBeVisible();
+  await expect(tableRow(page, "privacy.erase").first()).toBeVisible();
 });
