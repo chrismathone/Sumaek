@@ -102,6 +102,7 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
       organizationId: ORG_ID,
       assessmentId: ids.assessment,
       learnerId: ids.learner,
+      today: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }),
     });
     expect("attemptId" in started).toBe(true);
     if (!("attemptId" in started)) return;
@@ -109,6 +110,7 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
     // 1번 정답, 2번 오답 → 10/20 = 50% < 70%
     await saveResponse({
       organizationId: ORG_ID,
+      learnerId: ids.learner,
       attemptId: started.attemptId,
       assessmentQuestionId: ids.aq1,
       answer: { kind: "short_answer", rawText: "1" },
@@ -116,6 +118,7 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
     });
     await saveResponse({
       organizationId: ORG_ID,
+      learnerId: ids.learner,
       attemptId: started.attemptId,
       assessmentQuestionId: ids.aq2,
       answer: { kind: "short_answer", rawText: "999" },

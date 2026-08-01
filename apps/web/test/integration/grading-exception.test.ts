@@ -103,6 +103,7 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
       organizationId: ORG_ID,
       assessmentId: ids.assessment,
       learnerId: ids.learner,
+      today: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }),
     });
     expect("attemptId" in started).toBe(true);
     if (!("attemptId" in started)) return;
@@ -111,6 +112,7 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
     /* 2) 값은 맞고 단위 없는 답 저장 */
     const saved = await saveResponse({
       organizationId: ORG_ID,
+      learnerId: ids.learner,
       attemptId,
       assessmentQuestionId: ids.aq,
       answer: { kind: "short_answer", rawText: "120" },

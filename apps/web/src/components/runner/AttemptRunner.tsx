@@ -1,13 +1,24 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { StudentAnswer } from "@su-maek/contracts";
 import {
   saveAnswerAction,
   submitAttemptAction,
 } from "@/app/learn/tests/[id]/actions";
 
-/* 실응시 러너 (18장) — 서버 권위 저장·제출. 데모 TestRunner와 같은 UI 문법. */
+/* ─────────────────────────────────────────────────────────────
+ * 실응시 러너 (18장) — 서버 권위 저장·제출. 데모 TestRunner와 같은 UI 문법.
+ *
+ * 제한 시간의 기준 시각은 서버가 기록한 attempts.started_at이다. 새로고침해도
+ * 남은 시간이 되돌아가지 않는다 — 클라이언트는 마감을 계산만 하고 정하지 않는다.
+ *
+ * 남은 결손 (서버 강제 아님): 이 카운트다운은 표시와 자동 제출을 위한 클라이언트
+ * 장치일 뿐이다. 서버는 마감을 검사하지 않는다 — saveResponse는 status가
+ * in_progress인지만 보고, submitAndGrade도 시각을 대조하지 않는다. 따라서 탭을
+ * 닫아 타이머를 멈추거나 기기 시계를 되돌린 학생은 마감 뒤에도 답안을 저장하고
+ * 제출할 수 있다. 서버 측 마감 검사는 아직 구현되지 않았다.
+ * ───────────────────────────────────────────────────────────── */
 
 export interface AttemptQuestion {
   assessmentQuestionId: string;
@@ -23,10 +34,13 @@ export function AttemptRunner({
   attemptId,
   questions,
   timeLimitMinutes,
+  startedAt,
 }: {
   attemptId: string;
   questions: AttemptQuestion[];
   timeLimitMinutes: number | null;
+  /** 서버가 기록한 응시 시작 시각(ISO). 없으면 제한을 계산하지 않는다. */
+  startedAt: string | null;
 }) {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, StudentAnswer>>(() =>
@@ -42,6 +56,47 @@ export function AttemptRunner({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [submitting, startSubmit] = useTransition();
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const autoSubmitted = useRef(false);
+
+  /* 제출 — 수동·자동(시간 종료) 공통 경로 */
+  const submit = useCallback(() => {
+    startSubmit(async () => {
+      const result = await submitAttemptAction(attemptId);
+      // 성공 시 서버가 결과 페이지로 redirect — 여기 도달하면 실패
+      if (result && !result.ok) setSubmitError(result.message);
+    });
+  }, [attemptId, startSubmit]);
+
+  /* 마감 시각 = 서버 기록 시작 시각 + 제한 시간. 둘 중 하나라도 없으면 제한 없음. */
+  const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const deadline =
+    timeLimitMinutes !== null && Number.isFinite(startedMs)
+      ? startedMs + timeLimitMinutes * 60_000
+      : null;
+
+  /* 초기값을 서버 렌더에서 잡으면 하이드레이션이 어긋난다 — 마운트 후부터 센다. */
+  useEffect(() => {
+    if (deadline === null) return;
+    const tick = () =>
+      setSecondsLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  const expired = deadline !== null && secondsLeft !== null && secondsLeft <= 0;
+  const lowTime = secondsLeft !== null && secondsLeft <= 60;
+
+  /* 시간 종료 → 자동 제출. 수동 제출과 같은 경로를 쓰고, 저장 중이면 그 저장이
+   * 끝난 뒤에 보낸다 (마지막 답안이 유실되지 않게). 자동 재시도는 하지 않고,
+   * 실패하면 학생이 배너에서 직접 다시 제출한다. */
+  useEffect(() => {
+    if (!expired || pending || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    setSubmitError(null);
+    submit();
+  }, [expired, pending, submit]);
 
   const save = (aqId: string, answer: StudentAnswer) => {
     setAnswers((prev) => ({ ...prev, [aqId]: answer }));
@@ -69,8 +124,20 @@ export function AttemptRunner({
         <p className="font-mono text-sm">
           {current + 1} / {questions.length}
         </p>
-        {timeLimitMinutes !== null && (
-          <p className="font-mono text-xs text-ink-soft">제한 {timeLimitMinutes}분</p>
+        {deadline !== null ? (
+          <p
+            className={`font-mono text-xs ${
+              lowTime ? "font-bold text-grade" : "text-ink-soft"
+            }`}
+          >
+            {secondsLeft === null
+              ? `제한 ${timeLimitMinutes}분`
+              : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")} 남음`}
+          </p>
+        ) : (
+          timeLimitMinutes !== null && (
+            <p className="font-mono text-xs text-ink-soft">제한 {timeLimitMinutes}분</p>
+          )
         )}
         <p className="font-mono text-xs text-ink-soft" aria-live="polite">
           {pending ? "저장 중…" : saveError ? "저장 오류" : "저장됨"}
@@ -81,6 +148,31 @@ export function AttemptRunner({
         <p role="alert" className="border-b border-rule-soft bg-grade-soft px-4 py-2 text-sm text-grade">
           {saveError}
         </p>
+      )}
+
+      {expired && (
+        <div
+          role={submitError ? "alert" : "status"}
+          className={`flex items-center justify-between gap-3 border-b border-rule-soft px-4 py-2 text-sm ${
+            submitError ? "bg-grade-soft text-grade" : "bg-highlight-soft"
+          }`}
+        >
+          {submitError ? (
+            <>
+              <p>제한 시간이 끝났지만 제출에 실패했습니다. {submitError}</p>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={submit}
+                className="shrink-0 rounded-[var(--radius-control)] border border-grade px-3 py-1 text-xs font-medium disabled:opacity-60"
+              >
+                {submitting ? "제출 중…" : "다시 제출"}
+              </button>
+            </>
+          ) : (
+            <p>제한 시간이 끝나 자동으로 제출하고 있습니다…</p>
+          )}
+        </div>
       )}
 
       <div className="min-h-[220px] px-5 py-6">
@@ -195,13 +287,7 @@ export function AttemptRunner({
             <button
               type="button"
               disabled={submitting}
-              onClick={() =>
-                startSubmit(async () => {
-                  const result = await submitAttemptAction(attemptId);
-                  // 성공 시 서버가 결과 페이지로 redirect — 여기 도달하면 실패
-                  if (result && !result.ok) setSubmitError(result.message);
-                })
-              }
+              onClick={submit}
               className="rounded-[var(--radius-control)] bg-ink px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60"
             >
               {submitting ? "제출 중…" : "제출 확정"}

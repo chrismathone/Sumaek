@@ -11,7 +11,11 @@ import {
   formatDateTime,
   label,
 } from "@/lib/format";
-import { parseTableQuery, type RawSearchParams } from "@/lib/table";
+import {
+  ROOMY_PAGE_SIZE,
+  parseTableQuery,
+  type RawSearchParams,
+} from "@/lib/table";
 
 export const metadata: Metadata = { title: "알림·업무함" };
 
@@ -83,10 +87,14 @@ export default async function InboxPage({
   const user = await requireAccess("inbox");
   const sql = getSharedSql();
 
+  /* 한 행이 여러 줄이다 — 제목 아래에 무슨 일·이유·영향 대상·권장 행동·기한이
+   * 붙어 실측 행 높이가 93px이다. 기본값 10행은 324px만큼 바깥 스크롤을 만들어
+   * 규약(ADR-0016)을 어겼으므로 ROOMY_PAGE_SIZE를 쓴다. */
   const query = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SORT_COLUMN),
     defaultSort: "due_at",
     filterKeys: ["source"],
+    pageSize: ROOMY_PAGE_SIZE,
   });
   const sourceFilter = query.params.source ?? "";
   const like = `%${query.q}%`;

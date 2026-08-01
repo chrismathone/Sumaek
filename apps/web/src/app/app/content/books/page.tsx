@@ -5,7 +5,11 @@ import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
 import { formatDate } from "@/lib/format";
-import { parseTableQuery, type RawSearchParams } from "@/lib/table";
+import {
+  STACKED_PAGE_SIZE,
+  parseTableQuery,
+  type RawSearchParams,
+} from "@/lib/table";
 import { RightActions } from "./RightActions";
 
 export const metadata: Metadata = { title: "교재" };
@@ -65,10 +69,14 @@ export default async function BooksPage({
   const user = await requireAccess("books");
   const sql = getSharedSql();
 
+  /* 사용 권한 표는 행마다 중지·복구 버튼이 들어가 실측 행 높이가 85px이고,
+   * 위에는 교재 카드 목록까지 있다. 기본값 10행은 368px만큼 바깥 스크롤을
+   * 만들었고 6행으로도 122px이 남았다(브라우저 실측). STACKED_PAGE_SIZE를 쓴다. */
   const query = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SORT_COLUMN),
     defaultSort: "rights_holder",
     filterKeys: ["status"],
+    pageSize: STACKED_PAGE_SIZE,
   });
   const statusFilter = query.params.status ?? "";
 

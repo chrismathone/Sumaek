@@ -18,6 +18,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
 import { MaterializeLearnerScheduleButton } from "./LearnerScheduleForm";
+import { LinkAccountForm, UnlinkAccountButton } from "./AccountForm";
 import { DeletionExecuteForm, DeletionRequestForm } from "./PrivacyForm";
 
 const DELETION_STATUS_LABEL: Record<string, string> = {
@@ -114,14 +115,19 @@ export default async function StudentDetailPage({
       display_name: string;
       grade_level: string | null;
       status: string;
+      account_user_id: string | null;
+      account_email: string | null;
       group_names: string | null;
       curriculum_name: string | null;
     }[]
   >`
     select l.id, l.display_name, l.grade_level, l.status,
+           l.user_id::text as account_user_id,
+           max(au.email) as account_email,
            string_agg(distinct g.name, ', ' order by g.name) as group_names,
            max(cv.name) as curriculum_name
     from learners l
+    left join users au on au.id = l.user_id
     left join learning_group_memberships m
       on m.learner_id = l.id
      and m.organization_id = ${user.organizationId}
@@ -129,7 +135,7 @@ export default async function StudentDetailPage({
     left join learning_groups g on g.id = m.learning_group_id
     left join curriculum_versions cv on cv.id = l.curriculum_version_id
     where l.id = ${id} and l.organization_id = ${user.organizationId}
-    group by l.id, l.display_name, l.grade_level, l.status
+    group by l.id, l.display_name, l.grade_level, l.status, l.user_id
   `;
   if (!learner) notFound();
 
@@ -651,6 +657,51 @@ export default async function StudentDetailPage({
             </>
           }
         />
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">학생 계정</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          학생이 자기 학습 화면에 로그인하려면 이 학습자에 계정이 연결되어
+          있어야 합니다. 연결되지 않은 학습자는 명단에만 존재합니다.
+        </p>
+        <div className="mt-3 rounded-lg border border-rule bg-surface p-4">
+          {learner.account_user_id ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm">
+                  <span className="font-medium">연결됨</span>
+                  {learner.account_email && (
+                    <span className="ml-2 font-mono text-xs text-ink-soft">
+                      {learner.account_email}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  해제해도 로그인 계정 자체는 삭제되지 않습니다.
+                </p>
+              </div>
+              {canManagePrivacy && <UnlinkAccountButton learnerId={learner.id} />}
+            </div>
+          ) : canManagePrivacy ? (
+            <>
+              <p className="text-sm">
+                <span className="font-medium">연결되지 않았습니다.</span> 이
+                학생은 아직 로그인할 수 없습니다.
+              </p>
+              <p className="mt-1 mb-3 text-xs text-ink-soft">
+                이미 계정이 있는 이메일이면 그 계정에 연결하고, 없으면 새로
+                만들어 초기 비밀번호를 한 번 보여 줍니다.
+              </p>
+              <LinkAccountForm learnerId={learner.id} />
+            </>
+          ) : (
+            <p className="text-sm">
+              <span className="font-medium">연결되지 않았습니다.</span> 계정
+              발급은 워크스페이스 소유자만 할 수 있습니다.
+            </p>
+          )}
+        </div>
       </section>
 
       {canManagePrivacy && (

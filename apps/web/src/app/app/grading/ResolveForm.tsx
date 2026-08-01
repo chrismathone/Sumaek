@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
+import { ActionToast } from "@/components/ActionToast";
 import { resolveExceptionAction } from "./actions";
+
+/* 판정 폼은 DataTable 「판정」 칸 안에서 렌더된다.
+ * 결과를 그 자리에 그리면 줄바꿈되어 행 높이가 늘어나므로 알림으로 띄운다. */
 
 export function ResolveForm({
   exceptionId,
@@ -54,12 +58,9 @@ export function ResolveForm({
         {pending ? "반영 중…" : "판정 반영"}
       </button>
       {state && (
-        <p
-          role="status"
-          className={`w-full text-sm ${state.ok ? "text-pen" : "text-grade"}`}
-        >
+        <ActionToast ok={state.ok} resultKey={state}>
           {state.message}
-        </p>
+        </ActionToast>
       )}
     </form>
   );

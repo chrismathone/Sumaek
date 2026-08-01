@@ -34,17 +34,31 @@ export async function startAttempt(options: {
   organizationId: string;
   assessmentId: string;
   learnerId: string;
+  /** 조직 시간대의 오늘(YYYY-MM-DD). 응시일 게이트의 기준. */
+  today: string;
 }): Promise<StartResult | { error: string }> {
   const sql = getSharedSql();
-  const { organizationId, assessmentId, learnerId } = options;
+  const { organizationId, assessmentId, learnerId, today } = options;
 
-  const [assessment] = await sql<{ status: string }[]>`
-    select status from assessment_instances
+  const [assessment] = await sql<
+    { status: string; scheduled_date: string | null }[]
+  >`
+    select status, scheduled_date::text as scheduled_date
+    from assessment_instances
     where id = ${assessmentId} and organization_id = ${organizationId}
   `;
   if (!assessment) return { error: "평가를 찾을 수 없습니다." };
   if (!["published", "open"].includes(assessment.status)) {
     return { error: "지금은 응시할 수 없는 평가입니다." };
+  }
+  /* 응시일 게이트 — 생성 폼의 기본 날짜가 "다음 수업일"이라 **미래 테스트가
+   * 기본 동작**인데, 여기가 없으면 학생이 오늘 바로 풀어 버린다(실측 확인:
+   * 8/5 테스트를 8/2에 제출). 날짜가 없는 평가(수시)는 그대로 허용한다.
+   * 화면에서도 같은 판정을 하지만, 화면 판정은 URL 직접 입력을 막지 못한다. */
+  if (assessment.scheduled_date && assessment.scheduled_date > today) {
+    return {
+      error: `${assessment.scheduled_date} 수업의 테스트입니다. 그날부터 응시할 수 있습니다.`,
+    };
   }
   const [assigned] = await sql<{ id: string }[]>`
     select id from assignments
@@ -79,6 +93,8 @@ export async function startAttempt(options: {
 export async function saveResponse(options: {
   organizationId: string;
   attemptId: string;
+  /** 저장하려는 사람 — 조직만 맞추면 남의 응시에 쓸 수 있다 (아래 주석) */
+  learnerId: string;
   assessmentQuestionId: string;
   answer: unknown;
   clientSequence: number;
@@ -89,9 +105,16 @@ export async function saveResponse(options: {
   }
   const sql = getSharedSql();
 
+  /* 조회 조건에 learner_id가 **반드시** 있어야 한다.
+   * organization_id만 보면 같은 학원의 다른 학생 attemptId를 아는 순간 그
+   * 응시에 답안을 써 넣을 수 있고, 그 답안은 피해 학생의 채점·점수·숙련도로
+   * 그대로 흘러간다. 제출 경로(submitAndGrade)는 처음부터 learner_id를
+   * 검사했는데 저장 경로만 빠져 있었다 — 둘은 같은 기준이어야 한다. */
   const [attempt] = await sql<{ status: string }[]>`
     select status from attempts
-    where id = ${options.attemptId} and organization_id = ${options.organizationId}
+    where id = ${options.attemptId}
+      and organization_id = ${options.organizationId}
+      and learner_id = ${options.learnerId}
   `;
   if (!attempt) return { ok: false, message: "응시를 찾을 수 없습니다." };
   if (attempt.status !== "in_progress") {
@@ -308,6 +331,27 @@ export async function submitAndGrade(options: {
               )
             `;
           }
+        } else {
+          /* 정답 → 그 개념의 밀린 복습을 닫는다.
+           * 이게 없으면 review_items에 insert만 있고 완료 경로가 없어
+           * 학생 화면의 「복습 예정 N건」이 영원히 증가한다 (실측 결손).
+           * 닫는 기준은 "그 개념을 **기한 이후에** 다시 맞혔다" — 오늘 이후로
+           * 예정된 미래 복습까지 앞당겨 지우지는 않는다. */
+          await tx`
+            update review_items
+            set status = 'completed', completed_at = now(),
+                outcome = ${tx.json({
+                  closedBy: "graded_response",
+                  gradeDecisionId: decisionId,
+                  scoreRatio: ratio,
+                } as never)},
+                updated_at = now()
+            where organization_id = ${organizationId}
+              and learner_id = ${learnerId}
+              and concept_id = ${conceptId}
+              and status = 'scheduled'
+              and due_on <= ${evidenceDate}::date
+          `;
         }
 
         await tx`
@@ -603,6 +647,23 @@ export async function resolveGradingException(
             )
           `;
         }
+      } else {
+        // 교사가 정답으로 판정한 경우도 밀린 복습을 닫는다 (자동 채점과 같은 기준)
+        await tx`
+          update review_items
+          set status = 'completed', completed_at = now(),
+              outcome = ${tx.json({
+                closedBy: "grading_exception",
+                gradeDecisionId: decisionId,
+                scoreRatio: ratio,
+              } as never)},
+              updated_at = now()
+          where organization_id = ${input.organizationId}
+            and learner_id = ${exception.learner_id}
+            and concept_id = ${conceptId}
+            and status = 'scheduled'
+            and due_on <= ${evidenceDate}::date
+        `;
       }
     }
 

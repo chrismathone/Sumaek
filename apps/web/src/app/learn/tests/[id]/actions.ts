@@ -14,6 +14,8 @@ export async function saveAnswerAction(input: {
   if (!learner) return { ok: false, message: "로그인이 필요합니다." };
   const result = await saveResponse({
     organizationId: learner.user.organizationId,
+    // 폼이 아니라 **세션에서** 온 학습자여야 한다 (조작 불가)
+    learnerId: learner.learnerId,
     attemptId: input.attemptId,
     assessmentQuestionId: input.assessmentQuestionId,
     answer: input.answer,

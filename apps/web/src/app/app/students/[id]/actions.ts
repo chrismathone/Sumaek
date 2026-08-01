@@ -9,6 +9,10 @@ import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { todayInTimeZone } from "@/lib/format";
 import { materializeLearnerSchedule } from "@/lib/domain/schedule";
+import {
+  linkLearnerAccount,
+  unlinkLearnerAccount,
+} from "@/lib/domain/learner-account";
 
 /* 학생 오버라이드 (13장·인수 4) — 반 공통 루트를 복사하지 않고 차이만
  * 버전으로 저장한다. 반 루트·다른 학생에게 어떤 영향도 주지 않는다
@@ -17,6 +21,64 @@ import { materializeLearnerSchedule } from "@/lib/domain/schedule";
 export interface ActionResult {
   ok: boolean;
   message: string;
+}
+
+/* ── 학생 로그인 계정 연결 (4장) ──
+ * 계정 발급은 워크스페이스 운영 행위라 **settings 쓰기 권한**으로 막는다
+ * (기본 매트릭스에서 owner만 full). 교사가 학생을 등록하는 것과, 그 학생에게
+ * 로그인 수단을 주는 것은 무게가 다르다. */
+
+export interface AccountResult extends ActionResult {
+  /** 새로 만든 경우에만. 화면에서 한 번 보여 주고 저장하지 않는다. */
+  temporaryPassword?: string;
+}
+
+const linkSchema = z.object({
+  learnerId: z.uuid(),
+  email: z.string().min(3).max(255),
+});
+
+export async function linkLearnerAccountAction(
+  _prev: AccountResult | null,
+  formData: FormData,
+): Promise<AccountResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "학생 계정을 발급할 권한이 없습니다." };
+  }
+  const parsed = linkSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "입력이 올바르지 않습니다." };
+
+  const result = await linkLearnerAccount({
+    organizationId: user.organizationId,
+    learnerId: parsed.data.learnerId,
+    email: parsed.data.email,
+    actorUserId: user.userId,
+  });
+  revalidatePath(`/app/students/${parsed.data.learnerId}`);
+  return result;
+}
+
+export async function unlinkLearnerAccountAction(
+  _prev: AccountResult | null,
+  formData: FormData,
+): Promise<AccountResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "학생 계정을 관리할 권한이 없습니다." };
+  }
+  const parsed = z
+    .object({ learnerId: z.uuid() })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "대상이 지정되지 않았습니다." };
+
+  const result = await unlinkLearnerAccount({
+    organizationId: user.organizationId,
+    learnerId: parsed.data.learnerId,
+    actorUserId: user.userId,
+  });
+  revalidatePath(`/app/students/${parsed.data.learnerId}`);
+  return result;
 }
 
 /* ── 학습자 스코프 일정 실체화 (인수 4) ──

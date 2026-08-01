@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { studentAnswer, type StudentAnswer } from "@su-maek/contracts";
 import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
+import { todayInTimeZone } from "@/lib/format";
 import { startAttempt } from "@/lib/domain/attempt";
 import {
   AttemptRunner,
@@ -51,11 +53,19 @@ export default async function AttemptPage({
     organizationId: learner.user.organizationId,
     assessmentId,
     learnerId: learner.learnerId,
+    // 응시일 판정은 조직 시간대 기준 (UTC로 뽑으면 KST 00~09시에 하루 밀린다)
+    today: todayInTimeZone(learner.user.timezone),
   });
   if ("error" in started) {
     return (
       <div className="rounded-lg border border-rule bg-surface p-6 text-center">
         <p className="font-medium">{started.error}</p>
+        <Link
+          href="/learn/today"
+          className="mt-3 inline-block text-sm text-pen underline underline-offset-4"
+        >
+          오늘 학습으로 돌아가기
+        </Link>
       </div>
     );
   }
@@ -146,6 +156,13 @@ export default async function AttemptPage({
           attemptId={started.attemptId}
           questions={questions}
           timeLimitMinutes={assessment.time_limit_minutes}
+          startedAt={
+            (
+              await sql<{ started_at: Date | null }[]>`
+                select started_at from attempts where id = ${started.attemptId}
+              `
+            )[0]?.started_at?.toISOString() ?? null
+          }
         />
       </div>
     </div>

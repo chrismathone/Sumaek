@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { ActionToast } from "@/components/ActionToast";
 import {
   dismissAvailability,
   reportAvailability,
@@ -98,8 +99,11 @@ export function DismissButton({
         className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs hover:bg-paper disabled:opacity-60">
         {pending ? "처리 중…" : "무시"}
       </button>
-      {state && !state.ok && (
-        <span role="status" className="ml-2 text-xs text-grade">{state.message}</span>
+      {/* 결과는 알림으로 — 목록 행 안이라 여기에 그리면 행 높이가 늘어난다 */}
+      {state && (
+        <ActionToast ok={state.ok} resultKey={state}>
+          {state.message}
+        </ActionToast>
       )}
     </form>
   );
