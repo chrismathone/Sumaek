@@ -61,9 +61,74 @@ html {
   background-size: 24px 24px;
 }
 
-/* 모션 감소 존중 */
+/* ─────────────────────────────────────────────────────────────
+ * 스크롤바 없이 "더 있음"을 알리는 영역 (좌측 내비).
+ *
+ * 스크롤바는 숨긴다 — 어두운 사이드바에 밝은 막대가 얹히면 그것만 눈에 띈다.
+ * 대신 **잘린 쪽만** 흐려져 더 있다는 것을 알린다.
+ *
+ * `animation-timeline: scroll()`로 스크롤 위치에 따라 마스크를 바꾼다:
+ *   맨 위  → 아래만 흐림      가운데 → 위아래 흐림      맨 아래 → 위만 흐림
+ * 스크롤이 필요 없을 만큼 짧으면 타임라인이 진행하지 않아 **아무것도 흐려지지
+ * 않는다** — 안 잘린 항목을 흐리게 만드는 거짓말을 하지 않는다.
+ *
+ * 미지원 브라우저(사파리 등)에서는 마스크가 기본값(흐림 없음)으로 남는다.
+ * 스크롤은 그대로 되므로 기능은 잃지 않는다.
+ * ───────────────────────────────────────────────────────────── */
+.fade-scroll {
+  scrollbar-width: none;
+}
+.fade-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@supports (animation-timeline: scroll()) {
+  .fade-scroll {
+    animation: fade-scroll-edges linear both;
+    animation-timeline: scroll(self block);
+  }
+
+  @keyframes fade-scroll-edges {
+    /* 맨 위 — 아래만 잘려 있다 */
+    0% {
+      mask-image: linear-gradient(
+        to bottom,
+        #000 0,
+        #000 calc(100% - 28px),
+        transparent 100%
+      );
+    }
+    /* 가운데 — 양쪽 다 잘려 있다 */
+    1%,
+    99% {
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 28px,
+        #000 calc(100% - 28px),
+        transparent 100%
+      );
+    }
+    /* 맨 아래 — 위만 잘려 있다 */
+    100% {
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 28px,
+        #000 100%
+      );
+    }
+  }
+}
+
+/* 모션 감소 존중.
+ *
+ * `.fade-scroll`은 제외한다 — 저것은 움직임이 아니라 "여기서 잘렸다"는 표시이고,
+ * 스크롤 위치를 따라갈 뿐 스스로 애니메이션하지 않는다. 여기 걸리면
+ * animation-duration이 0.01ms로 고정돼 스크롤 타임라인이 어긋나고, 잘리지도
+ * 않은 항목이 흐려진 채로 굳는다. */
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.fade-scroll),
   *::before,
   *::after {
     animation-duration: 0.01ms !important;

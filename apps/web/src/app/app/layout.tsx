@@ -48,7 +48,16 @@ export default async function AppLayout({
             {user.organizationName}
           </p>
         </div>
-        <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4" aria-label="주요 메뉴">
+        {/* 스크롤바를 숨기고 잘린 쪽만 흐리게 한다 (globals.css의 .fade-scroll) —
+            어두운 사이드바에 밝은 막대가 얹히면 그것만 눈에 띈다. */}
+        {/* `bg-ink`를 여기서 한 번 더 준다 — 부모 aside가 이미 같은 배경이지만,
+            mask-image가 스태킹 컨텍스트를 만들면 대비 검사(axe)가 상위 배경을
+            찾지 못하고 밝은 페이지 배경으로 계산해 흰 글씨를 위반으로 잡는다
+            (실측: 1.07:1). 검사를 끄는 대신 배경을 명시해 사실을 알려 준다. */}
+        <nav
+          className="fade-scroll flex-1 space-y-4 overflow-y-auto bg-ink px-2 pb-4"
+          aria-label="주요 메뉴"
+        >
           {visibleGroups.map((group) => (
             <div key={group.title}>
               <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-white/50">
