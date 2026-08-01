@@ -122,6 +122,16 @@ export async function handleNotificationDispatch(
   );
   if (!fresh) return { skipped: "중복 이벤트 (inbox)" };
 
+  /* 하루 1회 묶음 키는 **조직 시간대**로 끊는다.
+   * UTC 날짜를 쓰면 KST 00:00~09:00 사이가 전날로 잡혀 하루 경계가
+   * 자정이 아니라 오전 9시에 넘어간다. */
+  const [org] = await sql<{ timezone: string }[]>`
+    select timezone from organizations where id = ${organizationId}
+  `;
+  const localDay = new Date().toLocaleDateString("en-CA", {
+    timeZone: org?.timezone ?? "Asia/Seoul",
+  });
+
   const templates: Record<
     string,
     { kind: string; title: string; link: string } | undefined
@@ -180,7 +190,7 @@ export async function handleNotificationDispatch(
           action: "확인",
         } as never)},
         ${template.link}, 'event', ${data.eventId},
-        ${`${data.eventType}:${new Date().toISOString().slice(0, 10)}`}
+        ${`${data.eventType}:${localDay}`}
       )
     `;
   }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
+import { trimScore } from "@/lib/format";
 
 export const metadata: Metadata = { title: "테스트 결과" };
 
@@ -66,9 +67,9 @@ export default async function ResultsPage({
 
       <div className="mt-4 rounded-lg border border-rule bg-surface p-5">
         <p className="text-3xl font-bold">
-          {attempt.total_score ?? "—"}점{" "}
+          {trimScore(attempt.total_score)}점{" "}
           <span className="text-base font-normal text-ink-soft">
-            / {attempt.max_score ?? "—"}점
+            / {trimScore(attempt.max_score)}점
           </span>
         </p>
         {attempt.status === "review_required" && (

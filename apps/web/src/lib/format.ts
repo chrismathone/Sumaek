@@ -43,12 +43,16 @@ export function formatIsoDay(iso: string): string {
   return `${Number(month)}월 ${Number(day)}일`;
 }
 
-/** 숫자 점수 문자열의 불필요한 소수점 제거 ("12.00" → "12") */
+/**
+ * 점수는 정수부만 보여준다 — 소수점은 버린다 ("40.00" → "40", "9.9" → "9").
+ * 반올림이 아니라 내림이다: 39.9점을 40점으로 보여주면 학생·학부모에게
+ * 실제보다 높은 점수를 알리는 셈이 된다.
+ */
 export function trimScore(value: string | null): string {
   if (value === null) return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return value;
-  return String(Number(n.toFixed(2)));
+  return String(Math.floor(n));
 }
 
 /** 0~1 점 추정치를 백분율 문자열로 ("0.725" → "73%") */

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
+import { trimScore } from "@/lib/format";
 
 export const metadata: Metadata = { title: "오늘 학습" };
 
@@ -75,7 +76,7 @@ export default async function LearnTodayPage() {
                         className="rounded-[var(--radius-control)] border border-pen px-4 py-2 text-sm font-medium text-pen"
                       >
                         {a.total_score !== null
-                          ? `결과 보기 (${a.total_score}/${a.max_score}점)`
+                          ? `결과 보기 (${trimScore(a.total_score)}/${trimScore(a.max_score)}점)`
                           : "결과 보기"}
                       </Link>
                     ) : (
