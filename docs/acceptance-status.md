@@ -10,16 +10,23 @@
 
 | 기호 | 뜻 | 개수 |
 |---|---|---|
-| ✅ | **검증됨** — 자동 테스트 또는 실행 검증이 존재하고 통과한다 | **15** |
-| 🟡 | **구현됨·부분 검증** — 코드는 있으나 전용 테스트가 없거나 일부 조건만 만족한다 | **38** |
+| ✅ | **검증됨** — 자동 테스트 또는 실행 검증이 존재하고 통과한다 | **18** |
+| 🟡 | **구현됨·부분 검증** — 코드는 있으나 전용 테스트가 없거나 일부 조건만 만족한다 | **35** |
 | 📋 | **준비됨** — 실환경 전용이라 스크립트·런북·어댑터로 준비했다 | **4** |
 | ❌ | **미구현** — 아직 코드가 없다 | **5** |
 
 > 2026-08-01 독립 검증(에이전트 32개가 근거 파일을 직접 대조 + 반박 검증)으로
-> **5·23·35를 강등**했다. 근거로 인용된 파일·라인은 사실상 전부 실재했고 ❌ 5건도
-> 전부 타당했다 — 없는 것을 있다고 적은 거짓은 없었다. 문제는 한 방향이었다:
+> **5·23·35를 강등**했다가, 같은 날 3순위 작업으로 **5·15·23을 검증 완료(✅)**로
+> 올렸다. 근거로 인용된 파일·라인은 사실상 전부 실재했고 ❌ 5건도 전부 타당했다 —
+> 없는 것을 있다고 적은 거짓은 없었다. 문제는 한 방향이었다:
 > **코드는 있는데 그 코드를 실행하는 테스트가 없거나, 제품 안에서 도달할 수 없는
 > 분기이거나, 근거로 든 테스트가 해당 인수를 실제로 검증하지 않았다.**
+>
+> 이번에 올린 세 건은 **변이 검증**을 거쳤다 — 검증 대상 코드를 일부러 망가뜨려
+> 테스트가 실제로 실패하는지 확인하고 원복했다. "테스트를 썼다"와 "그 테스트가
+> 무언가를 붙잡고 있다"는 다르고, 이 표가 반복해서 헛짚은 지점이 바로 그 차이였다.
+> 21(워커 재개)과 35(런북)는 작업했지만 🟡을 유지한다 — 각각 SIGKILL 리허설과
+> 롤링 배포 실체가 여전히 없기 때문이다.
 
 ## 총평
 
@@ -41,7 +48,7 @@
 | 2 | 데모 불참·점수 반영 | 🟡 | 마케팅 데모(`OrbitBoard.tsx`)는 여전히 미리 그린 SVG 토글. 다만 **실동작은 앱에서 검증됨** — 인수 5의 휴강 왕복 E2E가 같은 시나리오를 실DB로 완주한다. 데모를 실엔진에 연결하는 일만 남음 |
 | 3 | 온보딩·첫 루트 게시 | ✅ | **문구 정정(2026-08-01)** — 검증 게이트→게시→일정 실체화는 `route-builder.spec.ts:20-119`가 강하게 단언한다(빈 루트 거부, 검증 전 게시 버튼 부재, 실체화 건수). 다만 이전 서술의 "시드 없이 완주"는 사실이 아니었다 — 두 스펙 모두 **시드된 조직·교사 계정·과정 기간** 위에서 돈다(과정 기간이 없으면 반 만들기 폼 자체가 렌더되지 않는다: `settings/page.tsx:114`). 자립 생성 범위는 반·학습자·루트다. `createCoursePeriod`는 UI 폼에만 있고 테스트 호출 0건. 마법사형 안내 UI는 없다 |
 | 4 | 반 공통·학생 독립 루트 | 🟡 | 학생 독립 루트 생성(빌더 `kind=learner_route`) + 학생 오버라이드 생성·격리·취소 E2E(`route-builder.spec.ts:125` — 반 일정 비영향 검증, 불변 4 트리거·검사 I-03·I-04 존재). **오버라이드를 소비하는 학습자 스코프 실체화는 미구현** — 엔진(`applyOverrides`)은 준비됨 |
-| 5 | 불참 시 과거 보존 | 🟡 | **강등(2026-08-01)** — 휴강 재계산 왕복은 `availability.spec.ts`가 강하게 단언하지만, 정작 **과거 보존을 검증하는 테스트가 없다**. E2E가 쓰는 날짜가 전부 미래라 과거 세션을 한 번도 만들지 않고, 실데이터를 지키는 DB DELETE 가드(`domain/schedule.ts:313`)는 **삭제해도 깨지는 테스트가 저장소에 하나도 없다**. 검증된 것은 순수 함수 단위(`engine.test.ts:118`)뿐. 날짜 하드코딩은 제거됨(`e2e/lib/dates.ts`) |
+| 5 | 불참 시 과거 보존 | ✅ | **복구(2026-08-01)** — 강등 사유였던 "가드를 지워도 깨지는 테스트가 없다"가 해소됐다. `packages/db/test/schedule-history-preservation.test.ts` 7건이 DELETE 가드(`domain/schedule.ts:313-321`)의 조건을 하나씩 겨눈다 — 과거 planned·완료·잠긴 미래·취소·다른 반은 재실체화 후에도 남고, 미래의 잠기지 않은 planned만 교체된다. 실체화를 두 번 돌려 반복 검증한다. **변이 검증으로 실효성을 입증**: `status='planned'` 제거 → 3건 실패, `locked_at is null` 제거 → 2건, `session_date >= today` 제거 → 2건, `learning_group_id` 제거 → 1건. 원복 후 7/7 통과(프로덕션 코드 diff 0줄). `organization_id` 조건만 변이 불가 — group id가 전역 유일이라 그 조건을 지워도 삭제 범위가 넓어지지 않는다. 휴강 재계산 왕복은 `availability.spec.ts`가 그대로 덮는다 |
 | 6 | 오늘 수업 화면 | 🟡 | `app/today/page.tsx` 실 DB 조회, `auth.spec.ts:31`은 **빈 상태만** 검증. 교재 범위·학생별 차이·숙제·예외 표시는 미검증이며 숙제 도메인 자체가 없음 |
 | 7 | 검수·권한 통과 문항만 | 🟡 | `lib/domain/assessment.ts`가 `review_status='published' AND is_auto_assignable AND content_rights.status='usable'`로 풀을 좁힘 + `assessment/select.test.ts` 8건(선정 엔진). **제외되어야 할 문항이 실제로 제외되는 부정 케이스 테스트 없음** |
 | 8 | 자동 채점·예외함 분기 | ✅ | `grading/grade.test.ts` 13건(동치·단위 불일치·모호·서술형 분기) + `e2e/tests/full-loop.spec.ts` + `runner.spec.ts` 3건 + `apps/web/test/integration/grading-exception.test.ts` |
@@ -51,15 +58,15 @@
 | 12 | 중복·출처불명 게시 차단 | 🟡 | 검수 상태·`is_auto_assignable`·권한 게이트는 존재. **중복 탐지 해시 컬럼·계산 코드 없음**(`duplicate_groups` 테이블은 빈 채로 존재), 정답 불일치 교차검증 없음 |
 | 13 | 역할별 접근 제한 | ✅ | **결손 발견·수리(2026-08-01)** — `canAccess`가 내비 링크 숨김 1곳에서만 쓰여 **URL 직접 입력으로 학습자 개인정보 화면에 도달할 수 있었다**. `lib/auth/require-access.ts`를 만들어 `/app` 하위 22개 페이지에 읽기 게이트를 걸고, 거부 시 역할이 열 수 있는 화면으로 보낸다(`/app/no-access`). 회귀 검사 `apps/web/test/authz/read-gate.test.ts` 7건이 게이트 누락·메뉴 키 불일치·착지 경로 루프를 소스 수준에서 막는다 + 기존 `authz/matrix.test.ts`·RLS 9건 |
 | 14 | 감사 로그 추적 | ✅ | `audit_events`에 actor·reason·rule_version·before/after 전부 존재(`schema/workspace.ts:250-274`), 불변 트리거(`0001a_rls_core.sql:211-223`), 쓰기 3경로, `e2e/tests/teacher-app.spec.ts:52` 자동·수동 기록 확인 |
-| 15 | 360px~1440px·키보드 | 🟡 | 1024px 미만 메뉴 부재 해소 — details 디스클로저 내비(JS 없이 키보드 동작) + 스킵 링크, 390px E2E(`teacher-app.spec.ts:81`) 검증. **axe 자동 검사·라디오 포커스 표시·교사 앱 시각 회귀는 여전히 없음** |
+| 15 | 360px~1440px·키보드 | ✅ | **axe 도입(2026-08-01)** — `e2e/tests/a11y.spec.ts`가 공개 5화면 + 로그인 오류 상태 + 교사 앱 4화면을 `wcag2a`·`wcag2aa`로 검사하고 데스크톱·태블릿·모바일 3폭 전부 통과(21건). **규칙을 하나도 끄지 않았다** — 발견된 위반은 전부 앱을 고쳤다: `FlowTabs`의 `ol[role=tablist]>li` 구조 위반 3종(roving tabindex·aria-controls 추가), 좁은 폭에서 키보드로 밀 수 없던 가로 스크롤 영역 6곳(`ScrollableRegion` 신설), `--color-grade` 대비 미달(#c9453d 3.87:1 → #b53430 4.87:1). `visual-check.mjs`에 교사 앱 6화면을 추가했고 **그 확장이 실제 회귀를 잡았다**(mobile `/app/settings` 가로 스크롤 — 요일 7칸 366px > 360px, `flex-wrap`으로 수정). 한계: 기준이 WCAG 2.0 A·AA라 2.1 추가 규칙은 미포함(보조 스캔은 0건), axe `incomplete`는 단언하지 않음(장식 기호·SVG 배경 미확정), 초기 렌더 + 로그인 오류 상태만 본다 |
 | 16 | 재시도·중복·부분 실패 | 🟡 | 멱등 3종 동작: 큐 `jobs_idempotency_uq`, Inbox `(consumer,event_id)`, `assessments_idempotent_uq`. E2E 2건(`schedule.spec.ts` 재생성 동수, `assessment.spec.ts` 중복 생성 차단). **부분 실패·장시간 재접속 시나리오 미검증** |
 | 17 | 빌드·린트·테스트 통과 | 🟡 | **린트 결손 해소(2026-08-01)** — `eslint.config.mjs`(flat, typescript-eslint + react-hooks + @next/next) 신설, `pnpm lint` 실동작(0 오류). CI도 생겼다 — `.github/workflows/ci.yml`이 boundary→lint→typecheck→test→build를 돌리며 시크릿 없이 통과함을 실측했다. 단위·통합 435건, E2E 32건 통과. **접근성 자동 검사(axe)는 여전히 0건** |
 | 18 | 가짜 데이터·TODO 없음 | 🟡 | `TODO`/`FIXME` 문자열 0건, `/app/**` 하드코딩 데이터 0건(전부 실 DB). 빈 상태 CTA는 이제 실제 등록 폼(설정)과 빌더로 이어진다. "준비 중" 문구 2곳 잔존(reports·settings의 정책 편집·휴일 달력·교직원 초대) |
 | 19 | 10회 중복 제출 1회 처리 | 🟡 | `lib/domain/attempt.ts:145-166` 조건부 UPDATE로 원자적 1회 전이 + 재제출 시 동일 결과 반환. **10회 동시 전송 부하 테스트 없음** |
 | 20 | 동시 수정 충돌 표시 | 🟡 | `route_plans.lock_version` + 편집·게시 액션의 토큰 검증 — 불일치는 VERSION_CONFLICT로 명시 거부(마지막 저장이 조용히 이기지 않음), E2E가 낡은 토큰 조작으로 검증. **충돌 diff(양쪽 변경 비교) 화면은 없음** — 메시지·새로 고침 안내까지만 |
-| 21 | 워커 종료 후 재개 | 🟡 | `checkpointJob()` 실사용 — 재계산 핸들러가 그룹 경계마다 기록하고, 회수된 작업은 완료 그룹을 건너뛴다(Inbox 중복 판정이 체크포인트를 재개로 해석). **프로세스 강제 종료 후 재개를 겨냥한 자동 테스트는 없음** |
+| 21 | 워커 종료 후 재개 | 🟡 | **재개 경로 검증(2026-08-01), 등급 유지.** `apps/worker/test/handlers/schedule-resume.test.ts` 9건이 "중단 → 리스 만료 회수 → 재개"를 라이브 DB로 검증한다 — 체크포인트 보존, 소유자 교체·attempts 증가, 완료 그룹 건너뜀, **재작업 없음**(완료 그룹의 세션 ID 집합이 재개 전후 동일 — 실체화가 지우고 새 uuid로 다시 넣으므로 ID가 같으면 그 경로를 타지 않았다는 뜻), inbox 중복 대조군. 변이 3종으로 실효성 입증(건너뛰기 제거 → 2건 실패, 체크포인트 예외 제거 → 3건, `checkpointJob` 제거 → 5건). 6회 연속 실행 전부 통과. **여전히 없는 것**: 실제 SIGKILL 리허설. "체크포인트 이후·완료 이전"을 맞히는 타이밍 경주라 플레이키를 피할 수 없어 넣지 않았다 — 따라서 **커넥션 강제 절단 시 열린 트랜잭션 롤백 경로는 미검증**이다. 그래서 ✅로 올리지 않는다 |
 | 22 | 리비전 검증 실패 시 이전 유지 | ✅ | 검증 게이트 — 배치 불가 충돌 시 세션 무변경·이전 활성 리비전 유지·실패 변경안만 기록. 라이브 DB 통합 2건(`schedule-gate.test.ts`): 슬롯 0 → 세션·리비전 0 + failed 기록 / 성공 일정 위 전 기간 휴강 → 리비전·세션 불변 |
-| 23 | AI·OCR 장애 회로 차단 | 🟡 | **강등(2026-08-01)** — 엔진 7건(주입 시계)은 견고하나 근거란의 나머지가 미검증이다. "공급자 이름별 독립 차단" 테스트 0건(7건 모두 단일 `test-provider`), "실패 시 파일 uploaded 복귀"도 테스트 0건. 유일한 `MockAiProvider`가 절대 실패하지 않아 장애를 실연할 수단 자체가 없다 |
+| 23 | AI·OCR 장애 회로 차단 | ✅ | **복구(2026-08-01)** — 강등 사유 둘을 다 덮었다. 근본 원인은 `MockAiProvider`가 절대 실패하지 않아 장애 실연 수단이 없었던 것 — `FailingAiProvider`(`mock-failing`, 명시 설정 시에만 선택. `.env`·CI·문서 어디에도 없음을 확인)를 만들었다. **공급자별 독립 차단** 4건 추가(7→11건)를 변이로 입증: `getSharedBreaker`가 이름을 무시하도록 바꾸면 새 4건만 실패하고 기존 7건은 통과 — 기존 테스트가 이 주장을 검증하지 못했다는 강등 사유가 그대로 재현된다. **파일 uploaded 복귀**는 `packages/db/test/ingestion-failure-live.test.ts` 4건이 라이브 경로로 확인(대조군으로 `updated_at`을 비교해 "extracting까지 갔다 돌아왔다"를 증명). **부수 발견을 실측하고 고쳤다**: `createAiProvider`가 try 밖에 있어 `AI_PROVIDER=anthropic`이면 catch에 닿지 못하고 파일이 `extracting`에 갇혔다 — 수정 전 코드로 재현(`expected 'extracting' to be 'uploaded'`) 후 try 안으로 이동 |
 | 24 | DLQ 이력·재처리 | 🟡 | `pnpm requeue-dlq` — --dry-run·topic/limit 필터·last_error 보존·감사 기록. 실행 검증됨(현재 DLQ 0건이라 재처리 실동작은 미확인). UI는 없음 |
 | 25 | 골드셋 채점 정확도 | 🟡 | `grading/grade.test.ts:119` 모호한 답 미확정, `:101` 단위 불일치 예외함 이동 등 판정 규칙은 검증. **정확도 99.99% 목표를 측정하는 골드셋 하네스 없음**(SLO 문서에만 존재) |
 | 26 | 저품질 AI 결과 유입 0건 | 🟡 | 출제 풀 필터에 `is_auto_assignable` + 권한 `usable` 조건 존재, 반입이 저신뢰(`confidence < 임계`)를 검수함으로 보냄 (I-07·I-13 검사가 상시 감시). **유입 0건을 지키는 회귀 테스트 없음** |
@@ -71,7 +78,7 @@
 | 32 | 캐시·검색 재구축 | 🟡 | `scripts/rebuild-read-models.mjs` 실동작 — 유일한 파생 읽기 모델(숙련도)을 증거+활성 정책에서 재생성, 이벤트 미발행(연쇄 방지), --dry-run 정합 검사. 실행 검증됨(동일 6건). **검색 인덱스·캐시 계층은 애초에 없음** — 재구축 대상이 생기면 확장 |
 | 33 | DB 장애 후 유실 0·RTO | 📋 | 런북 + `scripts/verify-recovery.mjs` + `packages/db/src/checks/invariants.sql`(29검사) **실작성·실행 완료 — 현 DB 위반 0행**. PITR 복원 실훈련만 실환경 몫 |
 | 34 | 백업 복구 검증 | 📋 | 검증 스크립트 결손 해소(33과 동일 하네스, RECOVERY_DATABASE_URL 대상 전환 지원). 실제 격리 복구 리허설은 실환경 몫 |
-| 35 | 롤링 배포·스키마 되돌리기 | 🟡 | **강등(2026-08-01)** — 이 행은 유일하게 **사실이 아닌 서술**을 담고 있었다. "전 SQL `if not exists` 가드"는 거짓이다(CREATE TABLE 89건·INDEX 141건 중 가드 0건). 멱등성의 실제 출처는 `su_maek_migrations` 원장이다. 런북이 존재하지 않는 `*.down.sql`을 "필수 첨부"라 단언하고 죽은 객체명도 다수다(`schema_migrations`→실제 `su_maek_migrations`, `inbox_messages`→`inbox_events`). CI는 생겼으나 롤링 배포 실체(Dockerfile·health 엔드포인트)는 없다 |
+| 35 | 롤링 배포·스키마 되돌리기 | 🟡 | **강등(2026-08-01) → 런북 정정 완료(2026-08-01), 등급 유지.** 거짓 서술 11건을 실측으로 확인해 고쳤다(RB-14 0장에 "무엇이 왜 틀렸나" 전체 기록): `schema_migrations`→`su_maek_migrations`(컬럼도 `name`·`applied_at` 둘뿐), `inbox_messages.outcome`→`inbox_events`(outcome 컬럼 자체가 없어 `skipped_unknown` 판정은 애초에 불가), 존재하지 않는 `*.down.sql` "필수 첨부" 단언, 실행되어 버리는 `migrate --dry-run`(argv 미독), 없는 스크립트 3종(`test:rls`·`test:smoke`·`test:compat`), 없는 트리거명 4종, `jobs.run_after`·`queue` 컬럼 부재, V-14 kill switch 판정 반전. **가장 중대한 정정**: "미지 event_type은 Outbox에 남아 소비자 배포 후 자동 해소"는 거짓 — 디스패처가 작업 0건인 채 `delivered`로 표시해 **영구 유실**된다(`queue.ts:340-344`). 배포 순서 규칙을 "소비자 먼저"로 뒤집고 수기 복구 절차(5.8.1)를 신설. "전 SQL `if not exists` 가드"(가드 0건 / TABLE 89·INDEX 141)는 원발점인 ADR-0004·assumptions C-06·backup-recovery 8.2까지 정정. **문서만 고쳤다** — `*.down.sql` 0건, CI 게이트 2종(역방향·드리프트), 계약 테스트, 합성 모니터링 SYN-1~5, 롤링 배포 실체(Dockerfile·health 엔드포인트)는 여전히 없다. RB-14 9.1에 미구현 목록으로 명시 |
 | 36 | AI 모델 카나리 승격 중단 | ❌ | 카나리·섀도·모델 평가 코드 0건. 필요: 모델 버전 레지스트리 + 정확도·지연·비용 게이트 |
 | 37 | 조직 AI 비용 한도 | ✅ | **도달 불가 분기 수리(2026-08-01)** — `ai_budgets`에 **쓰는 코드가 0건**이라 `limit_usd`가 항상 null이었고 100% 차단은 죽은 코드였다. `setAiBudget` 서버 액션(권한 게이트·감사 before/after)과 설정 화면 폼(`AiBudgetForm.tsx`)을 붙였다. 실DB 통합 4건(`packages/db/test/ai-budget-live.test.ts`)이 **한도 없음→경고→차단→해제** 전 구간이 실제로 도달함을 증명한다. 월 경계는 조직 시간대 기준으로 교정 |
 | 38 | 2배 피크 부하 SLO | 📋 | `scripts/load/submit-answers.k6.js`(875 RPS ramping-arrival-rate) + README(서버 액션 제약·대안 명시). 합의상 "스크립트 준비"가 완료 기준 — 실행은 실환경 몫 |

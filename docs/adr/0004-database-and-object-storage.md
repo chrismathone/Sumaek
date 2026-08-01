@@ -64,9 +64,16 @@
 |---|---|---|
 | 생성 | `NNNN_<name>.sql` | Drizzle 생성 DDL |
 | 수기 | `NNNNa_<name>.sql` | RLS 정책, 트리거, EXCLUDE 제약, 함수, 뷰, `state_transitions` INSERT |
-| 역방향 | `NNNN_<name>.down.sql` | 필수 (제거 단계 제외) |
+| 역방향 | `NNNN_<name>.down.sql` | 필수 (제거 단계 제외) — **미이행: 저장소에 0건** |
 
-**전부 멱등**. 러너가 재실행 가능해야 한다.
+**재실행 안전성의 출처는 `su_maek_migrations` 원장**이다. 러너가 원장에 있는 파일을
+건너뛰고, 적용과 기록을 한 트랜잭션에 커밋한다.
+
+> **정정(2026-08-01)**: 원문은 "전부 멱등. 러너가 재실행 가능해야 한다"였다. 이것이
+> "SQL 자체에 `if not exists` 가드가 있다"로 읽혀 런북 RB-14에 거짓 서술로 번졌다.
+> 실제로 Drizzle 생성물(`NNNN_*.sql`)에는 가드가 **0건**이다(`CREATE TABLE` 89·`CREATE INDEX` 141).
+> 멱등한 것은 **수기 파일(`NNNNa_*.sql`)뿐**이며, 파일 단위 재실행 방지는 원장이 한다.
+> 상세: [../phase0/backup-recovery.md](../phase0/backup-recovery.md) 8.2.
 
 ### 4. 파티셔닝
 

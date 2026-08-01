@@ -103,7 +103,7 @@
 | ID | 제약 | 이유 |
 |---|---|---|
 | C-05 | `drizzle-kit push` 금지 | eywa 실운영 규약. 마이그레이션 2갈래(`NNNN_*.sql` 생성 + `NNNNa_*.sql` 수기 RLS·트리거)만 허용 |
-| C-06 | 마이그레이션은 전부 멱등 | 자체 러너 `packages/db/src/migrate.ts`가 재실행 가능해야 함 |
+| C-06 | 마이그레이션 재실행이 안전해야 함 | 자체 러너 `packages/db/src/migrate.ts`가 **`su_maek_migrations` 원장**으로 적용된 파일을 건너뛴다. 원문의 "전부 멱등"은 SQL에 `if not exists` 가드가 있다는 뜻으로 오독되어 런북에 거짓 서술을 낳았다 — 가드는 수기 `NNNNa_*.sql`에만 있다 (2026-08-01 정정, backup-recovery 8.2) |
 | C-07 | 인증 게이트는 쿠키 존재 여부로만 판정 | eywa 실사고 2(로그인 무한루프). 진짜 검증은 shell layout |
 | C-08 | 권한 매트릭스 조회 실패 시 fail-open | eywa 실사고 3(관리자 락아웃). 단, DB RLS는 fail-closed |
 | C-09 | 전역 잠금 금지 | 일정 엔진은 범위 lease + 입력 버전 비교만 사용 |

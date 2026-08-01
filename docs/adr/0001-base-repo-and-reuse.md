@@ -75,7 +75,7 @@ scripts         boundary-check · verify-recovery · dr-drill 등
 | 6 | RESTRICTIVE 역할 게이트 | `0158a:34-56` | 역할을 SQL에 하드코딩하지 않고 `organizations.permission_overrides` jsonb → DEFAULTS 순 해석 |
 | 7 | Storage RLS 경로 선두 세그먼트 | `0007a:6-12` | `{organization_id}/...` |
 | 8 | **RLS 회귀 테스트 하네스** | `tests/integration/rls-isolation.test.ts:52-66` | `set local role authenticated` 필수. 안 하면 false-green |
-| 9 | 마이그레이션 2갈래 규약 | — | `NNNN_*.sql`(생성) + `NNNNa_*.sql`(수기 RLS·트리거), 전부 멱등, `drizzle-kit push` 금지 |
+| 9 | 마이그레이션 2갈래 규약 | — | `NNNN_*.sql`(생성) + `NNNNa_*.sql`(수기 RLS·트리거), `drizzle-kit push` 금지. 재실행 안전성은 **`su_maek_migrations` 원장**이 준다 — 멱등 가드가 있는 것은 `NNNNa_*.sql`뿐이다 (2026-08-01 정정) |
 | 10 | 3-게이트 소비 패턴 | `requireAccess`/`apiAccess`/`getPermMatrix` | 동일. `getPermMatrix`는 **fail-open**(실사고 3) |
 | 11 | 피처 폴더 규약 | `src/features/<도메인>/server/{queries,actions}.ts` | 동일 |
 
