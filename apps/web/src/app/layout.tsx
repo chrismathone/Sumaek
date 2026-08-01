@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
+// KaTeX CSS는 **루트에서 한 번** 로드한다. 이게 없으면 output:"htmlAndMathml"의
+// .katex-mathml이 숨겨지지 않아 수식이 두 번 보인다 (x²+y=3 뒤에 x2 + y = 3).
+// 이전에는 문항 상세·인쇄 레이아웃에만 있어서 학생 응시 화면이 깨져 있었다.
+import "katex/dist/katex.min.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
