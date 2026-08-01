@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
-import type { RouteValidationReport } from "@su-maek/core/routes";
+import {
+  encodeRouteSnapshot,
+  type RouteValidationReport,
+} from "@su-maek/core/routes";
 import { requireAccess } from "@/lib/auth/require-access";
 import { MaterializeButton } from "../MaterializeButton";
 import {
@@ -11,36 +14,12 @@ import {
   NodeRowActions,
   ValidatePublishControls,
 } from "../RouteBuilderForms";
+import { NODE_KIND_LABEL, PLAN_STATUS_LABEL } from "../shared";
 
 export const metadata: Metadata = { title: "루트 빌더" };
 
 /* 루트 빌더 (13장) — 노드 편집 → 검증 → 게시.
  * 게시된 버전은 불변이며 편집은 초안 버전에서만 한다 (불변 조건 2). */
-
-const NODE_KIND_LABEL: Record<string, string> = {
-  concept_lesson: "개념 수업",
-  problem_solving: "문제 풀이",
-  book_range: "교재 범위",
-  homework: "숙제",
-  daily_test: "일일테스트",
-  confirmation_test: "확인테스트",
-  wrong_answer_review: "오답 복습",
-  remediation: "보충",
-  cumulative_review: "누적 복습",
-  buffer: "버퍼",
-  break: "휴강 구간",
-  custom: "사용자 정의",
-};
-
-const PLAN_STATUS_LABEL: Record<string, string> = {
-  draft: "초안",
-  validating: "검증 중",
-  needs_fix: "수정 필요",
-  publishable: "게시 가능",
-  published: "게시됨",
-  superseded: "대체됨",
-  archived: "보관",
-};
 
 interface NodeRow {
   id: string;
@@ -119,6 +98,24 @@ export default async function RouteBuilderPage({
   const conceptNameById = new Map(concepts.map((c) => [c.id, c.name]));
   const report = draftVersion?.validation_report ?? null;
 
+  /* 편집 폼이 함께 실어 보낼 "읽은 시점"의 노드 목록 (인수 20 충돌 diff).
+   * 충돌이 나면 서버가 이 스냅샷과 저장된 최신 상태를 비교해 무엇이 달라졌는지
+   * 항목 단위로 돌려준다 — 왜 폼에 싣는지는 core/routes/conflict.ts 참고.
+   *
+   * lock_version을 노드보다 **먼저** 읽는 순서가 중요하다: 그 사이에 남이
+   * 저장하면 토큰만 낡은 쪽으로 어긋나므로 최악이 "이미 반영된 변경까지
+   * 충돌로 보고"이고, 순서를 뒤집으면 지나간 상태를 최신으로 착각한다.
+   * 쓰기 허용 여부는 어차피 서버의 조건부 UPDATE가 정한다. */
+  const baselineNodes = encodeRouteSnapshot(
+    draftNodes.map((n) => ({
+      id: n.id,
+      kind: n.kind,
+      title: n.title,
+      sortOrder: n.sort_order,
+      expectedMinutes: n.expected_minutes ?? 60,
+    })),
+  );
+
   return (
     <div className="mx-auto max-w-4xl">
       <p className="font-mono text-xs text-ink-soft">
@@ -179,6 +176,7 @@ export default async function RouteBuilderPage({
                       planId={plan.id}
                       nodeId={n.id}
                       lockVersion={plan.lock_version}
+                      baselineNodes={baselineNodes}
                     />
                   </li>
                 );
@@ -191,6 +189,7 @@ export default async function RouteBuilderPage({
             <AddNodeForm
               planId={plan.id}
               lockVersion={plan.lock_version}
+              baselineNodes={baselineNodes}
               concepts={concepts}
             />
           </div>
@@ -223,6 +222,7 @@ export default async function RouteBuilderPage({
             planId={plan.id}
             canPublish={draftVersion.status === "publishable" && report?.ok === true}
             lockVersion={plan.lock_version}
+            baselineNodes={baselineNodes}
           />
         </section>
       ) : (

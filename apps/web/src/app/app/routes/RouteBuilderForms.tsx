@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { ActionToast } from "@/components/ActionToast";
 import {
   addRouteNode,
   createDraftVersion,
@@ -11,6 +12,8 @@ import {
   validateDraft,
   type BuilderResult,
 } from "./actions";
+import { ConflictPanel } from "./ConflictPanel";
+import { BASELINE_FIELD } from "./shared";
 
 function StatusLine({ state }: { state: BuilderResult | null }) {
   if (!state) return null;
@@ -103,10 +106,13 @@ const NODE_KIND_OPTIONS = [
 export function AddNodeForm({
   planId,
   lockVersion,
+  baselineNodes,
   concepts,
 }: {
   planId: string;
   lockVersion: number;
+  /** 이 화면을 그릴 때의 노드 목록 — 충돌 시 비교 기준 (인수 20) */
+  baselineNodes: string;
   concepts: Array<{ id: string; name: string }>;
 }) {
   const [state, action, pending] = useActionState<BuilderResult | null, FormData>(
@@ -114,9 +120,14 @@ export function AddNodeForm({
     null,
   );
   return (
+    /* 충돌 화면은 폼 **밖**에 둔다 — 폼 안에 두면 <form> 중첩이 되어 그 안의
+       "다시 적용" 버튼이 바깥 폼(낡은 토큰)을 제출한다. 실제로 재현했다:
+       다시 적용이 같은 충돌을 무한히 되풀이했다. */
+    <>
     <form action={action} className="mt-3 space-y-3">
       <input type="hidden" name="planId" value={planId} />
       <input type="hidden" name="expectedLockVersion" value={lockVersion} />
+      <input type="hidden" name={BASELINE_FIELD} value={baselineNodes} />
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           종류
@@ -161,6 +172,15 @@ export function AddNodeForm({
       )}
       <StatusLine state={state} />
     </form>
+    {state?.conflict && (
+      <ConflictPanel
+        conflict={state.conflict}
+        planId={planId}
+        action={action}
+        pending={pending}
+      />
+    )}
+    </>
   );
 }
 
@@ -168,10 +188,12 @@ export function NodeRowActions({
   planId,
   nodeId,
   lockVersion,
+  baselineNodes,
 }: {
   planId: string;
   nodeId: string;
   lockVersion: number;
+  baselineNodes: string;
 }) {
   const [moveState, moveAction, movePending] = useActionState<
     BuilderResult | null,
@@ -183,12 +205,14 @@ export function NodeRowActions({
   >(deleteRouteNode, null);
   const busy = movePending || deletePending;
   const error = [moveState, deleteState].find((s) => s && !s.ok);
+  const conflict = moveState?.conflict ?? deleteState?.conflict ?? null;
   return (
     <span className="flex items-center gap-1">
       <form action={moveAction} className="inline">
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
         <input type="hidden" name="expectedLockVersion" value={lockVersion} />
+        <input type="hidden" name={BASELINE_FIELD} value={baselineNodes} />
         <input type="hidden" name="direction" value="up" />
         <button type="submit" disabled={busy} aria-label="위로"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs hover:bg-paper disabled:opacity-60">
@@ -199,6 +223,7 @@ export function NodeRowActions({
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
         <input type="hidden" name="expectedLockVersion" value={lockVersion} />
+        <input type="hidden" name={BASELINE_FIELD} value={baselineNodes} />
         <input type="hidden" name="direction" value="down" />
         <button type="submit" disabled={busy} aria-label="아래로"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs hover:bg-paper disabled:opacity-60">
@@ -209,12 +234,27 @@ export function NodeRowActions({
         <input type="hidden" name="planId" value={planId} />
         <input type="hidden" name="nodeId" value={nodeId} />
         <input type="hidden" name="expectedLockVersion" value={lockVersion} />
+        <input type="hidden" name={BASELINE_FIELD} value={baselineNodes} />
         <button type="submit" disabled={busy} aria-label="삭제"
           className="rounded-[var(--radius-control)] border border-rule px-2 py-1 text-xs text-grade hover:bg-grade-soft disabled:opacity-60">
           삭제
         </button>
       </form>
-      {error && <span className="text-xs text-grade">{error.message}</span>}
+      {/* 행 안 액션의 결과 — 그 자리에 그리면 행 높이가 늘어난다.
+          충돌은 자기 화면(fixed)이 이미 메시지를 싣고 있으므로 겹쳐 띄우지 않는다. */}
+      {error && !conflict && (
+        <ActionToast ok={false} resultKey={error.message}>
+          {error.message}
+        </ActionToast>
+      )}
+      {conflict && (
+        <ConflictPanel
+          conflict={conflict}
+          planId={planId}
+          action={conflict.intent.type === "delete" ? deleteAction : moveAction}
+          pending={busy}
+        />
+      )}
     </span>
   );
 }
@@ -223,10 +263,12 @@ export function ValidatePublishControls({
   planId,
   canPublish,
   lockVersion,
+  baselineNodes,
 }: {
   planId: string;
   canPublish: boolean;
   lockVersion: number;
+  baselineNodes: string;
 }) {
   const [validateState, validateAction, validatePending] = useActionState<
     BuilderResult | null,
@@ -250,6 +292,7 @@ export function ValidatePublishControls({
           <form action={publishAction}>
             <input type="hidden" name="planId" value={planId} />
             <input type="hidden" name="expectedLockVersion" value={lockVersion} />
+            <input type="hidden" name={BASELINE_FIELD} value={baselineNodes} />
             <button type="submit" disabled={publishPending}
               className="rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
               {publishPending ? "게시 중…" : "게시"}
@@ -258,6 +301,14 @@ export function ValidatePublishControls({
         )}
       </div>
       <StatusLine state={publishState ?? validateState} />
+      {publishState?.conflict && (
+        <ConflictPanel
+          conflict={publishState.conflict}
+          planId={planId}
+          action={publishAction}
+          pending={publishPending}
+        />
+      )}
     </div>
   );
 }

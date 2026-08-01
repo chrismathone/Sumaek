@@ -6,7 +6,15 @@ import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
-import { validateRoute, type RouteValidationReport } from "@su-maek/core/routes";
+import {
+  buildRouteConflict,
+  decodeRouteSnapshot,
+  validateRoute,
+  type RouteConflict,
+  type RouteEditIntent,
+  type RouteNodeSnapshot,
+  type RouteValidationReport,
+} from "@su-maek/core/routes";
 import type { GraphEdge } from "@su-maek/core/curriculum";
 import type { IsoDate } from "@su-maek/core/shared";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -15,6 +23,7 @@ import {
   materializeGroupSchedule,
   type MaterializeResult,
 } from "@/lib/domain/schedule";
+import { BASELINE_FIELD } from "./shared";
 
 export async function materializeSchedule(
   _prev: MaterializeResult | null,
@@ -83,6 +92,8 @@ export async function materializeSchedule(
 export interface BuilderResult {
   ok: boolean;
   message: string;
+  /** 동시 수정 충돌일 때만 채워진다 — 내 변경 vs 저장된 최신 상태 비교 (인수 20) */
+  conflict?: RouteConflict;
 }
 
 function deny(): BuilderResult {
@@ -94,7 +105,7 @@ function deny(): BuilderResult {
  * 거부된다 (계약 오류 코드 VERSION_CONFLICT). ── */
 
 const VERSION_CONFLICT_MESSAGE =
-  "다른 사용자가 이 루트를 방금 수정했습니다 (VERSION_CONFLICT). 화면을 새로 고침해 최신 상태를 확인한 뒤 다시 시도하세요.";
+  "다른 사용자가 이 루트를 방금 수정했습니다 (VERSION_CONFLICT). 내 변경은 아직 저장되지 않았습니다 — 아래에서 저장된 최신 상태와 비교한 뒤 결정하세요.";
 
 async function bumpLockOrConflict(
   planId: string,
@@ -109,6 +120,67 @@ async function bumpLockOrConflict(
       and lock_version = ${expected}
   `;
   return updated.count > 0;
+}
+
+/** 폼이 실어 온 "읽은 시점" 스냅샷 — 없거나 깨졌으면 null (비교 불가로 정직하게) */
+function baselineFrom(formData: FormData): RouteNodeSnapshot[] | null {
+  const raw = formData.get(BASELINE_FIELD);
+  return decodeRouteSnapshot(typeof raw === "string" ? raw : null);
+}
+
+/**
+ * 충돌 거부를 **비교 가능한 형태**로 만들어 돌려준다 (인수 20).
+ *
+ * 여기서 읽는 최신 상태는 lock_version과 노드를 따로 조회한 결과다. 순서가
+ * 중요하다 — 토큰을 먼저 읽으면 토큰이 노드보다 오래된 쪽으로만 어긋나므로
+ * 최악이 "diff가 실제보다 적게 보인다"이고, 반대로 하면 이미 지나간 상태를
+ * 최신으로 착각할 수 있다. 어느 쪽이든 쓰기 허용 여부는 위의 조건부 UPDATE가
+ * 정하므로 조용히 덮어쓰는 일은 없다.
+ */
+async function conflictResult(params: {
+  planId: string;
+  organizationId: string;
+  expectedLockVersion: number;
+  intent: RouteEditIntent;
+  baseline: RouteNodeSnapshot[] | null;
+}): Promise<BuilderResult> {
+  const sql = getSharedSql();
+  const [plan] = await sql<{ lock_version: number }[]>`
+    select lock_version from route_plans
+    where id = ${params.planId} and organization_id = ${params.organizationId}
+  `;
+  const version = await findDraftVersion(params.organizationId, params.planId);
+  const rows = version
+    ? await sql<
+        {
+          id: string;
+          kind: string;
+          title: string;
+          sort_order: number;
+          expected_minutes: number | null;
+        }[]
+      >`
+        select id, kind, title, sort_order, expected_minutes
+        from route_nodes where route_version_id = ${version.id}
+        order by sort_order
+      `
+    : [];
+
+  const conflict = buildRouteConflict({
+    baseline: params.baseline,
+    latest: rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      title: r.title,
+      sortOrder: r.sort_order,
+      expectedMinutes: r.expected_minutes ?? 60,
+    })),
+    intent: params.intent,
+    baseLockVersion: params.expectedLockVersion,
+    currentLockVersion: plan?.lock_version ?? params.expectedLockVersion,
+  });
+
+  return { ok: false, message: VERSION_CONFLICT_MESSAGE, conflict };
 }
 
 const createPlanSchema = z.object({
@@ -275,7 +347,19 @@ export async function addRouteNode(
       parsed.data.expectedLockVersion,
     ))
   ) {
-    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+    return await conflictResult({
+      planId: plan.id,
+      organizationId: user.organizationId,
+      expectedLockVersion: parsed.data.expectedLockVersion,
+      baseline: baselineFrom(formData),
+      intent: {
+        type: "add",
+        kind: parsed.data.kind,
+        title: parsed.data.title,
+        expectedMinutes: parsed.data.expectedMinutes,
+        conceptIds,
+      },
+    });
   }
 
   await sql`
@@ -320,7 +404,13 @@ export async function deleteRouteNode(
       parsed.data.expectedLockVersion,
     ))
   ) {
-    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+    return await conflictResult({
+      planId: parsed.data.planId,
+      organizationId: user.organizationId,
+      expectedLockVersion: parsed.data.expectedLockVersion,
+      baseline: baselineFrom(formData),
+      intent: { type: "delete", nodeId: parsed.data.nodeId },
+    });
   }
   const deleted = await sql`
     delete from route_nodes
@@ -358,7 +448,17 @@ export async function moveRouteNode(
       parsed.data.expectedLockVersion,
     ))
   ) {
-    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+    return await conflictResult({
+      planId: parsed.data.planId,
+      organizationId: user.organizationId,
+      expectedLockVersion: parsed.data.expectedLockVersion,
+      baseline: baselineFrom(formData),
+      intent: {
+        type: "move",
+        nodeId: parsed.data.nodeId,
+        direction: parsed.data.direction,
+      },
+    });
   }
 
   const [node] = await sql<{ id: string; sort_order: number }[]>`
@@ -607,7 +707,13 @@ export async function publishRoute(
       parsed.data.expectedLockVersion,
     ))
   ) {
-    return { ok: false, message: VERSION_CONFLICT_MESSAGE };
+    return await conflictResult({
+      planId: plan.id,
+      organizationId: user.organizationId,
+      expectedLockVersion: parsed.data.expectedLockVersion,
+      baseline: baselineFrom(formData),
+      intent: { type: "publish" },
+    });
   }
 
   const [version] = await sql<
