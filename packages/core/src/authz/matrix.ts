@@ -39,6 +39,7 @@ export const MENU_KEYS = [
   "routes",
   "curriculum_studio",
   "books",
+  "materials",
   // 평가·문항
   "tests",
   "question_bank",
@@ -82,6 +83,12 @@ export const DEFAULT_MATRIX: Matrix = {
   routes: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
   curriculum_studio: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none", operator: "readonly" },
   books: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none", operator: "readonly" },
+  /* 학습 자료(개념 공부·인강·연습문제) — 교사가 **쓸 수 있는** 유일한 콘텐츠 메뉴다.
+   * 다른 콘텐츠 메뉴(curriculum_studio·books·question_bank)는 teacher가 readonly인데,
+   * 그것들이 다루는 것은 플랫폼 참조 데이터이거나 검수 사슬이 걸린 문항이기 때문이다.
+   * 학습 자료는 담당 교사가 자기 학생을 위해 만드는 조직 소유 콘텐츠라 성격이 다르다 —
+   * 여기까지 readonly로 두면 "보충 자료를 만드는 사람"이 제품 안에 아무도 없게 된다. */
+  materials: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none", operator: "readonly" },
   tests: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
   question_bank: { owner: "full", program_director: "full", teacher: "readonly", grader: "readonly", content_manager: "full", content_reviewer: "scoped", student: "none", operator: "readonly" },
   ingestion: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "full", content_reviewer: "scoped", student: "none", operator: "readonly" },

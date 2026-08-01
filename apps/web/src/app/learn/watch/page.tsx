@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 import { todayInTimeZone } from "@/lib/format";
 import { listMaterials } from "@/lib/domain/learning-material";
 import { getTodayScope } from "@/lib/learn/today-context";
@@ -15,10 +16,12 @@ export const metadata: Metadata = { title: "개념 인강" };
  * 저작권 관리가 제품 안으로 들어온다. 생성기가 어디에 있든 결과 URL만
  * 넣으면 붙는 구조다.
  *
- * iframe 임베드는 하지 않는다. 임의 URL을 iframe으로 열면 그 페이지가 우리
- * 화면 안에서 무엇이든 할 수 있고, 어떤 호스트를 허용할지 정하지 않은 채로는
- * 안전하지 않다. 지금은 새 탭으로 연다 — 허용 호스트 목록이 정해지면 그때
- * 임베드로 바꾼다. */
+ * **임베드는 유튜브로 호스트가 확정된 뒤에 열었다.** 예전에는 임의 URL이라
+ * 새 탭으로만 열었다 — 임의 페이지를 iframe으로 열면 그 페이지가 우리 화면
+ * 안에서 무엇이든 할 수 있기 때문이다. 지금은 저작 화면(`content/materials`)이
+ * 유튜브 주소만 받아 정규화해 저장하므로 그 위험이 사라졌다.
+ * `youtube-nocookie.com`을 쓰는 이유는 추적 쿠키를 줄이기 위한 것이고,
+ * 정규 주소를 못 알아보는 예전 데이터는 종전대로 새 탭 링크로 물러선다. */
 
 function formatDuration(seconds: number | null): string | null {
   if (!seconds || seconds <= 0) return null;
@@ -61,6 +64,8 @@ export default async function WatchPage() {
         <ul className="mt-4 space-y-3">
           {materials.map((m) => {
             const duration = formatDuration(m.videoSeconds);
+            // 유튜브로 알아본 것만 임베드한다 — 못 알아보면 새 탭으로 물러선다
+            const embed = m.videoUrl ? youTubeEmbedUrl(m.videoUrl) : null;
             return (
               <li key={m.id} className="rounded-lg border border-rule bg-surface p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -78,16 +83,28 @@ export default async function WatchPage() {
                     done={m.progress === "completed"}
                   />
                 </div>
-                {m.videoUrl && (
-                  <a
-                    href={m.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-block rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white"
-                  >
-                    영상 보기 (새 창)
-                  </a>
-                )}
+                {m.videoUrl &&
+                  (embed ? (
+                    <div className="mt-3 aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-control)] border border-rule">
+                      <iframe
+                        src={embed}
+                        title={m.title}
+                        className="h-full w-full"
+                        allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                        referrerPolicy="strict-origin-when-cross-origin"
+                      />
+                    </div>
+                  ) : (
+                    <a
+                      href={m.videoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-block rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white"
+                    >
+                      영상 보기 (새 창)
+                    </a>
+                  ))}
               </li>
             );
           })}

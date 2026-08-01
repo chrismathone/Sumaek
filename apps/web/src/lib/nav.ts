@@ -29,6 +29,7 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
       { href: "/app/routes", label: "학습 루트", menu: "routes" },
       { href: "/app/content/curriculum", label: "커리큘럼 스튜디오", menu: "curriculum_studio" },
       { href: "/app/content/books", label: "교재", menu: "books" },
+      { href: "/app/content/materials", label: "학습 자료", menu: "materials" },
     ],
   },
   {

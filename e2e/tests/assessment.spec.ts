@@ -46,9 +46,12 @@ test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async
     timeout: 30_000,
   });
 
-  // 목록에 게시 상태·배정 인원 표시 (표에서는 각각 다른 칸이다 — ADR-0016)
-  await page.reload();
-  const testRow = tableRow(page, `일일테스트 · ${lessonDate}`).first();
+  /* 목록에 게시 상태·배정 인원 표시 (표에서는 각각 다른 칸이다 — ADR-0016).
+   * 검색으로 좁혀서 잡는다 — 통합 테스트가 만드는 평가가 같은 날짜대에 쌓이면
+   * 기본 정렬(scheduled_date desc)에서 대상이 1쪽 밖으로 밀린다 (실측). */
+  const testRow = (
+    await gotoTableRow(page, "/app/tests", `일일테스트 · ${lessonDate}`)
+  ).first();
   await expect(testRow).toBeVisible();
   await expect(testRow.getByText("5명", { exact: true })).toBeVisible();
   await expect(testRow.getByText("게시됨")).toBeVisible();

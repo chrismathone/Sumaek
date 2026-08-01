@@ -27,6 +27,7 @@ const LIST_PAGES = [
   "content/books/page.tsx",
   "content/ingestion/page.tsx",
   "content/review/page.tsx",
+  "content/materials/page.tsx",
   "grading/page.tsx",
   "inbox/page.tsx",
   "audit/page.tsx",

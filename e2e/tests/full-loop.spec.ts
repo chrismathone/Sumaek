@@ -33,6 +33,12 @@ test("전체 순환: 학생 응시 → 자동 채점 → 복습 배치 → 교�
     student.getByRole("heading", { name: /박서윤님의 오늘 학습/ }),
   ).toBeVisible();
 
+  /* 끝난 테스트는 「지난 테스트 N건 보기」 안에 접혀 있다 (6단계 흐름).
+   * 닫힌 <details>의 내용은 접근성 트리에 노출되지 않아 getByRole이 0을
+   * 돌려준다 — 펴 놓고 세지 않으면 "이미 완료"를 못 알아본다. */
+  const pastDisclosure = student.getByText(/지난 테스트 \d+건 보기/);
+  if ((await pastDisclosure.count()) > 0) await pastDisclosure.first().click();
+
   // 배정된 일일테스트 응시
   const takeButton = student.getByRole("link", { name: /응시하기|이어서 풀기/ }).first();
   const resultLink = student.getByRole("link", { name: /결과 보기/ }).first();
