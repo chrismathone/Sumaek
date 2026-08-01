@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
    * 화면은 그려지지만 버튼·입력이 아무 반응을 하지 않는다.
    * 프로덕션 빌드에는 영향이 없다 (dev 서버 전용 설정). */
   allowedDevOrigins: ["127.0.0.1"],
+  /* 개발 표시기를 오른쪽 아래로 — 기본값(왼쪽 아래)이 좌측 내비의 계정·로그아웃
+   * 줄을 정확히 덮는다. 사이드바를 화면 높이에 묶은 뒤로 그 줄이 뷰포트 맨
+   * 아래에 붙기 때문이다. 배지가 포인터 이벤트를 가로채 E2E의 로그아웃 클릭이
+   * 실제로 막혔다. 표시기 자체는 쓸모가 있으니 끄지 않고 비켜 놓는다. */
+  devIndicators: { position: "bottom-right" },
 };
 
 export default nextConfig;

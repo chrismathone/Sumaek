@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
-import { gotoTableRow, tableRow } from "../lib/table";
+import { gotoTableRow } from "../lib/table";
 
 const DEMO_EMAIL = "demo-teacher@su-maek.app";
 const DEMO_PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";

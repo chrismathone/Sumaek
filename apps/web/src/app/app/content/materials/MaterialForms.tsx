@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ActionToast } from "@/components/ActionToast";
+import { parseLectureMeta } from "@/lib/lecture-meta";
 import {
   createMaterialAction,
   setMaterialStatusAction,
@@ -26,6 +27,7 @@ export function CreateMaterialForm({
     null,
   );
   const [kind, setKind] = useState<"reading" | "video" | "practice">("reading");
+  const [metaNote, setMetaNote] = useState<string | null>(null);
 
   return (
     <div className="mt-4 rounded-lg border border-rule bg-surface p-5">
@@ -141,6 +143,54 @@ export function CreateMaterialForm({
 
         {kind === "video" && (
           <div className="space-y-3">
+            {/* 파이프라인이 만든 meta.json을 붙이면 제목·길이가 채워진다.
+                옮겨 적다 틀리는 것이 실제 실수의 대부분이라 그 자리를 없앤다.
+                유튜브 주소는 meta.json에 없다 — 파이프라인이 업로드하지 않기
+                때문이다. 그래서 주소만 사람이 넣는다. */}
+            <details className="rounded-[var(--radius-control)] border border-rule bg-paper px-3 py-2">
+              <summary className="cursor-pointer text-sm">
+                자동 생성 강의라면 — meta.json 붙여넣기
+              </summary>
+              <p className="mt-2 text-xs text-ink-soft">
+                파이프라인 산출물 <code>out/meta.json</code> 내용을 그대로
+                붙이세요. 제목과 길이가 채워집니다. 유튜브 주소는 올린 뒤 직접
+                넣어야 합니다.
+              </p>
+              <textarea
+                rows={3}
+                placeholder='{ "lessonTitle": "...", "fps": 30, "totalFrames": 3877, ... }'
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v.trim()) {
+                    setMetaNote(null);
+                    return;
+                  }
+                  const result = parseLectureMeta(v);
+                  if (!result.ok) {
+                    setMetaNote(result.message);
+                    return;
+                  }
+                  const form = e.target.closest("form");
+                  if (!form) return;
+                  const set = (name: string, value: string) => {
+                    const el = form.elements.namedItem(name);
+                    if (el instanceof HTMLInputElement) el.value = value;
+                  };
+                  set("title", result.meta.title);
+                  set("videoMinutes", String(Math.floor(result.meta.seconds / 60)));
+                  set("videoSeconds", String(result.meta.seconds % 60));
+                  setMetaNote(
+                    `«${result.meta.title}» · ${Math.floor(result.meta.seconds / 60)}분 ${result.meta.seconds % 60}초를 채웠습니다. 유튜브 주소를 넣으세요.`,
+                  );
+                }}
+                className="mt-2 block w-full rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs"
+              />
+              {metaNote && (
+                <p role="status" className="mt-2 text-xs">
+                  {metaNote}
+                </p>
+              )}
+            </details>
             <label htmlFor="videoUrl" className="block text-sm">
               <span className="block">유튜브 주소</span>
               <span className="block text-xs text-ink-soft">

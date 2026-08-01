@@ -28,8 +28,18 @@ export default async function AppLayout({
       >
         본문으로 건너뛰기
       </a>
-      {/* 좌측 내비 */}
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-rule-soft bg-ink text-white/85 lg:flex">
+      {/* 좌측 내비 — **화면에 고정**한다.
+       *
+       * 예전에는 높이를 주지 않아 내비가 본문 길이만큼 늘어났고, 그래서
+       * 메뉴가 하나 늘자(학습 자료) 사이드바가 뷰포트를 넘겨 **페이지 전체가
+       * 스크롤**됐다. 본문을 읽으려고 내린 스크롤에 메뉴가 같이 사라지는 건
+       * 내비가 아니다.
+       *
+       * `sticky top-0 h-dvh`로 정확히 한 화면 높이에 묶고, 넘치는 것은 안쪽
+       * nav가 스스로 스크롤한다(아래 `flex-1 overflow-y-auto`) — 메뉴가 더
+       * 늘어나도 페이지 스크롤로 새지 않는다. 로고와 계정 줄은 위아래에
+       * 붙어 있고 가운데 메뉴만 움직인다. */}
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-rule bg-ink text-white/85 lg:flex">
         <div className="px-4 py-4">
           <Link href="/app/today" className="text-lg font-bold text-white">
             수맥
