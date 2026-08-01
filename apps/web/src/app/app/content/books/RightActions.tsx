@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { ActionToast } from "@/components/ActionToast";
 import { changeRightStatus, type ActionResult } from "./actions";
 
 /* 사용 권한 중지·복구 (인수 30) — 중지에는 사유가 필수다. */
@@ -46,15 +47,11 @@ export function RightActions({
           {pending ? "처리 중…" : blocked ? "다시 사용 가능으로" : "사용 중지"}
         </button>
       </form>
+      {/* 결과는 알림으로 — 행 안에 그리면 표 행 높이가 늘어난다 */}
       {state && (
-        <p
-          role="status"
-          className={`mt-2 rounded-[var(--radius-control)] px-3 py-2 text-xs ${
-            state.ok ? "bg-pen-soft/60" : "bg-grade-soft text-grade"
-          }`}
-        >
+        <ActionToast ok={state.ok} resultKey={state}>
           {state.message}
-        </p>
+        </ActionToast>
       )}
     </div>
   );

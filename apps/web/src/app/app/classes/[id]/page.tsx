@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import {
   ASSESSMENT_STATUS_LABEL,
   SESSION_STATUS_LABEL,
@@ -45,7 +45,7 @@ export default async function ClassDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("groups");
   const sql = getSharedSql();
   const today = todayInTimeZone(user.timezone);
 

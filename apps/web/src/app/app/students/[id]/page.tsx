@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import {
   ATTEMPT_STATUS_LABEL,
   MASTERY_STATE_LABEL,
@@ -69,7 +69,7 @@ export default async function StudentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("learners");
   const sql = getSharedSql();
   const today = todayInTimeZone(user.timezone);
 

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import type { RouteValidationReport } from "@su-maek/core/routes";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import { MaterializeButton } from "../MaterializeButton";
 import {
   AddNodeForm,
@@ -57,7 +57,7 @@ export default async function RouteBuilderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("routes");
   const sql = getSharedSql();
 
   const [plan] = await sql<

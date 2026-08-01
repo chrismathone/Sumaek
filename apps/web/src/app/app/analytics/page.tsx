@@ -1,14 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
+import { DataTable, type Column } from "@/components/DataTable";
+import { TableFilters } from "@/components/TableFilters";
 import { MASTERY_STATE_LABEL, MASTERY_STATES } from "@/lib/format";
+import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 
 export const metadata: Metadata = { title: "개념 숙련도" };
 
 /* 개념 숙련도 개요 — 개념별 학습자 상태 분포.
  * 취약(탐색 중·부분 이해·재점검 필요) 학생 수가 많은 개념부터 보여준다.
- * 집계는 concept_masteries 행을 그대로 센 것이며 추정·보정하지 않는다. */
+ * 집계는 concept_masteries 행을 그대로 센 것이며 추정·보정하지 않는다.
+ *
+ * 상단 상태 분포 요약은 워크스페이스 전체 기준이다 — 표의 검색·필터·쪽넘김과
+ * 무관하게 같은 수를 보여야 "전체에서 어디를 보고 있는가"를 알 수 있다. */
+
+/** 정렬 키 → 실제 정렬 대상 (화이트리스트 — 사용자 입력이 쿼리에 닿지 않는다).
+ *  값은 모두 base CTE의 출력 별칭이다. */
+const SORT_COLUMN: Record<string, string> = {
+  name: "name",
+  grade_band: "grade_band",
+  domain_name: "domain_name",
+  learner_count: "learner_count",
+  weak_count: "weak_count",
+  recheck_needed: "n_recheck_needed",
+  exploring: "n_exploring",
+  partial: "n_partial",
+  stable: "n_stable",
+  transfer_confirmed: "n_transfer_confirmed",
+  no_evidence: "n_no_evidence",
+};
 
 interface ConceptRow {
   concept_id: string;
@@ -23,49 +45,156 @@ interface ConceptRow {
   n_stable: number;
   n_transfer_confirmed: number;
   n_recheck_needed: number;
+  total_count: number;
 }
 
-export default async function AnalyticsPage() {
-  const user = (await getCurrentUser())!;
+interface SummaryRow {
+  total_rows: number;
+  concept_count: number;
+  n_no_evidence: number;
+  n_exploring: number;
+  n_partial: number;
+  n_stable: number;
+  n_transfer_confirmed: number;
+  n_recheck_needed: number;
+}
+
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
+  const user = await requireAccess("mastery");
   const sql = getSharedSql();
 
-  const concepts = await sql<ConceptRow[]>`
-    select c.id as concept_id, c.name, c.domain_name, c.grade_band,
-           count(*)::int as learner_count,
-           count(*) filter (
-             where cm.state in ('exploring', 'partial', 'recheck_needed')
-           )::int as weak_count,
-           count(*) filter (where cm.state = 'no_evidence')::int as n_no_evidence,
-           count(*) filter (where cm.state = 'exploring')::int as n_exploring,
-           count(*) filter (where cm.state = 'partial')::int as n_partial,
-           count(*) filter (where cm.state = 'stable')::int as n_stable,
-           count(*) filter (where cm.state = 'transfer_confirmed')::int as n_transfer_confirmed,
-           count(*) filter (where cm.state = 'recheck_needed')::int as n_recheck_needed
-    from concept_masteries cm
-    join canonical_concepts c on c.id = cm.concept_id
-    where cm.organization_id = ${user.organizationId}
-    group by c.id, c.name, c.domain_name, c.grade_band
-    order by weak_count desc, learner_count desc, c.name
-    limit 100
-  `;
+  const query = parseTableQuery(await searchParams, {
+    sortKeys: Object.keys(SORT_COLUMN),
+    defaultSort: "weak_count",
+    defaultDir: "desc",
+    filterKeys: ["band"],
+  });
+  const bandFilter = query.params.band ?? "";
 
+  const [concepts, summaryRows, bandRows] = await Promise.all([
+    sql<ConceptRow[]>`
+      with base as (
+        select c.id as concept_id, c.name, c.domain_name, c.grade_band,
+               count(*)::int as learner_count,
+               count(*) filter (
+                 where cm.state in ('exploring', 'partial', 'recheck_needed')
+               )::int as weak_count,
+               count(*) filter (where cm.state = 'no_evidence')::int as n_no_evidence,
+               count(*) filter (where cm.state = 'exploring')::int as n_exploring,
+               count(*) filter (where cm.state = 'partial')::int as n_partial,
+               count(*) filter (where cm.state = 'stable')::int as n_stable,
+               count(*) filter (where cm.state = 'transfer_confirmed')::int as n_transfer_confirmed,
+               count(*) filter (where cm.state = 'recheck_needed')::int as n_recheck_needed
+        from concept_masteries cm
+        join canonical_concepts c on c.id = cm.concept_id
+        where cm.organization_id = ${user.organizationId}
+          and (${query.q}::text = '' or c.name ilike ${`%${query.q}%`}
+               or coalesce(c.domain_name, '') ilike ${`%${query.q}%`}
+               or coalesce(c.grade_band, '') ilike ${`%${query.q}%`})
+          and (${bandFilter}::text = ''
+               or coalesce(c.grade_band, '')::text = ${bandFilter})
+        group by c.id, c.name, c.domain_name, c.grade_band
+      )
+      select *, count(*) over ()::int as total_count
+      from base
+      order by ${sql(SORT_COLUMN[query.sort] ?? "weak_count")}
+               ${query.dir === "asc" ? sql`asc` : sql`desc`} nulls last,
+               name asc
+      limit ${query.pageSize} offset ${query.offset}
+    `,
+    /* 상단 요약 — 필터와 무관한 워크스페이스 전체 집계 */
+    sql<SummaryRow[]>`
+      select count(*)::int as total_rows,
+             count(distinct cm.concept_id)::int as concept_count,
+             count(*) filter (where cm.state = 'no_evidence')::int as n_no_evidence,
+             count(*) filter (where cm.state = 'exploring')::int as n_exploring,
+             count(*) filter (where cm.state = 'partial')::int as n_partial,
+             count(*) filter (where cm.state = 'stable')::int as n_stable,
+             count(*) filter (where cm.state = 'transfer_confirmed')::int as n_transfer_confirmed,
+             count(*) filter (where cm.state = 'recheck_needed')::int as n_recheck_needed
+      from concept_masteries cm
+      join canonical_concepts c on c.id = cm.concept_id
+      where cm.organization_id = ${user.organizationId}
+    `,
+    sql<{ band: string }[]>`
+      select distinct c.grade_band as band
+      from concept_masteries cm
+      join canonical_concepts c on c.id = cm.concept_id
+      where cm.organization_id = ${user.organizationId}
+        and c.grade_band is not null
+      order by band asc
+      limit 30
+    `,
+  ]);
+
+  const summary = summaryRows[0];
   const totals: Record<string, number> = {
-    no_evidence: 0,
-    exploring: 0,
-    partial: 0,
-    stable: 0,
-    transfer_confirmed: 0,
-    recheck_needed: 0,
+    no_evidence: summary?.n_no_evidence ?? 0,
+    exploring: summary?.n_exploring ?? 0,
+    partial: summary?.n_partial ?? 0,
+    stable: summary?.n_stable ?? 0,
+    transfer_confirmed: summary?.n_transfer_confirmed ?? 0,
+    recheck_needed: summary?.n_recheck_needed ?? 0,
   };
-  for (const c of concepts) {
-    totals["no_evidence"]! += c.n_no_evidence;
-    totals["exploring"]! += c.n_exploring;
-    totals["partial"]! += c.n_partial;
-    totals["stable"]! += c.n_stable;
-    totals["transfer_confirmed"]! += c.n_transfer_confirmed;
-    totals["recheck_needed"]! += c.n_recheck_needed;
-  }
-  const totalRows = Object.values(totals).reduce((a, b) => a + b, 0);
+  const totalRows = summary?.total_rows ?? 0;
+  const conceptCount = summary?.concept_count ?? 0;
+  const total = concepts[0]?.total_count ?? 0;
+  const filtered = query.q !== "" || bandFilter !== "";
+
+  const columns: Column<ConceptRow>[] = [
+    {
+      key: "name",
+      label: "개념",
+      sortable: true,
+      render: (c) => (
+        <>
+          <span className="font-medium">{c.name}</span>
+          {(c.domain_name || c.grade_band) && (
+            <span className="ml-2 text-xs text-ink-soft">
+              {[c.grade_band, c.domain_name].filter(Boolean).join(" · ")}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "learner_count",
+      label: "학습자",
+      sortable: true,
+      align: "right",
+      mono: true,
+      render: (c) => <span className="text-ink-soft">{c.learner_count}</span>,
+    },
+    {
+      key: "weak_count",
+      label: "취약",
+      sortable: true,
+      align: "right",
+      mono: true,
+      render: (c) =>
+        c.weak_count > 0 ? (
+          <span className="font-bold text-grade">{c.weak_count}</span>
+        ) : (
+          <span className="text-ink-soft">0</span>
+        ),
+    },
+    ...MASTERY_STATES.map(
+      (s): Column<ConceptRow> => ({
+        key: s,
+        label: MASTERY_STATE_LABEL[s] ?? s,
+        sortable: true,
+        align: "right",
+        mono: true,
+        // 재점검 필요는 좁은 화면에서도 남긴다 — 손봐야 할 상태의 대표값
+        secondary: s !== "recheck_needed",
+        render: (c) => <span className="text-ink-soft">{stateCount(c, s)}</span>,
+      }),
+    ),
+  ];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -108,57 +237,48 @@ export default async function AnalyticsPage() {
             ))}
           </div>
           <p className="mt-2 font-mono text-xs text-ink-soft">
-            개념 {concepts.length}개 · 학습자·개념 조합 {totalRows}건
+            개념 {conceptCount}개 · 학습자·개념 조합 {totalRows}건
           </p>
 
-          <div className="mt-4 overflow-x-auto rounded-lg border border-rule bg-surface">
-            <table className="w-full min-w-[52rem] text-sm">
-              <thead>
-                <tr className="border-b border-rule-soft text-left text-xs text-ink-soft">
-                  <th className="px-4 py-2 font-medium">개념</th>
-                  <th className="px-4 py-2 text-right font-medium">학습자</th>
-                  <th className="px-4 py-2 text-right font-medium">취약</th>
-                  {MASTERY_STATES.map((s) => (
-                    <th key={s} className="px-3 py-2 text-right font-medium">
-                      {MASTERY_STATE_LABEL[s]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-rule-soft">
-                {concepts.map((c) => (
-                  <tr key={c.concept_id}>
-                    <td className="px-4 py-2.5">
-                      <span className="font-medium">{c.name}</span>
-                      {(c.domain_name || c.grade_band) && (
-                        <span className="ml-2 text-xs text-ink-soft">
-                          {[c.grade_band, c.domain_name].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-ink-soft">
-                      {c.learner_count}
-                    </td>
-                    <td
-                      className={`px-4 py-2.5 text-right font-mono ${
-                        c.weak_count > 0 ? "font-bold text-grade" : "text-ink-soft"
-                      }`}
-                    >
-                      {c.weak_count}
-                    </td>
-                    {MASTERY_STATES.map((s) => (
-                      <td
-                        key={s}
-                        className="px-3 py-2.5 text-right font-mono text-ink-soft"
-                      >
-                        {stateCount(c, s)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableFilters
+            basePath="/app/analytics"
+            query={query}
+            search={{ label: "검색", placeholder: "개념명·영역·학년군" }}
+            selects={[
+              {
+                name: "band",
+                label: "학년군",
+                options: bandRows.map((b) => ({ value: b.band, label: b.band })),
+              },
+            ]}
+          />
+
+          <DataTable
+            columns={columns}
+            rows={concepts}
+            rowKey={(c) => c.concept_id}
+            total={total}
+            query={query}
+            basePath="/app/analytics"
+            empty={
+              filtered ? (
+                <>
+                  <p className="font-medium">조건에 맞는 개념이 없습니다.</p>
+                  <p className="mt-1.5 text-sm text-ink-soft">
+                    검색어나 학년군 필터를 바꿔보세요.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">표시할 개념이 없습니다.</p>
+                  <p className="mt-1.5 text-sm text-ink-soft">
+                    테스트 채점이 확정되면 개념별 증거가 쌓이고 상태가
+                    계산됩니다.
+                  </p>
+                </>
+              )
+            }
+          />
         </>
       )}
     </div>

@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
+import { DataTable, type Column } from "@/components/DataTable";
+import { TableFilters } from "@/components/TableFilters";
+import { formatDate } from "@/lib/format";
+import {
+  DENSE_PAGE_SIZE,
+  parseTableQuery,
+  type RawSearchParams,
+} from "@/lib/table";
 
 export const metadata: Metadata = { title: "문제은행" };
 
@@ -43,6 +51,18 @@ const BAND_LABEL: Record<string, string> = {
   high: "심화",
 };
 
+/** 정렬 키 → 실제 정렬 대상 (화이트리스트 — 사용자 입력이 쿼리에 닿지 않는다).
+ * 상태·유형은 enum 그대로 정렬해 정의 순서(작업 흐름 순)를 따른다. */
+const SORT_COLUMN: Record<string, string> = {
+  kind: "kind",
+  difficulty: "difficulty_rank",
+  review_status: "review_status",
+  right_status: "right_status",
+  is_auto_assignable: "is_auto_assignable",
+  used_count: "used_count",
+  created_at: "created_at",
+};
+
 interface QuestionRow {
   id: string;
   kind: string;
@@ -52,253 +72,240 @@ interface QuestionRow {
   right_status: string | null;
   concept_names: string;
   used_count: number;
+  created_at: Date;
+  total_count: number;
 }
 
 export default async function QuestionBankPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<RawSearchParams>;
 }) {
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("question_bank");
   const sql = getSharedSql();
 
-  const params = await searchParams;
-  const rawStatus = params.status;
-  const rawKind = params.kind;
-  const status = typeof rawStatus === "string" && rawStatus ? rawStatus : null;
-  const kind = typeof rawKind === "string" && rawKind ? rawKind : null;
+  const query = parseTableQuery(await searchParams, {
+    sortKeys: Object.keys(SORT_COLUMN),
+    defaultSort: "created_at",
+    defaultDir: "desc",
+    pageSize: DENSE_PAGE_SIZE,
+    filterKeys: ["status", "kind"],
+  });
+  const statusFilter = query.params.status ?? "";
+  const kindFilter = query.params.kind ?? "";
 
-  // enum 컬럼을 text로 비교한다 — 알 수 없는 필터 값이 와도 쿼리가 깨지지 않고
-  // 단순히 0건이 된다.
-  const statusClause = status ? sql`and q.review_status::text = ${status}` : sql``;
-  const kindClause = kind ? sql`and q.kind::text = ${kind}` : sql``;
-
-  const [rows, statusCounts, kindCounts] = await Promise.all([
+  const [rows, summaryRows] = await Promise.all([
+    // enum 컬럼은 양쪽 다 ::text로 비교한다 — 빈 문자열이나 알 수 없는 필터
+    // 값이 와도 쿼리가 깨지지 않고 단순히 0건이 된다.
     sql<QuestionRow[]>`
-      select q.id, q.kind::text as kind, q.review_status::text as review_status,
-             q.is_auto_assignable,
-             v.difficulty->>'band' as difficulty_band,
-             cr.status::text as right_status,
-             (select count(*)::int from assessment_questions aq
-               where aq.question_id = q.id
-                 and aq.organization_id = q.organization_id) as used_count,
-             (select coalesce(string_agg(c.name, ' · ' order by c.name), '')
-                from question_alignments qa
-                join canonical_concepts c on c.id = qa.concept_id
-               where qa.question_id = q.id
-                 and qa.organization_id = q.organization_id) as concept_names
-      from questions q
-      left join question_versions v on v.id = q.current_version_id
-      left join content_rights cr on cr.id = q.content_right_id
-        and cr.organization_id = q.organization_id
-      where q.organization_id = ${user.organizationId}
-        ${statusClause}
-        ${kindClause}
-      order by q.created_at desc
-      limit 200
+      with base as (
+        select q.id, q.kind, q.review_status, q.is_auto_assignable, q.created_at,
+               v.difficulty->>'band' as difficulty_band,
+               case v.difficulty->>'band'
+                 when 'low' then 1 when 'mid' then 2 when 'high' then 3
+               end as difficulty_rank,
+               cr.status as right_status,
+               (select count(*)::int from assessment_questions aq
+                 where aq.question_id = q.id
+                   and aq.organization_id = q.organization_id) as used_count,
+               (select coalesce(string_agg(c.name, ' · ' order by c.name), '')
+                  from question_alignments qa
+                  join canonical_concepts c on c.id = qa.concept_id
+                 where qa.question_id = q.id
+                   and qa.organization_id = q.organization_id) as concept_names
+        from questions q
+        left join question_versions v on v.id = q.current_version_id
+        left join content_rights cr on cr.id = q.content_right_id
+          and cr.organization_id = q.organization_id
+        where q.organization_id = ${user.organizationId}
+          and (${statusFilter}::text = '' or q.review_status::text = ${statusFilter})
+          and (${kindFilter}::text = '' or q.kind::text = ${kindFilter})
+          and (${query.q}::text = ''
+               or q.id::text ilike ${`%${query.q}%`}
+               or coalesce(q.printed_number, '') ilike ${`%${query.q}%`}
+               or exists (select 1
+                            from question_alignments qa
+                            join canonical_concepts c on c.id = qa.concept_id
+                           where qa.question_id = q.id
+                             and qa.organization_id = q.organization_id
+                             and c.name ilike ${`%${query.q}%`}))
+      )
+      select *, count(*) over ()::int as total_count
+      from base
+      order by ${sql(SORT_COLUMN[query.sort] ?? "created_at")}
+               ${query.dir === "asc" ? sql`asc` : sql`desc`} nulls last,
+               id asc
+      limit ${query.pageSize} offset ${query.offset}
     `,
-    sql<{ value: string; cnt: number }[]>`
-      select review_status::text as value, count(*)::int as cnt
-      from questions where organization_id = ${user.organizationId}
-      group by review_status order by count(*) desc
-    `,
-    sql<{ value: string; cnt: number }[]>`
-      select kind::text as value, count(*)::int as cnt
-      from questions where organization_id = ${user.organizationId}
-      group by kind order by count(*) desc
+    // 요약 줄은 필터와 무관한 조직 전체 값 — 페이지를 넘겨도 흔들리지 않는다.
+    sql<{ total: number; assignable: number }[]>`
+      select count(*)::int as total,
+             count(*) filter (where is_auto_assignable)::int as assignable
+      from questions
+      where organization_id = ${user.organizationId}
     `,
   ]);
 
-  const total = statusCounts.reduce((sum, r) => sum + r.cnt, 0);
-  const assignable = rows.filter((r) => r.is_auto_assignable).length;
+  const total = rows[0]?.total_count ?? 0;
+  const orgTotal = summaryRows[0]?.total ?? 0;
+  const assignable = summaryRows[0]?.assignable ?? 0;
+  const filtered = Object.keys(query.params).length > 0;
+
+  const columns: Column<QuestionRow>[] = [
+    {
+      key: "id",
+      label: "문항",
+      mono: true,
+      render: (r) => <span title={r.id}>{shortId(r.id)}</span>,
+    },
+    {
+      key: "kind",
+      label: "유형",
+      sortable: true,
+      render: (r) => KIND_LABEL[r.kind] ?? r.kind,
+    },
+    {
+      key: "difficulty",
+      label: "난이도",
+      sortable: true,
+      render: (r) =>
+        r.difficulty_band
+          ? (BAND_LABEL[r.difficulty_band] ?? r.difficulty_band)
+          : "—",
+    },
+    {
+      key: "concepts",
+      label: "개념",
+      secondary: true,
+      className: "max-w-[18rem] truncate",
+      render: (r) =>
+        r.concept_names || <span className="text-ink-soft">개념 미연결</span>,
+    },
+    {
+      key: "review_status",
+      label: "검수",
+      sortable: true,
+      render: (r) => (
+        <Badge
+          tone={reviewTone(r.review_status)}
+          label={REVIEW_STATUS_LABEL[r.review_status] ?? r.review_status}
+        />
+      ),
+    },
+    {
+      key: "right_status",
+      label: "사용 권한",
+      sortable: true,
+      render: (r) =>
+        r.right_status ? (
+          <Badge
+            tone={r.right_status === "usable" ? "ok" : "warn"}
+            label={RIGHT_STATUS_LABEL[r.right_status] ?? r.right_status}
+          />
+        ) : (
+          <Badge tone="warn" label="권한 미연결" />
+        ),
+    },
+    {
+      key: "is_auto_assignable",
+      label: "자동 출제",
+      sortable: true,
+      render: (r) => (
+        <Badge
+          tone={r.is_auto_assignable ? "ok" : "muted"}
+          label={r.is_auto_assignable ? "가능" : "불가"}
+        />
+      ),
+    },
+    {
+      key: "used_count",
+      label: "출제",
+      sortable: true,
+      align: "right",
+      mono: true,
+      render: (r) => `${r.used_count}회`,
+    },
+    {
+      key: "created_at",
+      label: "등록",
+      sortable: true,
+      mono: true,
+      secondary: true,
+      render: (r) => formatDate(r.created_at, user.timezone),
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-6xl">
       <h1 className="font-[MaruBuri] text-2xl font-semibold">문제은행</h1>
       <p className="mt-1.5 text-sm text-ink-soft">
-        전체 {total}문항 · 이 목록에서 자동 출제 가능 {assignable}문항. 검수를
-        통과하고 사용 권한이 확인된 문항만 자동 출제 풀에 들어갑니다.
+        전체 {orgTotal}문항 · 자동 출제 가능 {assignable}문항. 검수를 통과하고
+        사용 권한이 확인된 문항만 자동 출제 풀에 들어갑니다.
       </p>
 
-      {/* 필터 — URL 파라미터. 실제로 존재하는 값만 노출한다. */}
-      <div className="mt-5 space-y-2">
-        <FilterRow
-          label="검수 상태"
-          options={statusCounts}
-          labels={REVIEW_STATUS_LABEL}
-          active={status}
-          hrefFor={(v) => buildHref(v, kind)}
-          allHref={buildHref(null, kind)}
-        />
-        <FilterRow
-          label="유형"
-          options={kindCounts}
-          labels={KIND_LABEL}
-          active={kind}
-          hrefFor={(v) => buildHref(status, v)}
-          allHref={buildHref(status, null)}
-        />
-      </div>
+      <TableFilters
+        basePath="/app/content/questions"
+        query={query}
+        search={{ label: "검색", placeholder: "문항 번호·ID·개념" }}
+        selects={[
+          {
+            name: "status",
+            label: "검수 상태",
+            options: Object.entries(REVIEW_STATUS_LABEL).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          },
+          {
+            name: "kind",
+            label: "유형",
+            options: Object.entries(KIND_LABEL).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          },
+        ]}
+      />
 
-      {rows.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-rule bg-surface p-6 text-center">
-          <p className="font-medium">
-            {total === 0
-              ? "아직 등록된 문항이 없습니다."
-              : "이 조건에 맞는 문항이 없습니다."}
-          </p>
-          <p className="mt-1.5 text-sm text-ink-soft">
-            {total === 0
-              ? "문제집 변환으로 원본을 반입하거나 문항을 직접 등록하세요."
-              : "필터를 지우면 전체 문항을 볼 수 있습니다."}
-          </p>
-          <Link
-            href={total === 0 ? "/app/content/ingestion" : "/app/content/questions"}
-            className="mt-4 inline-block rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white"
-          >
-            {total === 0 ? "문제집 변환으로 이동" : "필터 지우기"}
-          </Link>
-        </div>
-      ) : (
-        <div className="mt-6 overflow-x-auto rounded-lg border border-rule bg-surface">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead className="border-b border-rule-soft text-left text-xs text-ink-soft">
-              <tr>
-                <th className="px-4 py-2 font-medium">문항</th>
-                <th className="px-4 py-2 font-medium">유형</th>
-                <th className="px-4 py-2 font-medium">난이도</th>
-                <th className="px-4 py-2 font-medium">개념</th>
-                <th className="px-4 py-2 font-medium">검수</th>
-                <th className="px-4 py-2 font-medium">사용 권한</th>
-                <th className="px-4 py-2 font-medium">자동 출제</th>
-                <th className="px-4 py-2 text-right font-medium">출제</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-rule-soft">
-              {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-paper">
-                  <td className="px-4 py-2.5">
-                    <Link
-                      href={`/app/content/questions/${r.id}`}
-                      className="font-mono text-xs text-pen underline-offset-2 hover:underline"
-                      title={r.id}
-                    >
-                      {shortId(r.id)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5">{KIND_LABEL[r.kind] ?? r.kind}</td>
-                  <td className="px-4 py-2.5">
-                    {r.difficulty_band
-                      ? (BAND_LABEL[r.difficulty_band] ?? r.difficulty_band)
-                      : "—"}
-                  </td>
-                  <td className="max-w-[18rem] truncate px-4 py-2.5">
-                    {r.concept_names || (
-                      <span className="text-ink-soft">개념 미연결</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge
-                      tone={reviewTone(r.review_status)}
-                      label={REVIEW_STATUS_LABEL[r.review_status] ?? r.review_status}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {r.right_status ? (
-                      <Badge
-                        tone={r.right_status === "usable" ? "ok" : "warn"}
-                        label={RIGHT_STATUS_LABEL[r.right_status] ?? r.right_status}
-                      />
-                    ) : (
-                      <Badge tone="warn" label="권한 미연결" />
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge
-                      tone={r.is_auto_assignable ? "ok" : "muted"}
-                      label={r.is_auto_assignable ? "가능" : "불가"}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs">
-                    {r.used_count}회
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {rows.length === 200 && (
-        <p className="mt-3 font-mono text-xs text-ink-soft">
-          최근 200문항만 표시했습니다.
-        </p>
-      )}
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        rowHref={(r) => `/app/content/questions/${r.id}`}
+        total={total}
+        query={query}
+        basePath="/app/content/questions"
+        empty={
+          filtered ? (
+            <>
+              <p className="font-medium">이 조건에 맞는 문항이 없습니다.</p>
+              <p className="mt-1.5 text-sm text-ink-soft">
+                필터를 지우면 전체 문항을 볼 수 있습니다.
+              </p>
+              <Link
+                href="/app/content/questions"
+                className="mt-4 inline-block rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white"
+              >
+                필터 지우기
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">아직 등록된 문항이 없습니다.</p>
+              <p className="mt-1.5 text-sm text-ink-soft">
+                문제집 변환으로 원본을 반입하거나 문항을 직접 등록하세요.
+              </p>
+              <Link
+                href="/app/content/ingestion"
+                className="mt-4 inline-block rounded-[var(--radius-control)] bg-pen px-4 py-2 text-sm font-medium text-white"
+              >
+                문제집 변환으로 이동
+              </Link>
+            </>
+          )
+        }
+      />
     </div>
-  );
-}
-
-function buildHref(status: string | null, kind: string | null): string {
-  const p = new URLSearchParams();
-  if (status) p.set("status", status);
-  if (kind) p.set("kind", kind);
-  const query = p.toString();
-  return query ? `/app/content/questions?${query}` : "/app/content/questions";
-}
-
-function FilterRow({
-  label,
-  options,
-  labels,
-  active,
-  hrefFor,
-  allHref,
-}: {
-  label: string;
-  options: Array<{ value: string; cnt: number }>;
-  labels: Record<string, string>;
-  active: string | null;
-  hrefFor: (value: string) => string;
-  allHref: string;
-}) {
-  if (options.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="w-20 shrink-0 text-xs text-ink-soft">{label}</span>
-      <Chip href={allHref} active={active === null} label="전체" />
-      {options.map((o) => (
-        <Chip
-          key={o.value}
-          href={hrefFor(o.value)}
-          active={active === o.value}
-          label={`${labels[o.value] ?? o.value} ${o.cnt}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Chip({
-  href,
-  active,
-  label,
-}: {
-  href: string;
-  active: boolean;
-  label: string;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "true" : undefined}
-      className={`rounded-[var(--radius-control)] border px-2.5 py-1 text-xs ${
-        active
-          ? "border-pen bg-pen-soft font-medium text-pen"
-          : "border-rule bg-surface text-ink-soft hover:border-pen"
-      }`}
-    >
-      {label}
-    </Link>
   );
 }
 

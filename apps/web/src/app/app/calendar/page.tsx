@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import {
   HOLIDAY_KIND_LABEL,
   SESSION_STATUS_LABEL,
@@ -34,6 +34,8 @@ interface SessionRow {
   starts_at: Date;
   status: string;
   group_name: string;
+  /** 셀에서 반 화면으로 이동하기 위한 대상 */
+  learning_group_id: string;
 }
 
 interface HolidayRow {
@@ -45,12 +47,64 @@ interface HolidayRow {
   group_name: string | null;
 }
 
+/** 셀 높이 고정 — 일정이 많은 날 때문에 주 행이 늘어나지 않게 한다 */
+const CELL_HEIGHT = "h-28";
+/** 셀에 그대로 보여줄 최대 항목 수. 나머지는 "+N개 더"로 접는다 */
+const MAX_VISIBLE_ENTRIES = 2;
+
+type CalendarEntry =
+  | { kind: "holiday"; holiday: HolidayRow }
+  | { kind: "session"; session: SessionRow };
+
+function entryKey(entry: CalendarEntry): string {
+  return entry.kind === "holiday" ? `h-${entry.holiday.id}` : `s-${entry.session.id}`;
+}
+
+/** 셀·스마트창에서 같은 모양으로 쓰는 한 줄 항목 */
+function EntryChip({
+  entry,
+  timezone,
+}: {
+  entry: CalendarEntry;
+  timezone: string;
+}) {
+  if (entry.kind === "holiday") {
+    const h = entry.holiday;
+    return (
+      <p
+        className="mt-0.5 truncate rounded-[var(--radius-control)] bg-highlight-soft px-1 py-0.5 text-[11px]"
+        title={`${h.name} (${label(HOLIDAY_KIND_LABEL, h.kind)}${
+          h.group_name ? ` · ${h.group_name}` : ""
+        })`}
+      >
+        {label(HOLIDAY_KIND_LABEL, h.kind)} {h.name}
+      </p>
+    );
+  }
+  const s = entry.session;
+  return (
+    <Link
+      href={`/app/classes/${s.learning_group_id}`}
+      className={`mt-0.5 block truncate rounded-[var(--radius-control)] border-l-2 px-1 py-0.5 text-[11px] hover:bg-pen-soft/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-pen ${
+        SESSION_TONE[s.status] ?? "border-rule text-ink"
+      }`}
+      title={`${s.group_name} ${formatTime(s.starts_at, timezone)} · ${label(
+        SESSION_STATUS_LABEL,
+        s.status,
+      )}`}
+    >
+      <span className="font-mono">{formatTime(s.starts_at, timezone)}</span>{" "}
+      {s.group_name}
+    </Link>
+  );
+}
+
 export default async function CalendarPage({
   searchParams,
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("calendar");
   const sql = getSharedSql();
 
   const today = todayInTimeZone(user.timezone);
@@ -60,7 +114,7 @@ export default async function CalendarPage({
   const [sessions, holidays] = await Promise.all([
     sql<SessionRow[]>`
       select s.id, s.session_date::text as session_date, s.starts_at, s.status,
-             g.name as group_name
+             g.name as group_name, s.learning_group_id
       from sessions s
       join learning_groups g on g.id = s.learning_group_id
       where s.organization_id = ${user.organizationId}
@@ -111,19 +165,36 @@ export default async function CalendarPage({
             {holidaysByDay.size}일
           </p>
         </div>
-        <nav className="flex items-center gap-2" aria-label="월 이동">
+        {/* 월 이동 — 화살표는 아이콘만, 가운데에 보고 있는 달을 크게.
+            "오늘"은 현재 달로 즉시 복귀 (파라미터 없는 경로가 이번 달이다). */}
+        <nav className="flex items-center gap-1.5" aria-label="월 이동">
+          <div className="flex items-center overflow-hidden rounded-[var(--radius-control)] border border-rule">
+            <Link
+              href={`/app/calendar?month=${view.prevMonth}`}
+              aria-label={`이전 달 (${view.prevMonth})`}
+              className="px-2.5 py-1.5 text-sm hover:bg-pen-soft/50"
+            >
+              ‹
+            </Link>
+            <span
+              aria-current="date"
+              className="min-w-28 border-x border-rule px-3 py-1.5 text-center text-sm font-semibold"
+            >
+              {Number(view.key.slice(0, 4))}년 {Number(view.key.slice(5, 7))}월
+            </span>
+            <Link
+              href={`/app/calendar?month=${view.nextMonth}`}
+              aria-label={`다음 달 (${view.nextMonth})`}
+              className="px-2.5 py-1.5 text-sm hover:bg-pen-soft/50"
+            >
+              ›
+            </Link>
+          </div>
           <Link
-            href={`/app/calendar?month=${view.prevMonth}`}
-            className="rounded-[var(--radius-control)] border border-rule px-3 py-1.5 font-mono text-sm hover:bg-surface"
+            href="/app/calendar"
+            className="rounded-[var(--radius-control)] border border-rule px-3 py-1.5 text-sm hover:bg-pen-soft/50"
           >
-            ← {view.prevMonth}
-          </Link>
-          <span className="font-mono text-sm font-semibold">{view.key}</span>
-          <Link
-            href={`/app/calendar?month=${view.nextMonth}`}
-            className="rounded-[var(--radius-control)] border border-rule px-3 py-1.5 font-mono text-sm hover:bg-surface"
-          >
-            {view.nextMonth} →
+            오늘
           </Link>
         </nav>
       </div>
@@ -164,17 +235,27 @@ export default async function CalendarPage({
                 return (
                   <div
                     key={`blank-${index}`}
-                    className="min-h-24 border-r border-b border-rule-soft bg-paper/50 last:border-r-0"
+                    className={`${CELL_HEIGHT} border-r border-b border-rule-soft bg-paper/50 last:border-r-0`}
                   />
                 );
               }
               const daySessions = sessionsByDay.get(day) ?? [];
               const dayHolidays = holidaysByDay.get(day) ?? [];
               const isToday = day === today;
+
+              /* 셀 높이를 고정하고 넘치는 만큼만 "+N"으로 접는다 —
+               * 일정이 많은 날 때문에 주 전체 행이 늘어나지 않게 한다. */
+              const entries: CalendarEntry[] = [
+                ...dayHolidays.map((h) => ({ kind: "holiday" as const, holiday: h })),
+                ...daySessions.map((s) => ({ kind: "session" as const, session: s })),
+              ];
+              const visible = entries.slice(0, MAX_VISIBLE_ENTRIES);
+              const hidden = entries.length - visible.length;
+
               return (
                 <div
                   key={day}
-                  className={`min-h-24 border-r border-b border-rule-soft p-1.5 ${
+                  className={`relative ${CELL_HEIGHT} border-r border-b border-rule-soft p-1.5 ${
                     isToday ? "bg-pen-soft" : ""
                   }`}
                 >
@@ -187,35 +268,33 @@ export default async function CalendarPage({
                     {isToday && <span className="ml-1 text-[10px]">오늘</span>}
                   </p>
 
-                  {dayHolidays.map((h) => (
-                    <p
-                      key={h.id}
-                      className="mt-1 truncate rounded-[var(--radius-control)] bg-highlight-soft px-1 py-0.5 text-[11px]"
-                      title={`${h.name} (${label(HOLIDAY_KIND_LABEL, h.kind)}${
-                        h.group_name ? ` · ${h.group_name}` : ""
-                      })`}
-                    >
-                      {label(HOLIDAY_KIND_LABEL, h.kind)} {h.name}
-                    </p>
+                  {visible.map((e) => (
+                    <EntryChip key={entryKey(e)} entry={e} timezone={user.timezone} />
                   ))}
 
-                  {daySessions.map((s) => (
-                    <p
-                      key={s.id}
-                      className={`mt-1 truncate rounded-[var(--radius-control)] border-l-2 px-1 py-0.5 text-[11px] ${
-                        SESSION_TONE[s.status] ?? "border-rule text-ink"
-                      }`}
-                      title={`${s.group_name} ${formatTime(
-                        s.starts_at,
-                        user.timezone,
-                      )} · ${label(SESSION_STATUS_LABEL, s.status)}`}
-                    >
-                      <span className="font-mono">
-                        {formatTime(s.starts_at, user.timezone)}
-                      </span>{" "}
-                      {s.group_name}
-                    </p>
-                  ))}
+                  {hidden > 0 && (
+                    /* details 기반 스마트창 — JS 없이 열리고 Esc·탭으로 다룰 수 있다
+                     * (모바일 내비와 같은 방식, 인수 15) */
+                    <details className="group relative">
+                      <summary className="mt-0.5 cursor-pointer list-none rounded-[var(--radius-control)] px-1 py-0.5 text-[11px] text-ink-soft hover:bg-pen-soft/50 hover:text-pen focus:outline-none focus-visible:ring-2 focus-visible:ring-pen [&::-webkit-details-marker]:hidden">
+                        +{hidden}개 더
+                      </summary>
+                      <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-lg border border-rule bg-surface p-2 shadow-lg">
+                        <p className="px-1 pb-1 font-mono text-[11px] text-ink-soft">
+                          {day} · {entries.length}건
+                        </p>
+                        <div className="max-h-56 overflow-y-auto">
+                          {entries.map((e) => (
+                            <EntryChip
+                              key={`all-${entryKey(e)}`}
+                              entry={e}
+                              timezone={user.timezone}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </details>
+                  )}
                 </div>
               );
             })}

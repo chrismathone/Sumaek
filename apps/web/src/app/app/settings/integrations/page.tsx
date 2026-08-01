@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "외부 명단 연동" };
@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "외부 명단 연동" };
  * 틀린다 (eywa makeedu 실사고). */
 
 export default async function IntegrationsPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("integrations");
   const sql = getSharedSql();
 
   const connections = await sql<

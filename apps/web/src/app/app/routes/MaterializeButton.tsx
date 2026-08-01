@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import type { MaterializeResult } from "@/lib/domain/schedule";
+import { ActionToast } from "@/components/ActionToast";
 import { materializeSchedule } from "./actions";
 
 export function MaterializeButton({
@@ -26,13 +27,9 @@ export function MaterializeButton({
           {pending ? "계산 중…" : "미래 일정 생성·재계산"}
         </button>
       </form>
+      {/* 결과는 알림으로 띄운다 — 행 안에 그리면 표 행 높이가 늘어난다 */}
       {result && (
-        <p
-          role="status"
-          className={`mt-2 rounded-[var(--radius-control)] px-3 py-2 text-sm ${
-            result.ok ? "bg-pen-soft/60" : "bg-grade-soft text-grade"
-          }`}
-        >
+        <ActionToast ok={result.ok} resultKey={result}>
           {result.message}
           {result.ok && result.firstDate && (
             <>
@@ -45,7 +42,7 @@ export function MaterializeButton({
               </span>
             </>
           )}
-        </p>
+        </ActionToast>
       )}
     </div>
   );

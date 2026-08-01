@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { renderMixedText } from "@su-maek/core/math";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 
 export const metadata: Metadata = { title: "문항 상세" };
 
@@ -200,7 +200,7 @@ export default async function QuestionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("question_bank");
   const sql = getSharedSql();
 
   // uuid가 아닌 경로 세그먼트는 캐스팅 오류 대신 404로 끝낸다.

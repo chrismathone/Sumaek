@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getSharedSql } from "@su-maek/db";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "리포트" };
@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function ReportsPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("reports");
   const sql = getSharedSql();
 
   const reports = await sql<
