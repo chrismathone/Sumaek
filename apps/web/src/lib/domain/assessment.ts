@@ -34,6 +34,14 @@ export async function generateDailyTest(options: {
   learningGroupId: string;
   targetDate: IsoDate;
   actorUserId: string;
+  /**
+   * 무반복 기간을 넘겨 최근 출제분도 후보로 쓴다.
+   * 문항 수가 적은 학원에서는 연속 수업일마다 후보가 0이 되어 테스트를
+   * 아예 만들 수 없다. 정책 편집 화면이 아직 없으므로, 선생님이 **그 사실을
+   * 알고 명시적으로** 넘어갈 수단을 둔다. 조용히 넘어가지 않는다 —
+   * 결과의 shortfalls에 남는다.
+   */
+  allowRecentlyUsed?: boolean;
 }): Promise<GenerateResult> {
   const sql = getSharedSql();
   const { organizationId, learningGroupId, targetDate } = options;
@@ -197,9 +205,10 @@ export async function generateDailyTest(options: {
     },
   ];
 
-  const excludeUsedSince = policy.constraints.noRepeatWithinDays
-    ? shiftDate(targetDate, -policy.constraints.noRepeatWithinDays)
-    : undefined;
+  const excludeUsedSince =
+    policy.constraints.noRepeatWithinDays && !options.allowRecentlyUsed
+      ? shiftDate(targetDate, -policy.constraints.noRepeatWithinDays)
+      : undefined;
 
   const seed = `daily:${learningGroupId}:${targetDate}:${policy.id}:v${policy.version}`;
   const selection = selectQuestions(
@@ -215,8 +224,23 @@ export async function generateDailyTest(options: {
   );
 
   if (selection.selected.length === 0) {
+    /* 원인을 구분해서 말한다.
+     *
+     * 예전 문구는 무조건 "문제은행의 검수·사용 권한 상태를 확인하세요"였는데,
+     * 실제로 가장 흔한 원인은 **무반복 창**이다(실측: 사용 가능한 문항이
+     * 159개나 있는데 오늘 개념의 문항이 전부 최근 14일 안에 쓰여 0건이 됐다).
+     * 선생님을 검수 화면으로 보내 놓고 거기서 아무 이상도 못 찾게 만드는 건
+     * 없는 화면보다 나쁘다 — 잘못된 곳을 짚어 시간을 버리게 한다. */
+    const candidates = buckets.reduce((n, b) => n + b.candidates.length, 0);
+    if (candidates === 0) {
+      return fail(
+        "이 수업 개념에 연결된 출제 가능한 문항이 없습니다. 문항의 개념 정렬과 검수·사용 권한 상태를 확인하세요.",
+      );
+    }
     return fail(
-      "선정 가능한 문항이 없습니다. 문제은행의 검수·사용 권한 상태를 확인하세요.",
+      excludeUsedSince
+        ? `후보 ${candidates}개가 모두 최근 출제분입니다 (${excludeUsedSince} 이후 사용). 무반복 기간(${policy.constraints.noRepeatWithinDays}일)을 줄이거나 이 개념의 문항을 늘리세요.`
+        : `후보 ${candidates}개가 있으나 난이도 배분 조건을 만족하는 조합이 없습니다. 정책의 난이도 배분을 확인하세요.`,
     );
   }
 

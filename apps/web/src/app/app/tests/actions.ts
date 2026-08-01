@@ -42,14 +42,23 @@ export async function generateDailyTestAction(
   }
 
   const purpose = String(formData.get("purpose") ?? "formative");
-  const generator =
-    purpose === "confirmation" ? generateConfirmationTest : generateDailyTest;
-  const result = await generator({
-    organizationId: user.organizationId,
-    learningGroupId,
-    targetDate,
-    actorUserId: user.userId,
-  });
+  /* 최근 출제분 허용 — 확인테스트는 단원 전체 풀을 쓰므로 해당 없음 */
+  const allowRecentlyUsed = formData.get("allowRecentlyUsed") === "on";
+  const result =
+    purpose === "confirmation"
+      ? await generateConfirmationTest({
+          organizationId: user.organizationId,
+          learningGroupId,
+          targetDate,
+          actorUserId: user.userId,
+        })
+      : await generateDailyTest({
+          organizationId: user.organizationId,
+          learningGroupId,
+          targetDate,
+          actorUserId: user.userId,
+          allowRecentlyUsed,
+        });
   revalidatePath("/app/tests");
   return result;
 }

@@ -220,7 +220,14 @@ export function AttemptRunner({
             <label htmlFor={`ans-${q.assessmentQuestionId}`} className="block text-sm text-ink-soft">
               답 (분수는 3/4 형태로 입력)
             </label>
+            {/* key가 없으면 React가 문항을 넘길 때 **같은 DOM 노드를 재사용**한다.
+                비제어 입력이라 defaultValue가 다시 적용되지 않아, 앞 문항에
+                입력한 글자가 다음 문항 칸에 그대로 남는다 (실측: 3번에 「5」를
+                넣고 넘어가니 손대지 않은 4번 칸에 「5」가 보였다). 학생이 이미
+                답한 줄 알고 넘어가거나, 그 칸을 건드리는 순간 남의 답이
+                저장된다. 문항마다 새로 마운트시켜 끊는다. */}
             <input
+              key={q.assessmentQuestionId}
               id={`ans-${q.assessmentQuestionId}`}
               type="text"
               defaultValue={

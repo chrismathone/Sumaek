@@ -79,6 +79,18 @@ export function GenerateForm({
         >
           {pending ? "생성 중…" : "생성·게시"}
         </button>
+        {/* 문항 수가 적은 학원에서는 연속 수업일마다 후보가 0이 되어 테스트를
+            아예 만들 수 없다. 정책의 무반복 기간을 고치는 화면이 아직 없으므로
+            선생님이 알고 넘어갈 수단을 둔다 — 기본은 꺼져 있다. */}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="allowRecentlyUsed" className="size-4" />
+          <span>
+            최근 출제분도 허용
+            <span className="ml-1 text-xs text-ink-soft">
+              (무반복 기간을 넘겨 같은 문항을 다시 낼 수 있습니다)
+            </span>
+          </span>
+        </label>
       </form>
       {result && (
         <div
