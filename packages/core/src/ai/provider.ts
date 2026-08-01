@@ -51,8 +51,16 @@ export interface AiProvider {
  * 실전에서 발생하는 손상(JSON escape·낮은 신뢰도)을 재현해
  * 검수 격리 경로가 실제로 작동함을 보여준다.
  */
+export const DEFAULT_MOCK_MODEL = "mock-extractor-v1";
+
 export class MockAiProvider implements AiProvider {
   readonly name = "mock";
+  /** 보고할 모델 이름 — 모델 레지스트리(인수 36)가 버전을 지정한다 */
+  readonly model: string;
+
+  constructor(options: { model?: string } = {}) {
+    this.model = options.model ?? DEFAULT_MOCK_MODEL;
+  }
 
   private static FIXTURES: Array<Omit<ExtractedQuestion, "printedNumber">> = [
     {
@@ -105,7 +113,15 @@ export class MockAiProvider implements AiProvider {
     checksum: string;
     pageCount: number;
   }): Promise<ExtractionResult> {
-    const rand = createSeededRandom(`mock-extract:${input.checksum}`);
+    /* 시드에 모델 이름을 섞는다 — 다른 모델 버전은 다른(그러나 여전히
+     * 결정론적인) 추출을 내놓아야 섀도 일치도가 의미를 갖는다.
+     * 기본 모델만은 예전 시드를 그대로 쓴다: 기존 골든·픽스처가 이
+     * 문자열에 매여 있어 바꾸면 무관한 테스트가 무너진다. */
+    const seed =
+      this.model === DEFAULT_MOCK_MODEL
+        ? `mock-extract:${input.checksum}`
+        : `mock-extract:${this.model}:${input.checksum}`;
+    const rand = createSeededRandom(seed);
     // 파일당 3~5문항 — 결정론적
     const count = 3 + Math.floor(rand() * 3);
     const questions: ExtractedQuestion[] = [];
@@ -118,7 +134,7 @@ export class MockAiProvider implements AiProvider {
     }
     return {
       provider: this.name,
-      model: "mock-extractor-v1",
+      model: this.model,
       promptVersion: "mock/1.0.0",
       pages: input.pageCount,
       questions,
@@ -143,6 +159,18 @@ export class AiProviderUnavailableError extends Error {
 export const FAILING_PROVIDER_NAME = "mock-failing";
 
 /**
+ * createAiProviderForModel가 인식하는 테스트·실연 전용 **모델** 이름.
+ *
+ * 공급자 이름이 아니라 모델 이름인 이유: 섀도 평가는 카나리가 배포 공급자와
+ * 같은 공급자일 것을 요구한다(model-registry.selectModels). 그래서 "실사용은
+ * 멀쩡한데 카나리만 죽는" 상황을 실연하려면 실패가 모델 축에 있어야 한다.
+ *
+ * FAILING_PROVIDER_NAME과 같은 규율로 다룬다 — 프로덕션은 이 모델을
+ * 레지스트리에 등록하지 않으며, 등록하지 않는 한 도달하지 않는다.
+ */
+export const FAILING_MODEL_NAME = "mock-failing-v0";
+
+/**
  * 실패를 주입하는 공급자 — 테스트·실연 전용.
  *
  * MockAiProvider는 절대 실패하지 않는다. 그래서 회로 차단(인수 23)과
@@ -155,14 +183,19 @@ export const FAILING_PROVIDER_NAME = "mock-failing";
  */
 export class FailingAiProvider implements AiProvider {
   readonly name: string;
+  readonly model: string;
   /** 실제로 공급자 본체에 도달한 호출 수 — 회로가 열린 뒤 빠른 실패 검증용 */
   calls = 0;
   private remainingFailures: number;
-  private readonly delegate = new MockAiProvider();
+  private readonly delegate: MockAiProvider;
 
-  constructor(options: { name?: string; failures?: number } = {}) {
+  constructor(
+    options: { name?: string; model?: string; failures?: number } = {},
+  ) {
     this.name = options.name ?? FAILING_PROVIDER_NAME;
+    this.model = options.model ?? FAILING_MODEL_NAME;
     this.remainingFailures = options.failures ?? Number.POSITIVE_INFINITY;
+    this.delegate = new MockAiProvider({ model: this.model });
   }
 
   async extractQuestions(input: {
@@ -194,5 +227,41 @@ export function createAiProvider(name: string | undefined): AiProvider {
     case undefined:
     default:
       return new MockAiProvider();
+  }
+}
+
+/** 배포가 실제로 쓰는 공급자 이름 — 레지스트리 행이 이것과 다르면 쓰지 않는다 */
+export function deployedProviderName(): string {
+  return process.env.AI_PROVIDER ?? "mock";
+}
+
+/**
+ * 공급자 + **모델 버전** 지정 생성 (인수 36).
+ *
+ * createAiProvider가 배포 설정(AI_PROVIDER)으로 공급자를 고르는 반면,
+ * 이 함수는 모델 레지스트리가 지정한 버전까지 고정한다. 알 수 없는 조합은
+ * 조용히 기본값으로 떨어지지 않고 던진다 — 오타 난 모델 이름으로 실사용
+ * 트래픽이 다른 모델에 흘러가는 것이 카나리가 막으려는 바로 그 사고다.
+ */
+export function createAiProviderForModel(
+  provider: string,
+  model: string,
+): AiProvider {
+  if (model === FAILING_MODEL_NAME) {
+    // 실연·테스트 전용 (FAILING_MODEL_NAME 주석 참고).
+    return new FailingAiProvider({ name: provider, model });
+  }
+  switch (provider) {
+    case "anthropic":
+      throw new Error(
+        "anthropic 공급자는 ANTHROPIC_API_KEY 설정 후 구현을 연결하세요 (현재 mock만 활성).",
+      );
+    case FAILING_PROVIDER_NAME:
+      // 이 공급자 계열은 모델과 무관하게 항상 실패한다 (실연 전용).
+      return new FailingAiProvider({ name: provider, model });
+    case "mock":
+      return new MockAiProvider({ model });
+    default:
+      throw new Error(`알 수 없는 AI 공급자입니다: ${provider}`);
   }
 }

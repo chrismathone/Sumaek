@@ -19,7 +19,22 @@ const PRICING: Record<
   { inputPerMTokUsd: number; outputPerMTokUsd: number }
 > = {
   "mock:mock-extractor-v1": { inputPerMTokUsd: 3, outputPerMTokUsd: 15 },
+  // 카나리 대상 차세대 목 모델 (인수 36) — 신형이 더 비싼 흔한 경우를
+  // 그대로 둔다. 승격 게이트의 비용 배수가 실제로 계산되게 하려면
+  // 두 모델이 서로 다른 가격이어야 한다.
+  "mock:mock-extractor-v2": { inputPerMTokUsd: 4, outputPerMTokUsd: 20 },
 };
+
+/**
+ * 가격표에 있는 모델인가 (인수 36 — 승격 게이트의 비용 판정).
+ *
+ * estimateCostUsd는 모르는 모델에 0을 돌려준다. 그 0을 "무료"로 읽고
+ * 승격시키면 청구서가 도착한 뒤에야 안다. 그래서 "모른다"와 "0원이다"를
+ * 구분할 수단을 따로 노출한다.
+ */
+export function hasPricing(provider: string, model: string): boolean {
+  return Boolean(PRICING[`${provider}:${model}`]);
+}
 
 export function estimateCostUsd(
   provider: string,

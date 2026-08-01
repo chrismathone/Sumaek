@@ -28,6 +28,7 @@
     "purge:test-data": "pnpm --filter @su-maek/db exec tsx scripts/purge-test-data.mts",
     "boundary:check": "node scripts/boundary-check.mjs",
     "kill-switch": "pnpm --filter @su-maek/db exec tsx scripts/kill-switch.mts",
+    "ai-canary": "pnpm --filter @su-maek/db exec tsx scripts/ai-canary.mts",
     "requeue-dlq": "pnpm --filter @su-maek/db exec tsx scripts/requeue-dead-letters.mts",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "rebuild:readmodels": "node scripts/rebuild-read-models.mjs"

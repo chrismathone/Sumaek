@@ -22,6 +22,19 @@ export const KILL_SWITCH_TOPICS: Readonly<Record<string, readonly string[]>> = {
   // 앱 내 알림(notification.dispatch)은 대상이 아니다 — 업무함은 항상 동작 (22장).
 };
 
+/**
+ * 워커 토픽이 아닌 곳에서 집행되는 스위치 — **어디서** 막히는지의 단일 정의처.
+ *
+ * KILL_SWITCH_TOPICS만 보면 "집행 미연결"로 보이지만 실제로는 집행되는
+ * 키가 있다. CLI가 그것을 "끈 것처럼 보이지만 멈추지 않습니다"라고
+ * 잘못 경고하지 않도록 여기 적는다.
+ */
+export const KILL_SWITCH_DIRECT_ENFORCEMENT: Readonly<Record<string, string>> =
+  {
+    ai_model_canary:
+      "AI 섀도 평가 — domain/ai-canary.ts runCanaryShadow가 카나리 호출 자체를 건너뛴다",
+  };
+
 /** 사람이 끌 수 있는 스위치 키 전체 — 설정 화면·CLI의 선택지 */
 export const KILL_SWITCH_KEYS = [
   "auto_reschedule",
@@ -31,7 +44,13 @@ export const KILL_SWITCH_KEYS = [
   "formula_autofix",
   "document_export",
   "external_notifications",
+  // 카나리 섀도 평가 (인수 36). 끄면 카나리 호출이 사라진다 — 실사용
+  // 추출은 그대로 돈다 (섀도는 애초에 사용자 경로가 아니다).
+  "ai_model_canary",
 ] as const;
+
+/** 카나리 섀도 평가 kill switch 키 — 문자열 중복을 막는 단일 정의처 */
+export const CANARY_KILL_SWITCH_KEY = "ai_model_canary";
 
 /** 전역으로 중지된 스위치 키 집합 (만료된 중지는 자동 복구로 간주) */
 export async function loadGloballyDisabledSwitches(

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
-import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
+import { DEFAULT_MATRIX, canWrite, grantState } from "@su-maek/core/authz";
 import { requireAccess } from "@/lib/auth/require-access";
 import { todayInTimeZone } from "@/lib/format";
 import { GroupForm, LearnerForm, PeriodForm } from "./SetupForms";
@@ -28,8 +28,16 @@ export default async function SettingsPage() {
   const user = await requireAccess("settings");
   const sql = getSharedSql();
 
-  const [policies, masteryPolicies, groups, killSwitches, periods, groupList, aiUsage] =
-    await Promise.all([
+  const [
+    policies,
+    masteryPolicies,
+    groups,
+    killSwitches,
+    periods,
+    groupList,
+    aiUsage,
+    operatorGrants,
+  ] = await Promise.all([
     sql<{ name: string; purpose: string; version: number; is_active: boolean }[]>`
       select name, purpose, version, is_active from assessment_policies
       where organization_id = ${user.organizationId} order by name
@@ -89,7 +97,32 @@ export default async function SettingsPage() {
         (select warn_ratio::text from ai_budgets
           where organization_id = ${user.organizationId}) as warn_ratio
     `,
+    /* break-glass 승인 후보 — 유효 여부는 SQL이 아니라 core의 grantState가
+     * 판정한다. where 절에 만료 조건을 복제하면 판정이 두 곳이 된다. */
+    sql<
+      {
+        approved_at: Date | null;
+        expires_at: Date;
+        revoked_at: Date | null;
+        now: Date;
+      }[]
+    >`
+      select approved_at, expires_at, revoked_at, now() as now
+      from operator_access_grants
+      where organization_id = ${user.organizationId}
+      order by expires_at desc
+      limit 50
+    `,
   ]);
+
+  const grantNow = operatorGrants[0]?.now ?? new Date();
+  const activeOperatorGrants = operatorGrants.filter(
+    (g) =>
+      grantState(
+        { approvedAt: g.approved_at, expiresAt: g.expires_at, revokedAt: g.revoked_at },
+        grantNow,
+      ) === "active",
+  ).length;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -250,6 +283,24 @@ export default async function SettingsPage() {
             currentWarnRatio={aiUsage[0]?.warn_ratio ?? null}
           />
         )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+        <h2 className="font-semibold">운영자 접근 (break-glass)</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          수맥 운영자가 이 워크스페이스를 볼 수 있는 유일한 경로입니다. 사유·승인자·
+          만료 시각이 없으면 승인이 만들어지지 않고, 만료되면 자동으로 닫힙니다.
+        </p>
+        <p className="mt-2 text-sm">
+          현재 유효한 승인{" "}
+          <span className="font-mono">{activeOperatorGrants} 건</span> ·{" "}
+          <Link
+            href="/app/settings/operator-access"
+            className="text-pen underline underline-offset-4"
+          >
+            승인 이력 보기
+          </Link>
+        </p>
       </section>
 
       <p className="mt-4 text-sm text-ink-soft">

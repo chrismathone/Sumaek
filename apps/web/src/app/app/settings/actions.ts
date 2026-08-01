@@ -168,6 +168,14 @@ export async function addLearner(
   return { ok: true, message: `학습자 "${parsed.data.displayName}"을 등록했습니다.` };
 }
 
+/**
+ * 조직 관리자가 화면에서 끌 수 있는 스위치.
+ *
+ * `@su-maek/db`의 KILL_SWITCH_KEYS와 **일부러 다르다** — 거기에는
+ * `ai_model_canary`가 더 있지만, 모델 롤아웃은 조직 관리자가 아니라 플랫폼
+ * 운영자의 결정이라 CLI(`pnpm kill-switch stop ai_model_canary --org …`)에만
+ * 둔다. 두 목록을 기계적으로 맞추지 말 것.
+ */
 const KILL_SWITCH_KEYS = [
   "auto_reschedule",
   "auto_publish_questions",

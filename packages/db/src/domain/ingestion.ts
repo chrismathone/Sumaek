@@ -1,11 +1,18 @@
 import { v7 as uuidv7 } from "uuid";
 import {
   createAiProvider,
+  createAiProviderForModel,
   getSharedBreaker,
   withCircuitBreaker,
   type ExtractionResult,
+  type ModelSelection,
 } from "@su-maek/core/ai";
 import { checkAiBudget, recordAiUsage } from "./ai-usage";
+import {
+  EXTRACT_QUESTIONS_OPERATION,
+  resolveModelSelection,
+  runCanaryShadow,
+} from "./ai-canary";
 import { normalizeMixedText, renderMixedText } from "@su-maek/core/math";
 import { getSharedSql } from "../client";
 
@@ -108,18 +115,35 @@ export async function processSourceFile(options: {
    * 설정(예: 아직 미구현인 anthropic)에서 던진 예외가 복귀 코드를 건너뛰어,
    * 파일이 extracting에 갇힌 채 재시도조차 불가능해진다 — 바로 이 복귀
    * 코드가 막는다고 문서가 주장하던 그 상태다. */
+  const extractionInput = {
+    fileName: file.file_name,
+    checksum: file.checksum,
+    pageCount: file.page_count ?? 1,
+  };
   let extraction: ExtractionResult;
+  let selection: ModelSelection | null = null;
+  let baselineLatencyMs = 0;
   try {
-    const rawProvider = createAiProvider(process.env.AI_PROVIDER);
+    /* 모델 레지스트리 (인수 36) — active 행이 있으면 그 모델 버전을 쓰고,
+     * 없으면 예전과 정확히 같이 공급자 기본 모델을 쓴다. 레지스트리를
+     * 쓰지 않는 조직의 동작은 달라지지 않는다. */
+    selection = await resolveModelSelection({
+      organizationId,
+      operation: EXTRACT_QUESTIONS_OPERATION,
+    });
+    const rawProvider = selection.active
+      ? createAiProviderForModel(
+          selection.active.provider,
+          selection.active.model,
+        )
+      : createAiProvider(process.env.AI_PROVIDER);
     const provider = withCircuitBreaker(
       rawProvider,
       getSharedBreaker(rawProvider.name),
     );
-    extraction = await provider.extractQuestions({
-      fileName: file.file_name,
-      checksum: file.checksum,
-      pageCount: file.page_count ?? 1,
-    });
+    const startedAt = Date.now();
+    extraction = await provider.extractQuestions(extractionInput);
+    baselineLatencyMs = Date.now() - startedAt;
   } catch (error) {
     await sql`
       update source_files set status = 'uploaded', updated_at = now()
@@ -138,6 +162,20 @@ export async function processSourceFile(options: {
     outputTokens: extraction.usage.outputTokens,
     relatedType: "source_file",
     relatedId: sourceFileId,
+  });
+
+  /* 섀도 평가 (인수 36) — 카나리 모델을 **같은 입력**으로 한 번 더 부르고
+   * 일치도·지연·비용만 기록한다. 아래 저장 루프는 extraction(실사용 결과)만
+   * 읽으므로 카나리 산출물은 문항이 되지 못한다. 이 호출은 던지지 않는다. */
+  await runCanaryShadow({
+    organizationId,
+    operation: EXTRACT_QUESTIONS_OPERATION,
+    baseline: extraction,
+    baselineLatencyMs,
+    input: extractionInput,
+    relatedType: "source_file",
+    relatedId: sourceFileId,
+    selection: selection ?? undefined,
   });
 
   let gatePassed = 0;
@@ -292,6 +330,8 @@ export async function processSourceFile(options: {
       'ingestion.extract', 'source_file', ${sourceFileId},
       ${sql.json({
         provider: extraction.provider,
+        // 어느 모델 버전이 이 문항들을 만들었나 (인수 36 — 승격 후 역추적)
+        model: extraction.model,
         extracted: extraction.questions.length,
         gatePassed,
         quarantined,
