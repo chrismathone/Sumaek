@@ -79,6 +79,18 @@ const payloads = {
     newState: z.string(),
     policyVersionId: z.uuid().nullable(),
   }),
+  /**
+   * 학생 개별 경로 오버라이드가 생기거나 취소됐다 (인수 4).
+   * 소비자는 그 학습자의 개별 일정을 다시 실체화한다 — 반 공통 일정은
+   * 건드리지 않는다.
+   */
+  LearnerRouteOverrideChanged: z.object({
+    overrideId: z.uuid(),
+    learnerId: z.uuid(),
+    kind: z.string(),
+    changedTo: z.enum(["active", "cancelled"]),
+    changedBy: z.uuid().nullable(),
+  }),
   ScheduleProposalCreated: z.object({
     proposalId: z.uuid(),
     scopeType: z.enum(["learning_group", "learner"]),

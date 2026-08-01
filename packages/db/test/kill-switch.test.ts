@@ -12,6 +12,7 @@ import {
 const ALL_TOPICS = [
   "schedule.recalculate",
   "schedule.materialize",
+  "schedule.materialize-learner",
   "grading.auto",
   "notification.dispatch",
   "mastery.update",
@@ -32,6 +33,14 @@ describe("filterTopicsBySwitches", () => {
       "notification.dispatch",
       "mastery.update",
     ]);
+  });
+
+  it("auto_reschedule 중지는 학습자 스코프 자동 재계산도 함께 멈춘다 (인수 4)", () => {
+    /* 학생 개별 일정의 자동 재계산도 일정 자동화다 — 반 일정만 멈추고
+     * 학생 일정만 계속 돌면 "일정 자동화를 껐다"가 거짓말이 된다. */
+    expect(
+      filterTopicsBySwitches(ALL_TOPICS, new Set(["auto_reschedule"])),
+    ).not.toContain("schedule.materialize-learner");
   });
 
   it("스위치 여러 개가 각자 독립적으로 토픽을 제외한다 (28장 — 독립 차단)", () => {

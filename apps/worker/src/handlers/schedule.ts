@@ -7,7 +7,10 @@ import {
   tryMarkInbox,
   type ClaimedJob,
 } from "@su-maek/db";
-import { materializeGroupSchedule } from "@su-maek/db/domain";
+import {
+  materializeGroupSchedule,
+  materializeLearnerSchedule,
+} from "@su-maek/db/domain";
 
 /* ─────────────────────────────────────────────────────────────
  * 일정 재계산 소비자 — 결과 기반 미래 일정 갱신 (20장 재계산 트리거).
@@ -89,6 +92,70 @@ export async function handleScheduleRecalculate(
     await checkpointJob(sql, job.id, { doneGroupIds: [...done] });
   }
   return results;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 학습자 스코프 자동 재계산 (인수 4).
+ *
+ * LearnerRouteOverrideChanged(오버라이드 생성·취소) → Outbox →
+ * schedule.materialize-learner 작업으로 여기 도착한다. 반 공통 일정은
+ * 건드리지 않는다 — materializeLearnerSchedule이 sessions를 쓰지 않는다.
+ *
+ * 소비자 등록의 짝: `EVENT_CONSUMERS.LearnerRouteOverrideChanged`(queue.ts)와
+ * main.ts의 `register("schedule.materialize-learner", ...)`가 **함께** 있어야
+ * 한다. 한쪽만 있으면 디스패처가 작업 0건을 만들고도 outbox 행을 delivered로
+ * 표시해 이벤트가 영구 유실된다 (queue.ts 340-344).
+ * ───────────────────────────────────────────────────────────── */
+export async function handleLearnerScheduleMaterialize(
+  job: ClaimedJob,
+): Promise<unknown> {
+  const sql = getSharedSql();
+  const data = job.payload as EventJobPayload;
+  const organizationId = job.organization_id;
+  if (!organizationId) return { skipped: "조직 없음" };
+
+  /* 조직 스코프 kill switch — Inbox 마킹 **전에** 확인해야 스위치 복구 후
+   * 이벤트가 소비될 수 있다 (마킹 후 defer하면 재개 시 중복으로 걸러진다). */
+  if (!(await isFeatureEnabled(sql, "auto_reschedule", organizationId))) {
+    return deferSignal("kill switch: auto_reschedule 중지 — 복구 후 재개");
+  }
+
+  const learnerId = (data.payload ?? {}).learnerId;
+  if (typeof learnerId !== "string" || !learnerId) {
+    return { skipped: "대상 학습자 없음" };
+  }
+
+  /* Inbox 멱등 — at-least-once 전달 방어. 실체화 자체도 멱등이지만
+   * (같은 입력 → 같은 항목), 재실행마다 리비전·변경안·감사 행이 늘어난다. */
+  const fresh = await sql.begin((tx) =>
+    tryMarkInbox(tx as never, "schedule.materialize-learner", data.eventId),
+  );
+  if (!fresh) return { skipped: "중복 이벤트 (inbox)" };
+
+  const [org] = await sql<{ timezone: string }[]>`
+    select timezone from organizations where id = ${organizationId}
+  `;
+  const timezone = org?.timezone ?? "Asia/Seoul";
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
+
+  const result = await materializeLearnerSchedule({
+    organizationId,
+    learnerId,
+    actorUserId: null, // 자동화 실행
+    timezone,
+    today,
+  });
+  /* 실체화 거절(기준 반 루트 없음 등)은 일시적 오류가 아니다 — 던져서
+   * 재시도·DLQ로 밀지 않고 결과로 남긴다 (jobs.meta.result에 보존된다). */
+  return {
+    learnerId,
+    ok: result.ok,
+    message: result.message,
+    created: result.createdItems,
+    diverging: result.divergingItems,
+    rejoinDate: result.rejoinDate,
+    conflicts: result.conflicts,
+  };
 }
 
 function parseCheckpoint(

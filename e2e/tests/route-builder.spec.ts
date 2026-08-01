@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoTableRow } from "../lib/table";
+import { gotoTableRow, tableRowIn } from "../lib/table";
 
 const TEACHER = {
   email: "demo-teacher@su-maek.app",
@@ -194,7 +194,14 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
     .filter({ hasText: "개별 경로 오버라이드" });
   await section.getByLabel("사유 (필수)").fill("가감법 확인테스트 미통과 보충");
   await section.getByLabel("보충 노드 제목").fill("가감법 집중 연습");
-  await section.getByText("일차방정식 복습", { exact: true }).click();
+  // 재합류 지점 — 이 학생이 어느 차시에서 반 진도로 돌아오는가
+  await section.getByLabel("재합류 지점").selectOption({ label: "가감법" });
+  /* 건너뛸 노드는 체크박스 묶음(fieldset) 안에서 고른다 — 같은 제목이
+   * 재합류 지점 <select>의 <option>에도 있어 화면 전체로는 둘이 잡힌다. */
+  await section
+    .getByRole("group")
+    .getByText("일차방정식 복습", { exact: true })
+    .click();
   await section.getByRole("button", { name: "오버라이드 만들기" }).click();
 
   const status = section.getByRole("status").filter({ hasText: "만들었습니다" });
@@ -208,7 +215,30 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
     .first();
   await expect(row.getByText("건너뛰기 1개")).toBeVisible();
   await expect(row.getByText("보충: 가감법 집중 연습")).toBeVisible();
+  await expect(row.getByText("재합류: 가감법")).toBeVisible();
   await expect(row.getByText("적용 중")).toBeVisible();
+
+  /* ── 개별 일정 실체화 (인수 4) — 오버라이드가 실제 차시가 되는 지점.
+   * 이 버튼이 없으면 계산은 있어도 제품 안에서 도달할 수 없다. ── */
+  const scheduleSection = page
+    .locator("section")
+    .filter({ hasText: "개별 일정" });
+  await scheduleSection
+    .getByRole("button", { name: "개별 일정 계산" })
+    .click();
+  const scheduleToast = scheduleSection
+    .getByRole("status")
+    .filter({ hasText: "개별 일정" });
+  await expect(scheduleToast).toBeVisible({ timeout: 30_000 });
+  await expect(scheduleToast).toContainText("반 공통 일정은 변경되지 않았습니다");
+
+  // 표에 반 공통과 다른 차시와 재합류 차시가 눈에 보인다
+  await expect(
+    tableRowIn(scheduleSection, "재합류 차시").first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    tableRowIn(scheduleSection, "다름").first(),
+  ).toBeVisible();
 
   // 감사 로그 기록 — 작업 필터의 <option>에도 같은 문구가 있으므로
   // 표 본문 행에서 확인한다. 사유로 검색해 이번 실행의 기록으로 좁힌다.
@@ -223,12 +253,62 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
   // 취소 — 다음 실행의 멱등성 (이전 실행 잔재 포함 전부 정리)
   const studentRowAgain = await gotoTableRow(page, "/app/students", "박서윤");
   await studentRowAgain.first().getByRole("link").first().click();
+  /* 상세 화면이 실제로 그려질 때까지 기다린다.
+   * 클릭 직후에 세면 아직 목록 화면이라 취소 버튼이 0개로 보이고 루프가
+   * 곧장 break한다 — 정리가 통째로 건너뛰어져도 단언은 통과한다.
+   * 실측 결과 이 경주 때문에 시드 학습자에게 활성 오버라이드가 31건까지
+   * 쌓여 있었다 (학생 경로가 보충 차시로만 채워질 정도로). */
   const cancelButtons = page.getByRole("button", { name: "취소", exact: true });
-  for (let i = 0; i < 10; i++) {
+  await expect(
+    page.getByRole("heading", { name: "박서윤", exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(cancelButtons.first()).toBeVisible({ timeout: 30_000 });
+  for (let i = 0; i < 12; i++) {
     const count = await cancelButtons.count();
     if (count === 0) break;
     await cancelButtons.first().click();
     await expect(cancelButtons).toHaveCount(count - 1, { timeout: 15_000 });
   }
   await expect(cancelButtons).toHaveCount(0);
+
+  /* 취소 뒤 다시 계산하면 재합류 차시가 사라진다 — 오버라이드가 빠지면
+   * 학생 경로는 반 공통으로 되돌아온다. */
+  const scheduleAfterCancel = page
+    .locator("section")
+    .filter({ hasText: "개별 일정" });
+  await scheduleAfterCancel
+    .getByRole("button", { name: "개별 일정 계산" })
+    .click();
+  await expect(
+    scheduleAfterCancel.getByRole("status").filter({ hasText: "개별 일정" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(tableRowIn(scheduleAfterCancel, "재합류 차시")).toHaveCount(0, {
+    timeout: 30_000,
+  });
+});
+
+/**
+ * 인수 4: 아직 계산하지 않은 학생의 개별 일정은 빈 표가 아니라 **정직한
+ * 빈 상태**로 보인다 — 무엇이 없는지와 무엇을 하면 되는지가 함께 있다.
+ * (계산을 한 번도 돌리지 않는 학생을 대상으로 한다.)
+ */
+test("개별 일정: 계산 전에는 정직한 빈 상태를 보여 준다", async ({ page }) => {
+  await login(page);
+
+  const studentRow = await gotoTableRow(page, "/app/students", "정하린");
+  await studentRow.first().getByRole("link").first().click();
+  await expect(
+    page.getByRole("heading", { name: "정하린", exact: true }),
+  ).toBeVisible();
+
+  const scheduleSection = page
+    .locator("section")
+    .filter({ hasText: "개별 일정" });
+  await expect(
+    scheduleSection.getByText("아직 계산하지 않았습니다."),
+  ).toBeVisible();
+  // 다음에 할 일이 적혀 있다 — 빈 표만 덩그러니 두지 않는다
+  await expect(
+    scheduleSection.getByText(/개별 일정 계산/).first(),
+  ).toBeVisible();
 });

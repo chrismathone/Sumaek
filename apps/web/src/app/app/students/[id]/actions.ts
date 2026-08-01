@@ -7,6 +7,8 @@ import { getSharedSql } from "@su-maek/db";
 import { executeLearnerErasure } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { todayInTimeZone } from "@/lib/format";
+import { materializeLearnerSchedule } from "@/lib/domain/schedule";
 
 /* 학생 오버라이드 (13장·인수 4) — 반 공통 루트를 복사하지 않고 차이만
  * 버전으로 저장한다. 반 루트·다른 학생에게 어떤 영향도 주지 않는다
@@ -15,6 +17,70 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 export interface ActionResult {
   ok: boolean;
   message: string;
+}
+
+/* ── 학습자 스코프 일정 실체화 (인수 4) ──
+ * 오버라이드를 소비해 이 학생의 개별 차시를 만든다. sessions(반 공통)는
+ * 한 줄도 건드리지 않는다 — 실체화 구현이 그것을 보장한다.
+ *
+ * 워커 자동 재계산이 kill switch로 멈춰 있어도 **이 버튼은 동작한다**:
+ * 스위치의 집행 지점은 자동화(워커 토픽)뿐이고 사람의 명시적 실행은 막지
+ * 않는다 (kill-switch.ts 머리말). */
+
+export interface LearnerScheduleResult extends ActionResult {
+  createdItems: number;
+  divergingItems: number;
+  rejoinDate: string | null;
+  conflicts: number;
+}
+
+function scheduleDeny(message: string): LearnerScheduleResult {
+  return {
+    ok: false,
+    message,
+    createdItems: 0,
+    divergingItems: 0,
+    rejoinDate: null,
+    conflicts: 0,
+  };
+}
+
+const materializeSchema = z.object({ learnerId: z.uuid() });
+
+export async function materializeLearnerScheduleAction(
+  _prev: LearnerScheduleResult | null,
+  formData: FormData,
+): Promise<LearnerScheduleResult> {
+  const user = await getCurrentUser();
+  // 쓰기 게이트 — 읽기 게이트를 쓰면 readonly 역할이 샌다
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "learners")) {
+    return scheduleDeny("학생 개별 일정을 계산할 권한이 없습니다.");
+  }
+  const parsed = materializeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return scheduleDeny("대상 학생이 지정되지 않았습니다.");
+
+  /* 기준 날짜는 조직 시간대의 오늘 — UTC로 뽑으면 KST 00:00~09:00 사이에
+   * 하루가 어제로 밀려 오늘 차시가 "과거 보존" 대상이 된다. */
+  const result = await materializeLearnerSchedule({
+    organizationId: user.organizationId,
+    learnerId: parsed.data.learnerId,
+    /* 감사 주체 — 실체화가 audit_events에 actor_type='user'로 남긴다
+     * (null이면 automation). 여기가 그 기록의 유일한 주입점이다. */
+    actorUserId: user.userId,
+    timezone: user.timezone,
+    today: todayInTimeZone(user.timezone),
+  });
+
+  revalidatePath(`/app/students/${parsed.data.learnerId}`);
+  revalidatePath("/app/today");
+  return {
+    ok: result.ok,
+    message: result.message,
+    createdItems: result.createdItems,
+    divergingItems: result.divergingItems,
+    rejoinDate: result.rejoinDate,
+    conflicts: result.conflicts,
+  };
 }
 
 const OVERRIDE_KINDS = [
@@ -34,6 +100,9 @@ const createSchema = z.object({
   effectiveTo: z.string().default(""),
   insertTitle: z.string().default(""),
   insertMinutes: z.coerce.number().int().min(5).max(480).default(60),
+  /* 재합류 지점 — "이 학생이 어느 차시에서 반 진도로 돌아오는가"의 답.
+   * 비우면 재합류 없음(계속 갈라진 채로 진행). */
+  rejoinNodeId: z.string().default(""),
 });
 
 export async function createOverride(
@@ -89,6 +158,27 @@ export async function createOverride(
     }
   }
 
+  /* 재합류 노드도 기준 버전의 것이어야 한다 — 다른 버전의 노드 ID를 넣으면
+   * 실체화가 재합류 지점을 찾지 못하고 조용히 무시한다. */
+  const rejoinNodeId = /^[0-9a-f-]{36}$/.test(parsed.data.rejoinNodeId)
+    ? parsed.data.rejoinNodeId
+    : null;
+  if (rejoinNodeId) {
+    const [valid] = await sql<{ cnt: number }[]>`
+      select count(*)::int as cnt from route_nodes
+      where route_version_id = ${base.version_id} and id = ${rejoinNodeId}
+    `;
+    if ((valid?.cnt ?? 0) !== 1) {
+      return { ok: false, message: "재합류 노드가 기준 루트 버전에 없습니다." };
+    }
+    if (skipNodeIds.includes(rejoinNodeId)) {
+      return {
+        ok: false,
+        message: "건너뛸 노드를 재합류 지점으로 지정할 수 없습니다.",
+      };
+    }
+  }
+
   const delta: Record<string, unknown> = { skipNodeIds };
   if (parsed.data.insertTitle) {
     delta.insertBefore = {
@@ -111,12 +201,14 @@ export async function createOverride(
     await tx`
       insert into student_route_overrides (
         id, organization_id, learner_id, base_route_version_id, kind, version,
-        status, reason, goal, delta, created_by, effective_from, effective_to
+        status, reason, goal, delta, created_by, effective_from, effective_to,
+        rejoin_node_id
       ) values (
         ${overrideId}, ${user.organizationId}, ${learner.id}, ${base.version_id},
         ${parsed.data.kind}, 1, 'active', ${parsed.data.reason},
         ${parsed.data.goal || null}, ${tx.json(delta as never)}, ${user.userId},
-        ${parsed.data.effectiveFrom || null}, ${parsed.data.effectiveTo || null}
+        ${parsed.data.effectiveFrom || null}, ${parsed.data.effectiveTo || null},
+        ${rejoinNodeId}
       )
     `;
     await tx`
@@ -127,7 +219,30 @@ export async function createOverride(
         ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
         'route.create-override', 'student_route_override', ${overrideId},
         ${parsed.data.reason},
-        ${tx.json({ learner: learner.display_name, kind: parsed.data.kind, delta } as never)}
+        ${tx.json({
+          learner: learner.display_name,
+          kind: parsed.data.kind,
+          delta,
+          rejoinNodeId,
+        } as never)}
+      )
+    `;
+    /* Outbox — 오버라이드 저장과 **같은 트랜잭션** (2D). 워커가 소비해
+     * 이 학생의 개별 일정을 자동으로 다시 실체화한다. */
+    await tx`
+      insert into outbox_events (
+        id, organization_id, aggregate_type, aggregate_id, aggregate_version,
+        event_type, occurred_at, payload
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'student_route_override',
+        ${overrideId}, 1, 'LearnerRouteOverrideChanged', now(),
+        ${tx.json({
+          overrideId,
+          learnerId: learner.id,
+          kind: parsed.data.kind,
+          changedTo: "active",
+          changedBy: user.userId,
+        } as never)}
       )
     `;
   });
@@ -262,24 +377,62 @@ export async function cancelOverride(
   if (!parsed.success) return { ok: false, message: "대상이 지정되지 않았습니다." };
 
   const sql = getSharedSql();
-  const updated = await sql`
-    update student_route_overrides
-    set status = 'cancelled', updated_at = now()
+  /* 대상의 학습자·종류를 먼저 읽는다 — 취소 이벤트의 payload는 폼이 아니라
+   * 저장된 행에서 나와야 한다 (폼의 learnerId는 조작될 수 있다). */
+  const [target] = await sql<{ learner_id: string; kind: string }[]>`
+    select learner_id::text as learner_id, kind::text as kind
+    from student_route_overrides
     where id = ${parsed.data.overrideId}
       and organization_id = ${user.organizationId}
       and status = 'active'
   `;
-  if (updated.count === 0) {
+  if (!target) {
     return { ok: false, message: "활성 오버라이드를 찾을 수 없습니다." };
   }
-  await sql`
-    insert into audit_events (
-      id, organization_id, actor_type, actor_id, action, target_type, target_id
-    ) values (
-      ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
-      'route.cancel-override', 'student_route_override', ${parsed.data.overrideId}
-    )
-  `;
-  revalidatePath(`/app/students/${parsed.data.learnerId}`);
+
+  let cancelled = false;
+  await sql.begin(async (tx) => {
+    const updated = await tx`
+      update student_route_overrides
+      set status = 'cancelled', updated_at = now()
+      where id = ${parsed.data.overrideId}
+        and organization_id = ${user.organizationId}
+        and status = 'active'
+    `;
+    // 경합 — 다른 요청이 먼저 취소했다. 감사·이벤트를 남기지 않는다.
+    if (updated.count === 0) return;
+    cancelled = true;
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
+        'route.cancel-override', 'student_route_override', ${parsed.data.overrideId}
+      )
+    `;
+    /* Outbox — 취소도 같은 트랜잭션에서 알린다. 오버라이드가 빠지면 학생
+     * 경로는 반 공통으로 되돌아가야 하고, 그 재계산은 워커가 한다. */
+    await tx`
+      insert into outbox_events (
+        id, organization_id, aggregate_type, aggregate_id, aggregate_version,
+        event_type, occurred_at, payload
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'student_route_override',
+        ${parsed.data.overrideId}, 2, 'LearnerRouteOverrideChanged', now(),
+        ${tx.json({
+          overrideId: parsed.data.overrideId,
+          learnerId: target.learner_id,
+          kind: target.kind,
+          changedTo: "cancelled",
+          changedBy: user.userId,
+        } as never)}
+      )
+    `;
+  });
+  if (!cancelled) {
+    return { ok: false, message: "활성 오버라이드를 찾을 수 없습니다." };
+  }
+
+  revalidatePath(`/app/students/${target.learner_id}`);
   return { ok: true, message: "오버라이드를 취소했습니다." };
 }

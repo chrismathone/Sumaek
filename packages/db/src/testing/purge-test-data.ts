@@ -21,6 +21,15 @@ import type { Sql } from "postgres";
 const LEARNER_NAME_PATTERNS = ["E2E%", "통합테스트%", "확인테스트%"];
 const GROUP_NAME_PATTERN = "E2E%";
 const CONCEPT_SLUG_PATTERNS = ["itest-%", "ctest-%"];
+/**
+ * E2E가 **시드 학습자**에게 붙이는 개별 경로 오버라이드 — 이름 규칙으로는
+ * 잡히지 않는다(학습자 자체는 시드라 지우지 않으므로). 사유 문구로 고른다.
+ *
+ * 남겨 두면 실행마다 쌓여 다음 실행의 학생 경로를 오염시킨다. 화면의
+ * 오버라이드 목록은 최근 10건만 보여 주므로 스펙이 UI로 다 취소할 수도
+ * 없다 (실측: 31건이 활성으로 누적되어 학생 경로가 보충으로만 채워졌다).
+ */
+const OVERRIDE_REASON_PATTERNS = ["E2E%", "ITEST%", "%확인테스트 미통과 보충%"];
 /** 시드가 만든 고정 ID 접두사 — 절대 지우지 않는다 */
 const SEED_ID_PREFIX = "00000000-";
 
@@ -31,6 +40,8 @@ export interface PurgeResult {
   routePlansDeleted: number;
   conceptsDeleted: number;
   contentRightsDeleted: number;
+  /** E2E가 시드 학습자에게 붙인 개별 경로 오버라이드 (딸린 학습자 일정 포함) */
+  learnerOverridesDeleted: number;
   /** dry-run이면 실제로 지우지 않고 셈만 한다 */
   dryRun: boolean;
 }
@@ -96,6 +107,13 @@ export async function purgeTestData(
           `;
     const planIds = purgeablePlans.map((r) => r.id);
 
+    /* ── 4b. E2E가 시드 학습자에게 붙인 오버라이드 ── */
+    const purgeableOverrides = await tx<{ id: string; learner_id: string }[]>`
+      select o.id, o.learner_id from student_route_overrides o
+      where o.organization_id = ${organizationId}
+        and o.reason like any(${OVERRIDE_REASON_PATTERNS}::text[])
+    `;
+
     const result: PurgeResult = {
       learnersDeleted: learnerIds.length,
       learnersArchived: archivable.length,
@@ -103,6 +121,7 @@ export async function purgeTestData(
       routePlansDeleted: planIds.length,
       conceptsDeleted: 0,
       contentRightsDeleted: 0,
+      learnerOverridesDeleted: purgeableOverrides.length,
       dryRun,
     };
 
@@ -157,6 +176,24 @@ export async function purgeTestData(
       await tx`delete from data_deletion_requests where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from learning_group_memberships where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from learners where id = any(${learnerIds}::uuid[])`;
+    }
+
+    /* E2E 오버라이드와 그것으로 만들어진 학생 일정. 항목을 함께 지워야
+     * 다음 실행이 "아직 계산하지 않았습니다"에서 시작한다 — 오버라이드만
+     * 지우면 옛 보충 차시가 남아 다음 실행의 표를 오염시킨다. */
+    if (purgeableOverrides.length > 0) {
+      const overrideLearnerIds = [
+        ...new Set(purgeableOverrides.map((r) => r.learner_id)),
+      ];
+      await tx`
+        delete from learner_schedule_items
+        where organization_id = ${organizationId}
+          and learner_id = any(${overrideLearnerIds}::uuid[])
+      `;
+      await tx`
+        delete from student_route_overrides
+        where id = any(${purgeableOverrides.map((r) => r.id)}::uuid[])
+      `;
     }
 
     if (archivable.length > 0) {

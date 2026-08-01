@@ -8,12 +8,16 @@ import {
   MASTERY_STATE_LABEL,
   formatDate,
   formatRatio,
+  formatTime,
   label,
   todayInTimeZone,
   trimScore,
 } from "@/lib/format";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
+import { DataTable, type Column } from "@/components/DataTable";
+import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
+import { MaterializeLearnerScheduleButton } from "./LearnerScheduleForm";
 import { DeletionExecuteForm, DeletionRequestForm } from "./PrivacyForm";
 
 const DELETION_STATUS_LABEL: Record<string, string> = {
@@ -63,15 +67,46 @@ const PURPOSE_LABEL: Record<string, string> = {
   retest: "재시험",
 };
 
+/* 개별 일정 표의 정렬 키 화이트리스트 — 사용자 입력이 ORDER BY에 닿지 않는다 */
+const SCHEDULE_SORT_COLUMN: Record<string, string> = {
+  item_date: "item_date",
+  matches_group: "matches_group",
+  is_rejoin: "is_rejoin",
+};
+
+/* 이 표는 상세 화면 **안**에 있다. `page`·`sort`·`dir`은 이름이 흔해서
+ * 이 화면의 다른 파라미터와 그대로 부딪히므로 전용 접두사를 쓴다. */
+const SCHEDULE_PARAM_PREFIX = "ls_";
+
+interface ScheduleItemRow {
+  id: string;
+  item_date: string;
+  starts_at: Date;
+  ends_at: Date;
+  session_id: string | null;
+  planned_node_ids: unknown;
+  matches_group: boolean;
+  is_rejoin: boolean;
+  total_count: number;
+}
+
 export default async function StudentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const { id } = await params;
   const user = await requireAccess("learners");
   const sql = getSharedSql();
   const today = todayInTimeZone(user.timezone);
+
+  const scheduleQuery = parseTableQuery(await searchParams, {
+    sortKeys: Object.keys(SCHEDULE_SORT_COLUMN),
+    defaultSort: "item_date",
+    prefix: SCHEDULE_PARAM_PREFIX,
+  });
 
   const [learner] = await sql<
     {
@@ -98,7 +133,15 @@ export default async function StudentDetailPage({
   `;
   if (!learner) notFound();
 
-  const [masteries, attempts, reviewItems, baseRoute, overrides, deletionRequests] = await Promise.all([
+  const [
+    masteries,
+    attempts,
+    reviewItems,
+    baseRoute,
+    overrides,
+    deletionRequests,
+    scheduleItems,
+  ] = await Promise.all([
     sql<
       {
         id: string;
@@ -195,12 +238,14 @@ export default async function StudentDetailPage({
         effective_from: string | null;
         effective_to: string | null;
         delta: unknown;
+        rejoin_node_id: string | null;
         created_at: Date;
       }[]
     >`
       select id, kind, status, reason, goal,
              effective_from::text as effective_from,
-             effective_to::text as effective_to, delta, created_at
+             effective_to::text as effective_to, delta,
+             rejoin_node_id::text as rejoin_node_id, created_at
       from student_route_overrides
       where organization_id = ${user.organizationId} and learner_id = ${id}
       order by created_at desc
@@ -223,12 +268,122 @@ export default async function StudentDetailPage({
       order by created_at desc
       limit 5
     `,
+    /* 학습자 스코프 실체화 결과 (인수 4). 반 공통 수업(sessions)이 아니라
+     * 이 학생이 그 차시에 실제로 무엇을 하는지의 기록이다. */
+    sql<ScheduleItemRow[]>`
+      with base as (
+        select li.id, li.item_date::text as item_date, li.starts_at, li.ends_at,
+               li.session_id::text as session_id, li.planned_node_ids,
+               li.matches_group, li.is_rejoin
+        from learner_schedule_items li
+        where li.organization_id = ${user.organizationId}
+          and li.learner_id = ${id}
+      )
+      select *, count(*) over ()::int as total_count
+      from base
+      order by ${sql(SCHEDULE_SORT_COLUMN[scheduleQuery.sort] ?? "item_date")}
+               ${scheduleQuery.dir === "asc" ? sql`asc` : sql`desc`},
+               item_date asc, starts_at asc
+      limit ${scheduleQuery.pageSize} offset ${scheduleQuery.offset}
+    `,
   ]);
 
   const canManagePrivacy = canWrite(DEFAULT_MATRIX, user.role, "settings");
+  const canManageLearners = canWrite(DEFAULT_MATRIX, user.role, "learners");
   const openDeletionRequest = deletionRequests.find(
     (r) => r.status === "received" || r.status === "processing",
   );
+
+  /* 차시에 놓인 노드의 이름.
+   * 반 루트 노드는 route_nodes에 있지만, 보충 노드는 오버라이드 안에만
+   * 있다 (반 루트를 복사하지 않는다는 원칙 4의 귀결). 보충 노드의 합성 ID
+   * 규칙은 실체화와 같다 — `override:<오버라이드 ID>:<순번>`. */
+  const nodeTitleById = new Map<string, string>();
+  for (const n of baseRoute) nodeTitleById.set(n.node_id, n.title);
+  for (const o of overrides) {
+    const inserted =
+      ((o.delta ?? {}) as {
+        insertBefore?: { nodes?: Array<{ title?: string }> };
+      }).insertBefore?.nodes ?? [];
+    inserted.forEach((n, index) =>
+      nodeTitleById.set(`override:${o.id}:${index}`, n.title ?? "보충"),
+    );
+  }
+  const nodeTitle = (nodeId: string): string =>
+    nodeTitleById.get(nodeId) ??
+    // 이름을 못 찾았다고 지어내지 않는다 — 무엇인지만 정직하게 적는다
+    (nodeId.startsWith("override:") ? "보충 (이름 없음)" : "이름 없는 노드");
+
+  const scheduleTotal = scheduleItems[0]?.total_count ?? 0;
+  const scheduleColumns: Column<ScheduleItemRow>[] = [
+    {
+      key: "item_date",
+      label: "날짜",
+      sortable: true,
+      mono: true,
+      render: (r) => r.item_date,
+    },
+    {
+      key: "time",
+      label: "시각",
+      mono: true,
+      secondary: true,
+      render: (r) =>
+        `${formatTime(r.starts_at, user.timezone)}–${formatTime(r.ends_at, user.timezone)}`,
+    },
+    {
+      key: "nodes",
+      label: "이 차시에 하는 것",
+      render: (r) => {
+        const ids = Array.isArray(r.planned_node_ids)
+          ? (r.planned_node_ids as unknown[]).filter(
+              (v): v is string => typeof v === "string",
+            )
+          : [];
+        return ids.length === 0 ? (
+          <span className="text-ink-soft">배치된 노드 없음</span>
+        ) : (
+          ids.map(nodeTitle).join(" · ")
+        );
+      },
+    },
+    {
+      key: "matches_group",
+      label: "반 공통",
+      sortable: true,
+      render: (r) =>
+        r.matches_group ? (
+          <span className="font-mono text-xs text-ink-soft">같음</span>
+        ) : (
+          <span className="rounded-[var(--radius-control)] border border-highlight bg-highlight-soft px-1.5 py-0.5 font-mono text-[11px]">
+            다름
+          </span>
+        ),
+    },
+    {
+      key: "is_rejoin",
+      label: "재합류",
+      sortable: true,
+      render: (r) =>
+        r.is_rejoin ? (
+          <span className="rounded-[var(--radius-control)] border border-pen bg-pen-soft/50 px-1.5 py-0.5 font-mono text-[11px] text-pen">
+            재합류 차시
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-ink-soft">—</span>
+        ),
+    },
+    {
+      key: "session_id",
+      label: "반 수업 연결",
+      secondary: true,
+      render: (r) => (
+        <span className="font-mono text-xs text-ink-soft">
+          {r.session_id ? "연결됨" : "반 일정 밖"}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -437,6 +592,11 @@ export default async function StudentDetailPage({
                         {skips > 0 && `건너뛰기 ${skips}개`}
                         {skips > 0 && inserts && " · "}
                         {inserts && `보충: ${inserts}`}
+                        {o.rejoin_node_id &&
+                          ` · 재합류: ${
+                            baseRoute.find((n) => n.node_id === o.rejoin_node_id)
+                              ?.title ?? "다른 버전 노드"
+                          }`}
                         {o.effective_from &&
                           ` · ${o.effective_from}${o.effective_to ? `~${o.effective_to}` : "~"}`}
                       </span>
@@ -455,6 +615,42 @@ export default async function StudentDetailPage({
             </ul>
           )}
         </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">개별 일정</h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              오버라이드를 반영한 이 학생만의 차시입니다. 반 공통과{" "}
+              <strong className="font-medium">다른</strong> 차시와 반 진도로{" "}
+              <strong className="font-medium">재합류</strong>하는 차시가 표시됩니다.
+              계산해도 반 공통 수업은 한 줄도 바뀌지 않습니다.
+            </p>
+          </div>
+          {canManageLearners && (
+            <MaterializeLearnerScheduleButton learnerId={learner.id} />
+          )}
+        </div>
+        <DataTable
+          columns={scheduleColumns}
+          rows={scheduleItems}
+          rowKey={(r) => r.id}
+          total={scheduleTotal}
+          query={scheduleQuery}
+          basePath={`/app/students/${learner.id}`}
+          caption="학습자 개별 일정 — 반 공통과 다른 차시·재합류 차시"
+          empty={
+            <>
+              <p className="font-medium">아직 계산하지 않았습니다.</p>
+              <p className="mt-1.5 text-sm text-ink-soft">
+                {canManageLearners
+                  ? "위의 «개별 일정 계산»을 누르면 오버라이드를 반영한 이 학생의 차시가 만들어집니다. 기준이 될 반 루트가 게시되어 있어야 합니다."
+                  : "개별 일정은 아직 계산되지 않았습니다. 계산은 학습자 쓰기 권한이 있는 구성원만 실행할 수 있습니다."}
+              </p>
+            </>
+          }
+        />
       </section>
 
       {canManagePrivacy && (

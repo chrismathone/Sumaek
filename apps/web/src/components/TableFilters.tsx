@@ -24,6 +24,18 @@ export function TableFilters({
   selects?: SelectFilter[];
 }) {
   const active = Object.keys(query.params).length > 0;
+  /* 접두사가 있는 표(상세 화면 안의 표)는 자기 이름으로만 제출한다 —
+   * 그래야 같은 URL을 쓰는 다른 표·탭의 파라미터와 부딪히지 않는다. */
+  const named = (key: string): string => `${query.prefix}${key}`;
+  const ownNames = new Set([
+    named("q"),
+    ...selects.map((f) => named(f.name)),
+  ]);
+  /* 이 폼이 그리지 않는 남의 파라미터는 hidden으로 실어 보낸다 —
+   * GET 폼 제출은 URL을 통째로 갈아 끼우므로 안 실으면 조용히 사라진다. */
+  const carried = Object.entries(query.params).filter(
+    ([key]) => !ownNames.has(key),
+  );
 
   return (
     <form
@@ -32,17 +44,20 @@ export function TableFilters({
       className="mt-4 flex flex-wrap items-end gap-2"
     >
       {/* 정렬 상태 보존 — 필터를 바꿔도 보던 순서를 잃지 않는다 */}
-      <input type="hidden" name="sort" value={query.sort} />
-      <input type="hidden" name="dir" value={query.dir} />
+      <input type="hidden" name={named("sort")} value={query.sort} />
+      <input type="hidden" name={named("dir")} value={query.dir} />
+      {carried.map(([key, value]) => (
+        <input key={key} type="hidden" name={key} value={value} />
+      ))}
 
       {search && (
         <div>
-          <label htmlFor="q" className="block text-xs text-ink-soft">
+          <label htmlFor={named("q")} className="block text-xs text-ink-soft">
             {search.label}
           </label>
           <input
-            id="q"
-            name="q"
+            id={named("q")}
+            name={named("q")}
             type="search"
             defaultValue={query.q}
             placeholder={search.placeholder}
@@ -53,13 +68,16 @@ export function TableFilters({
 
       {selects.map((filter) => (
         <div key={filter.name}>
-          <label htmlFor={filter.name} className="block text-xs text-ink-soft">
+          <label
+            htmlFor={named(filter.name)}
+            className="block text-xs text-ink-soft"
+          >
             {filter.label}
           </label>
           <select
-            id={filter.name}
-            name={filter.name}
-            defaultValue={query.params[filter.name] ?? ""}
+            id={named(filter.name)}
+            name={named(filter.name)}
+            defaultValue={query.params[named(filter.name)] ?? ""}
             className="mt-1 rounded-[var(--radius-control)] border border-rule bg-surface px-2 py-1 text-sm"
           >
             <option value="">{filter.allLabel ?? "전체"}</option>

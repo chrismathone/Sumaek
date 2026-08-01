@@ -24,6 +24,7 @@ try {
   console.log(`  학습자 삭제        ${r.learnersDeleted}`);
   console.log(`  학습자 보관 처리   ${r.learnersArchived}  (불변 증거 보유 — 삭제 불가)`);
   console.log(`  개념 삭제          ${r.conceptsDeleted}`);
+  console.log(`  학생 오버라이드    ${r.learnerOverridesDeleted}  (딸린 학습자 일정 포함)`);
   console.log(`  사용권 삭제        ${r.contentRightsDeleted}`);
 } finally {
   await sql.end();

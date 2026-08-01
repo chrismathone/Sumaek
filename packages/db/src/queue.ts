@@ -264,6 +264,10 @@ export const EVENT_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   RoutePublished: ["schedule.materialize", "readmodel.refresh"],
   SessionCompleted: ["schedule.recalculate", "readmodel.refresh"],
   LearningAvailabilityChanged: ["schedule.recalculate"],
+  /* 학생 오버라이드 생성·취소 → 그 학습자의 개별 일정만 다시 실체화 (인수 4).
+   * 반 공통(schedule.materialize)을 부르지 않는다 — 오버라이드는 반 루트와
+   * 다른 학생에게 영향이 없어야 한다 (불변 조건 4). */
+  LearnerRouteOverrideChanged: ["schedule.materialize-learner"],
   AssessmentPublished: ["notification.dispatch"],
   AttemptSubmitted: ["grading.auto"],
   GradeFinalized: ["mastery.update"],

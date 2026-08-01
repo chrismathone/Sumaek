@@ -28,7 +28,8 @@ export default async function globalTeardown(): Promise<void> {
     console.log(
       `[e2e teardown] 반 ${r.groupsDeleted} · 루트 ${r.routePlansDeleted} · ` +
         `학습자 ${r.learnersDeleted} 삭제, ${r.learnersArchived} 보관 · ` +
-        `개념 ${r.conceptsDeleted} · 사용권 ${r.contentRightsDeleted}`,
+        `개념 ${r.conceptsDeleted} · 사용권 ${r.contentRightsDeleted} · ` +
+        `학생 오버라이드 ${r.learnerOverridesDeleted}`,
     );
   } catch (e) {
     // 정리 실패가 테스트 결과를 뒤집지 않게 한다 — 보고만 하고 넘어간다

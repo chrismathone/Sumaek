@@ -32,7 +32,16 @@ const LIST_PAGES = [
   "audit/page.tsx",
   "analytics/page.tsx",
   "settings/operator-access/page.tsx",
+  // 상세 화면 안의 목록 — 규약은 같고 파라미터 이름만 접두사로 나눈다
+  "students/[id]/page.tsx",
 ] as const;
+
+/**
+ * 상세 화면 안의 표 — 페이지 전역 파라미터와 이름을 다투면 안 된다.
+ * `page`·`sort`·`dir`은 흔한 이름이라 접두사 없이 두면 같은 URL의 다른
+ * 파라미터(다른 표, 탭 선택 등)와 그대로 부딪힌다.
+ */
+const PREFIXED_TABLE_PAGES = ["students/[id]/page.tsx"] as const;
 
 /** 목록 → 상세 이동이 가능해야 하는 화면 (상세 라우트가 실제로 있는 것) */
 const ROW_LINK_PAGES: ReadonlyArray<[page: string, detailDir: string]> = [
@@ -65,6 +74,21 @@ describe("목록 화면 표 규약", () => {
       if (!read(page).includes("rowHref")) notLinked.push(page);
     }
     expect(notLinked).toEqual([]);
+  });
+
+  it("상세 화면 안의 표는 파라미터 이름에 비어 있지 않은 접두사를 준다", () => {
+    /* `prefix:`를 넘겼는지만 보면 빈 문자열을 넘긴 회귀를 못 잡는다 —
+     * 값까지 따라가 실제로 이름이 갈리는지 확인한다. */
+    for (const page of PREFIXED_TABLE_PAGES) {
+      const src = read(page);
+      const passed = /prefix:\s*(?:"([^"]*)"|(\w+))/.exec(src);
+      expect(passed, `${page}: parseTableQuery에 prefix를 넘기지 않는다`).not.toBeNull();
+      const literal =
+        passed![1] ??
+        new RegExp(`${passed![2]}\\s*=\\s*"([^"]*)"`).exec(src)?.[1] ??
+        "";
+      expect(literal, `${page}: 접두사가 비어 있다`).not.toBe("");
+    }
   });
 
   it("한 쪽 행 수를 늘려 바깥 스크롤을 만들지 않는다", () => {
@@ -122,6 +146,41 @@ describe("표 파라미터 해석", () => {
     expect(href).toContain("dir=desc");
     expect(href).toContain("status=active");
     expect(href).toContain("page=3");
+  });
+
+  it("접두사를 주면 자기 이름의 파라미터만 읽는다 (상세 화면 안의 표)", () => {
+    const opts = { sortKeys: ["item_date"], defaultSort: "item_date", prefix: "ls_" };
+    // 접두사 없는 page/sort/dir은 남의 것이다 — 내 표가 가로채지 않는다
+    const q = parseTableQuery(
+      { page: "7", sort: "item_date", dir: "desc", ls_page: "3", ls_dir: "desc" },
+      opts,
+    );
+    expect(q.page).toBe(3);
+    expect(q.dir).toBe("desc");
+    expect(q.sort).toBe("item_date"); // 내 sort 파라미터가 없으니 기본값
+  });
+
+  it("접두사가 있으면 남의 파라미터를 떨구지 않는다", () => {
+    const q = parseTableQuery(
+      { tab: "mastery", page: "4" },
+      { sortKeys: ["item_date"], defaultSort: "item_date", prefix: "ls_" },
+    );
+    const href = tableHref("/app/students/abc", q, { page: 2 });
+    expect(href).toContain("tab=mastery");
+    expect(href).toContain("page=4"); // 남의 page는 그대로
+    expect(href).toContain("ls_page=2"); // 내 쪽만 바뀐다
+    expect(href).toContain("ls_sort=item_date");
+  });
+
+  it("접두사가 없는 목록 화면의 링크는 예전 이름 그대로다 (회귀 방지)", () => {
+    const q = parseTableQuery(
+      { sort: "count", dir: "desc", status: "active" },
+      { sortKeys: ["name", "count"], defaultSort: "name", filterKeys: ["status"] },
+    );
+    const href = tableHref("/app/classes", q, { page: 2 });
+    expect(href).toContain("sort=count");
+    expect(href).toContain("page=2");
+    expect(href).not.toContain("_page=");
   });
 
   it("쪽 번호 창은 항상 7칸 이하라 폭이 튀지 않는다", () => {

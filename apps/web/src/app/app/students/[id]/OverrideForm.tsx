@@ -87,6 +87,29 @@ export function OverrideForm({
         </label>
       </div>
       {baseNodes.length > 0 && (
+        <div className="text-sm">
+          <label htmlFor="rejoinNodeId" className="block">
+            재합류 지점
+          </label>
+          <p className="text-xs text-ink-soft">
+            이 노드가 놓인 차시에서 반 진도로 돌아옵니다. 그 앞의 반 공통
+            노드는 학생 경로에서 빠집니다 (지나간 진도를 따라잡지 않습니다).
+          </p>
+          <select
+            id="rejoinNodeId"
+            name="rejoinNodeId"
+            className="mt-1 block rounded-[var(--radius-control)] border border-rule bg-surface px-3 py-2 text-sm"
+          >
+            <option value="">재합류 없음</option>
+            {baseNodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {baseNodes.length > 0 && (
         <fieldset className="text-sm">
           <legend className="text-xs text-ink-soft">
             건너뛸 반 루트 노드 (기준 버전에서 선택)

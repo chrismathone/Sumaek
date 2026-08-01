@@ -15,7 +15,13 @@ import type postgres from "postgres";
 
 /** kill switch 키 → 워커 토픽 매핑 — 코드가 단일 정의처 */
 export const KILL_SWITCH_TOPICS: Readonly<Record<string, readonly string[]>> = {
-  auto_reschedule: ["schedule.recalculate", "schedule.materialize"],
+  auto_reschedule: [
+    "schedule.recalculate",
+    "schedule.materialize",
+    // 학습자 스코프 자동 재계산도 같은 스위치로 멈춘다 (인수 4·40) —
+    // 교사가 화면에서 직접 누르는 실체화는 그대로 동작한다.
+    "schedule.materialize-learner",
+  ],
   auto_grading: ["grading.auto"],
   document_export: ["export.pdf", "export.hwpx"],
   // external_notifications는 외부 공급자 어댑터 도입 시 연결한다.

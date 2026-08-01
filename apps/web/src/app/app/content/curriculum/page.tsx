@@ -162,6 +162,8 @@ export default async function CurriculumStudioPage({
     dir: "asc",
     q: "",
     params: {},
+    // 링크를 만들지 않으므로 접두사가 필요 없다 (이름을 다툴 파라미터 자체가 없다)
+    prefix: "",
   };
 
   const conceptColumns: Column<ConceptRow>[] = [

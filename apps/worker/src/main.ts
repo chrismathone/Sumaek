@@ -32,6 +32,7 @@ function register(topic: string, handler: JobHandler): void {
 
 // 등록되지 않은 토픽의 작업은 클레임되지 않으므로 유실되지 않는다.
 import {
+  handleLearnerScheduleMaterialize,
   handleNotificationDispatch,
   handleScheduleRecalculate,
   makeInboxNoop,
@@ -41,6 +42,10 @@ import { handleRightsImpact } from "./handlers/content";
 
 register("schedule.recalculate", handleScheduleRecalculate);
 register("schedule.materialize", handleScheduleRecalculate);
+/* EVENT_CONSUMERS.LearnerRouteOverrideChanged의 짝 (queue.ts).
+ * 이 등록을 지우면 디스패처가 작업 0건을 만들고도 outbox를 delivered로
+ * 표시해 이벤트가 영구 유실된다 — 소비자 등록과 반드시 함께 움직인다. */
+register("schedule.materialize-learner", handleLearnerScheduleMaterialize);
 register("notification.dispatch", handleNotificationDispatch);
 register("content.rights-impact", handleRightsImpact);
 // 인라인으로 파생이 이미 갱신된 이벤트 — 소비 확인만
