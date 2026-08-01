@@ -3,6 +3,7 @@ import {
   createAiProvider,
   getSharedBreaker,
   withCircuitBreaker,
+  type ExtractionResult,
 } from "@su-maek/core/ai";
 import { checkAiBudget, recordAiUsage } from "./ai-usage";
 import { normalizeMixedText, renderMixedText } from "@su-maek/core/math";
@@ -101,14 +102,19 @@ export async function processSourceFile(options: {
   }
 
   /* 회로 차단기 (인수 23) — 공급자 장애 시 빠른 실패로 격리하고,
-   * 파일은 uploaded로 되돌려 복구 후 재시도 가능하게 한다 */
-  const rawProvider = createAiProvider(process.env.AI_PROVIDER);
-  const provider = withCircuitBreaker(
-    rawProvider,
-    getSharedBreaker(rawProvider.name),
-  );
-  let extraction: Awaited<ReturnType<typeof provider.extractQuestions>>;
+   * 파일은 uploaded로 되돌려 복구 후 재시도 가능하게 한다.
+   *
+   * 공급자 **생성**도 이 try 안에 있어야 한다. 밖에 두면 잘못된 AI_PROVIDER
+   * 설정(예: 아직 미구현인 anthropic)에서 던진 예외가 복귀 코드를 건너뛰어,
+   * 파일이 extracting에 갇힌 채 재시도조차 불가능해진다 — 바로 이 복귀
+   * 코드가 막는다고 문서가 주장하던 그 상태다. */
+  let extraction: ExtractionResult;
   try {
+    const rawProvider = createAiProvider(process.env.AI_PROVIDER);
+    const provider = withCircuitBreaker(
+      rawProvider,
+      getSharedBreaker(rawProvider.name),
+    );
     extraction = await provider.extractQuestions({
       fileName: file.file_name,
       checksum: file.checksum,

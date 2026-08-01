@@ -131,6 +131,56 @@ export class MockAiProvider implements AiProvider {
   }
 }
 
+/** 공급자가 응답하지 못함 — 회로 차단기가 실패로 세는 종류의 오류 */
+export class AiProviderUnavailableError extends Error {
+  constructor(readonly providerName: string) {
+    super(`AI 공급자 응답 실패: ${providerName}`);
+    this.name = "AiProviderUnavailableError";
+  }
+}
+
+/** createAiProvider가 인식하는 테스트·실연 전용 공급자 이름 */
+export const FAILING_PROVIDER_NAME = "mock-failing";
+
+/**
+ * 실패를 주입하는 공급자 — 테스트·실연 전용.
+ *
+ * MockAiProvider는 절대 실패하지 않는다. 그래서 회로 차단(인수 23)과
+ * 실패 시 파일 uploaded 복귀는 "코드에 있다"는 것 말고는 실연할 수단이
+ * 없었다. 이 공급자는 지정한 횟수만큼 실패한 뒤 목 구현에 위임한다 —
+ * 기본은 무한 실패(항상 장애), failures를 주면 그만큼만 실패하고 복구한다.
+ *
+ * 프로덕션 경로는 이 이름을 쓰지 않는다: AI_PROVIDER를 명시적으로
+ * mock-failing 으로 설정했을 때만 선택되고, 기본값은 그대로 mock이다.
+ */
+export class FailingAiProvider implements AiProvider {
+  readonly name: string;
+  /** 실제로 공급자 본체에 도달한 호출 수 — 회로가 열린 뒤 빠른 실패 검증용 */
+  calls = 0;
+  private remainingFailures: number;
+  private readonly delegate = new MockAiProvider();
+
+  constructor(options: { name?: string; failures?: number } = {}) {
+    this.name = options.name ?? FAILING_PROVIDER_NAME;
+    this.remainingFailures = options.failures ?? Number.POSITIVE_INFINITY;
+  }
+
+  async extractQuestions(input: {
+    fileName: string;
+    checksum: string;
+    pageCount: number;
+  }): Promise<ExtractionResult> {
+    this.calls += 1;
+    if (this.remainingFailures > 0) {
+      this.remainingFailures -= 1;
+      throw new AiProviderUnavailableError(this.name);
+    }
+    // 복구 후 회계도 이 공급자 이름으로 남아야 한다 (비용 집계는 provider 키 기준)
+    const result = await this.delegate.extractQuestions(input);
+    return { ...result, provider: this.name };
+  }
+}
+
 /** 공급자 선택 — AI_PROVIDER 환경변수. anthropic 구현은 후속 교체 지점. */
 export function createAiProvider(name: string | undefined): AiProvider {
   switch (name) {
@@ -138,6 +188,8 @@ export function createAiProvider(name: string | undefined): AiProvider {
       throw new Error(
         "anthropic 공급자는 ANTHROPIC_API_KEY 설정 후 구현을 연결하세요 (현재 mock만 활성).",
       );
+    case FAILING_PROVIDER_NAME:
+      return new FailingAiProvider();
     case "mock":
     case undefined:
     default:
