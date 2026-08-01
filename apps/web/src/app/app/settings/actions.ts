@@ -250,6 +250,84 @@ export async function toggleKillSwitch(
   };
 }
 
+const aiBudgetSchema = z.object({
+  /** 빈 문자열이면 한도 해제 — 기록만 하고 차단하지 않는 상태로 되돌린다 */
+  monthlyLimitUsd: z.string().default(""),
+  warnRatio: z.coerce.number().min(0.5).max(0.99).default(0.8),
+});
+
+/**
+ * 조직 월 AI 비용 한도 설정·해제 (인수 37).
+ * 한도가 없으면 checkAiBudget이 limitUsd=null을 돌려주어 80% 경고·100% 차단이
+ * 영영 발동하지 않는다 — 집행 로직이 도달 가능해지려면 쓰기 경로가 필요하다.
+ */
+export async function setAiBudget(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "settings")) {
+    return { ok: false, message: "AI 한도를 변경할 권한이 없습니다." };
+  }
+  const parsed = aiBudgetSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { ok: false, message: "경고 임계는 0.5~0.99 사이여야 합니다." };
+  }
+  const raw = parsed.data.monthlyLimitUsd.trim();
+  const clearing = raw === "";
+  const limit = Number(raw);
+  if (!clearing && (!Number.isFinite(limit) || limit <= 0 || limit > 99_999_999)) {
+    return { ok: false, message: "월 한도는 0보다 큰 금액이어야 합니다." };
+  }
+
+  const sql = getSharedSql();
+  await sql.begin(async (tx) => {
+    const [before] = await tx<{ monthly_limit_usd: string; warn_ratio: string }[]>`
+      select monthly_limit_usd::text, warn_ratio::text from ai_budgets
+      where organization_id = ${user.organizationId}
+    `;
+    if (clearing) {
+      await tx`delete from ai_budgets where organization_id = ${user.organizationId}`;
+    } else {
+      await tx`
+        insert into ai_budgets (id, organization_id, monthly_limit_usd, warn_ratio)
+        values (${uuidv7()}, ${user.organizationId}, ${limit.toFixed(2)},
+                ${parsed.data.warnRatio.toFixed(2)})
+        on conflict (organization_id) do update
+          set monthly_limit_usd = excluded.monthly_limit_usd,
+              warn_ratio = excluded.warn_ratio,
+              updated_at = now()
+      `;
+    }
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id,
+        before, after
+      ) values (
+        ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
+        'settings.ai-budget', 'ai_budget', ${user.organizationId},
+        ${before ? tx.json(before as never) : null},
+        ${clearing
+          ? null
+          : tx.json({
+              monthly_limit_usd: limit.toFixed(2),
+              warn_ratio: parsed.data.warnRatio.toFixed(2),
+            } as never)}
+      )
+    `;
+  });
+
+  revalidatePath("/app/settings");
+  return clearing
+    ? { ok: true, message: "월 한도를 해제했습니다. 사용량은 계속 기록됩니다." }
+    : {
+        ok: true,
+        message: `월 한도를 $${limit.toFixed(2)}로 설정했습니다 (${Math.round(
+          parsed.data.warnRatio * 100,
+        )}% 경고 · 100% 차단).`,
+      };
+}
+
 async function audit(
   organizationId: string,
   actorId: string,

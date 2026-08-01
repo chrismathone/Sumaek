@@ -92,12 +92,16 @@ export async function checkAiBudget(
       coalesce((
         select sum(estimated_cost_usd) from ai_usage_events
         where organization_id = ${organizationId}
-          and created_at >= date_trunc('month', now())
+          -- 월 경계는 **조직 시간대** 기준이다. date_trunc('month', now())만
+          -- 쓰면 세션 시간대(UTC)로 끊겨 KST 1일 00:00~09:00이 전달로 잡힌다.
+          and created_at >= (date_trunc('month', now() at time zone o.timezone)
+                             at time zone o.timezone)
       ), 0)::text as month_to_date,
       b.monthly_limit_usd::text as limit_usd,
       b.warn_ratio::text as warn_ratio
-    from (select 1) one
-    left join ai_budgets b on b.organization_id = ${organizationId}
+    from organizations o
+    left join ai_budgets b on b.organization_id = o.id
+    where o.id = ${organizationId}
   `;
   return evaluateBudget({
     monthToDateUsd: Number(row?.month_to_date ?? 0),
@@ -141,7 +145,14 @@ export async function recordAiUsage(options: {
 
   const evaluation = await checkAiBudget(options.organizationId);
   if (evaluation.warn && evaluation.limitUsd !== null) {
-    const monthKey = new Date().toISOString().slice(0, 7);
+    // 경고 묶음 키의 월도 집계 창과 **같은 시간대**로 끊는다 —
+    // 둘이 어긋나면 월초에 경고가 두 번 가거나 아예 가지 않는다.
+    const [monthRow] = await sql<{ month_key: string }[]>`
+      select to_char(now() at time zone o.timezone, 'YYYY-MM') as month_key
+      from organizations o where o.id = ${options.organizationId}
+    `;
+    const monthKey =
+      monthRow?.month_key ?? new Date().toISOString().slice(0, 7);
     const groupKey = `ai-budget-warn:${monthKey}`;
     const [existing] = await sql<{ id: string }[]>`
       select id from notifications

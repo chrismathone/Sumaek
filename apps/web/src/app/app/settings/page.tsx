@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { requireAccess } from "@/lib/auth/require-access";
 import { todayInTimeZone } from "@/lib/format";
 import { GroupForm, LearnerForm, PeriodForm } from "./SetupForms";
 import { KillSwitchControls, type SwitchView } from "./KillSwitchControls";
+import { AiBudgetForm } from "./AiBudgetForm";
 
 /** 사람이 끌 수 있는 자동화 스위치 — 키·라벨 (28장) */
 const KILL_SWITCH_LABELS: ReadonlyArray<{ key: string; label: string }> = [
@@ -24,7 +25,7 @@ export const metadata: Metadata = { title: "설정" };
  * 편집 폼은 후속 단계 — 없는 기능을 있는 척하지 않는다. */
 
 export default async function SettingsPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireAccess("settings");
   const sql = getSharedSql();
 
   const [policies, masteryPolicies, groups, killSwitches, periods, groupList, aiUsage] =
@@ -65,7 +66,12 @@ export default async function SettingsPage() {
       order by name
     `,
     sql<
-      { month_to_date: string; calls: number; limit_usd: string | null }[]
+      {
+        month_to_date: string;
+        calls: number;
+        limit_usd: string | null;
+        warn_ratio: string | null;
+      }[]
     >`
       select
         coalesce((
@@ -79,7 +85,9 @@ export default async function SettingsPage() {
             and created_at >= date_trunc('month', now())
         ), 0) as calls,
         (select monthly_limit_usd::text from ai_budgets
-          where organization_id = ${user.organizationId}) as limit_usd
+          where organization_id = ${user.organizationId}) as limit_usd,
+        (select warn_ratio::text from ai_budgets
+          where organization_id = ${user.organizationId}) as warn_ratio
     `,
   ]);
 
@@ -226,7 +234,9 @@ export default async function SettingsPage() {
           <dt className="text-ink-soft">월 한도</dt>
           <dd className="font-mono">
             {aiUsage[0]?.limit_usd
-              ? `$${Number(aiUsage[0].limit_usd).toFixed(2)} (80% 경고 · 100% 차단)`
+              ? `$${Number(aiUsage[0].limit_usd).toFixed(2)} (${Math.round(
+                  Number(aiUsage[0].warn_ratio ?? 0.8) * 100,
+                )}% 경고 · 100% 차단)`
               : "미설정 — 기록만 하고 차단하지 않음"}
           </dd>
         </dl>
@@ -234,6 +244,12 @@ export default async function SettingsPage() {
           모든 AI 호출이 가격표 버전과 함께 기록됩니다. 목 공급자도 같은
           경로로 기록되어 한도 로직이 처음부터 검증됩니다.
         </p>
+        {canWrite(DEFAULT_MATRIX, user.role, "settings") && (
+          <AiBudgetForm
+            currentLimitUsd={aiUsage[0]?.limit_usd ?? null}
+            currentWarnRatio={aiUsage[0]?.warn_ratio ?? null}
+          />
+        )}
       </section>
 
       <p className="mt-4 text-sm text-ink-soft">
