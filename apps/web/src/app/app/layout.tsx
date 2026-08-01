@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { minutesRemaining } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { visibleNavGroups } from "@/lib/nav";
 import { signOut } from "@/app/(auth)/login/actions";
@@ -117,6 +118,21 @@ export default async function AppLayout({
             </nav>
           </details>
         </header>
+        {/* break-glass 배너 (인수 28) — 승인 접근은 눈에 보여야 한다.
+            운영자 본인에게는 "지금 무엇을 근거로 들어와 있는지"를, 화면을
+            함께 보는 워크스페이스 쪽에는 "언제 닫히는지"를 알린다. */}
+        {user.breakGlass && (
+          <div
+            role="status"
+            className="border-b border-grade bg-grade-soft px-4 py-2 text-sm text-grade lg:px-6"
+          >
+            <span className="font-semibold">운영자 승인 접근 중 (읽기 전용)</span>
+            <span className="ml-2">사유: {user.breakGlass.reason}</span>
+            <span className="ml-2 font-mono text-xs">
+              만료까지 {minutesRemaining(user.breakGlass, user.breakGlass.now)}분
+            </span>
+          </div>
+        )}
         <main id="main-content" className="p-4 lg:p-6">{children}</main>
       </div>
     </div>

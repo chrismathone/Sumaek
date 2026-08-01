@@ -19,6 +19,13 @@ export const ROLES = [
   "content_manager",
   "content_reviewer",
   "student",
+  /**
+   * break-glass 운영자 (27장 · 인수 28). **멤버십으로 부여되지 않는다** —
+   * DB의 member_role enum에는 이 값이 없고, 유효한 operator_access_grants
+   * 승인이 살아 있는 동안에만 세션에서 만들어진다. 승인이 만료되면 다음
+   * 요청에서 세션 자체가 성립하지 않는다 (auth/current-user.ts).
+   */
+  "operator",
 ] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -55,27 +62,38 @@ export type AccessLevel = "full" | "scoped" | "readonly" | "none";
 
 type Matrix = Record<MenuKey, Record<Role, AccessLevel>>;
 
-/** 기본 매트릭스 — 워크스페이스 오버라이드의 기준값 */
+/**
+ * 기본 매트릭스 — 워크스페이스 오버라이드의 기준값.
+ *
+ * operator 열은 **어떤 칸도 full·scoped가 아니다**. 그래서 canWrite는 메뉴를
+ * 하나씩 손보지 않아도 전 메뉴에서 false를 돌려준다 — break-glass 접근이
+ * 읽기 전용이라는 사실이 매트릭스 자체에 적혀 있고, 앞으로 추가될 쓰기
+ * 액션도 canWrite 게이트만 지키면 자동으로 닫힌다.
+ *
+ * 학습자 개인 데이터 화면(today·grading·inbox·groups·learners·mastery·reports)은
+ * 승인이 유효해도 operator에게 열리지 않는다 — 운영자 접근은 장애 진단용
+ * 최소 권한이지 대리 운영 권한이 아니다 (콘텐츠 역할 가드레일과 같은 이유, 4장).
+ */
 export const DEFAULT_MATRIX: Matrix = {
-  today: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none" },
-  calendar: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none" },
-  grading: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none" },
-  inbox: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "scoped", content_reviewer: "scoped", student: "none" },
-  routes: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "none", content_reviewer: "none", student: "none" },
-  curriculum_studio: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none" },
-  books: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none" },
-  tests: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none" },
-  question_bank: { owner: "full", program_director: "full", teacher: "readonly", grader: "readonly", content_manager: "full", content_reviewer: "scoped", student: "none" },
-  ingestion: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "full", content_reviewer: "scoped", student: "none" },
-  content_review: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "full", content_reviewer: "scoped", student: "none" },
-  groups: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none" },
-  learners: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none" },
-  mastery: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none" },
-  reports: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "none", content_reviewer: "none", student: "none" },
-  integrations: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none" },
-  settings: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none" },
-  audit: { owner: "readonly", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none" },
-  learn: { owner: "none", program_director: "none", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "scoped" },
+  today: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  calendar: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  grading: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  inbox: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "scoped", content_reviewer: "scoped", student: "none", operator: "none" },
+  routes: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  curriculum_studio: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none", operator: "readonly" },
+  books: { owner: "full", program_director: "full", teacher: "readonly", grader: "none", content_manager: "full", content_reviewer: "readonly", student: "none", operator: "readonly" },
+  tests: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  question_bank: { owner: "full", program_director: "full", teacher: "readonly", grader: "readonly", content_manager: "full", content_reviewer: "scoped", student: "none", operator: "readonly" },
+  ingestion: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "full", content_reviewer: "scoped", student: "none", operator: "readonly" },
+  content_review: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "full", content_reviewer: "scoped", student: "none", operator: "readonly" },
+  groups: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  learners: { owner: "full", program_director: "full", teacher: "scoped", grader: "scoped", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  mastery: { owner: "full", program_director: "full", teacher: "scoped", grader: "readonly", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  reports: { owner: "full", program_director: "full", teacher: "scoped", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "none" },
+  integrations: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  settings: { owner: "full", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  audit: { owner: "readonly", program_director: "readonly", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "none", operator: "readonly" },
+  learn: { owner: "none", program_director: "none", teacher: "none", grader: "none", content_manager: "none", content_reviewer: "none", student: "scoped", operator: "none" },
 };
 
 export interface MatrixOverride {
@@ -88,12 +106,16 @@ export interface MatrixOverride {
  * 가드레일 — 오버라이드로도 바꿀 수 없는 칸.
  * - owner의 settings/audit 접근 축소 금지 (복구 불능 락아웃 방지 — eywa 실사고 3).
  * - student는 learn 외 어떤 메뉴도 열 수 없고, learn을 닫을 수도 없다.
+ * - operator(break-glass)는 어떤 칸도 오버라이드할 수 없다. 테넌트 설정으로
+ *   운영자에게 쓰기를 열어줄 수 있으면 "읽기 전용 승인 접근"이라는 약속이
+ *   워크스페이스마다 달라진다 — 승인은 기간을 정할 뿐 권한을 넓히지 않는다.
  * - 콘텐츠 역할(content_manager/reviewer)에게 학습자 개인 데이터 메뉴를
  *   열어줄 수 없다 (4장 — 콘텐츠 담당자는 학생 개인정보에 접근하지 않는다).
  */
 export function isPermissionLocked(menu: MenuKey, role: Role): boolean {
   if (role === "owner" && (menu === "settings" || menu === "audit")) return true;
   if (role === "student") return true;
+  if (role === "operator") return true;
   if (
     (role === "content_manager" || role === "content_reviewer") &&
     (menu === "learners" || menu === "mastery" || menu === "groups" ||
@@ -141,6 +163,7 @@ const HIERARCHY: Record<Role, number> = {
   content_manager: 2,
   content_reviewer: 3,
   student: 9,
+  operator: 9,
 };
 
 /**
@@ -152,6 +175,11 @@ export function canAssignRole(
   targetCurrentRole: Role,
   newRole: Role,
 ): boolean {
+  /* operator는 멤버십 역할이 아니다 — 부여도 회수도 이 경로가 아니라
+   * break-glass 승인(operator_access_grants)에서만 일어난다. 여기서 막지
+   * 않으면 위계상 약한 역할이라는 이유로 누구나 붙일 수 있게 된다. */
+  if (newRole === "operator" || targetCurrentRole === "operator") return false;
+  if (actorRole === "operator") return false;
   const actor = HIERARCHY[actorRole];
   // owner만 owner를 만들 수 있다
   if (newRole === "owner") return actorRole === "owner";

@@ -70,6 +70,14 @@ describe("권한 매트릭스", () => {
   });
 });
 
+describe("운영자(break-glass) 역할", () => {
+  it("멤버십 역할로 부여·회수할 수 없다 — 승인만이 유일한 경로다", () => {
+    expect(canAssignRole("owner", "teacher", "operator")).toBe(false);
+    expect(canAssignRole("owner", "operator", "teacher")).toBe(false);
+    expect(canAssignRole("operator", "teacher", "grader")).toBe(false);
+  });
+});
+
 describe("역할 위계", () => {
   it("actor는 새 역할과 대상 모두보다 강해야 한다", () => {
     // 프로그램 책임자는 선생님을 채점자로 바꿀 수 있다
