@@ -16,7 +16,6 @@ import {
 } from "../../src/math/render";
 import {
   checkDollarBalance,
-  findUnsupportedCommands,
   validateExpression,
 } from "../../src/math/validate";
 

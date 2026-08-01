@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   date,
   index,

@@ -1,5 +1,5 @@
 import { hashObject } from "../shared/deterministic";
-import { addDays, eachDate, weekdayOf, type IsoDate } from "../shared/dates";
+import { eachDate, weekdayOf, type IsoDate } from "../shared/dates";
 import type {
   BusyInterval,
   OverrideDeltaInput,

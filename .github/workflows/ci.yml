@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # 버전은 package.json의 packageManager를 따른다
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # engines: node >=22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 제품 경계 — 비범위 모듈·금지 카피 (인수 62)
+      - run: pnpm boundary:check
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      # DATABASE_URL이 없으면 라이브 DB 스위트는 자동 skip된다.
+      # 저장소에 시크릿을 넣으면 같은 잡에서 그대로 실행된다 — 조건 분기 불필요.
+      - name: test
+        run: pnpm test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_POOLER_URL: ${{ secrets.DATABASE_POOLER_URL }}
+
+      # 시크릿 없이 빌드된다 (Supabase 클라이언트는 요청 시점에 만들어진다)
+      - run: pnpm build
+
+# 이 워크플로가 덮지 않는 것 — 정직한 회계:
+# - Playwright E2E: 라이브 DB + 시드가 필요하다. DATABASE_URL·Supabase 시크릿과
+#   `pnpm db:migrate && pnpm db:seed`를 붙인 별도 잡이 있어야 돈다.
+# - 라이브 DB 통합·RLS 스위트: 위 시크릿이 없으면 skip으로 집계된다
+#   (통과가 아니라 skip이다 — 로그의 ↓ 표시를 확인할 것).
