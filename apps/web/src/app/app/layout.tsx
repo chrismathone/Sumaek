@@ -1,64 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  DEFAULT_MATRIX,
-  canAccess,
-  type MenuKey,
-} from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { visibleNavGroups } from "@/lib/nav";
 import { signOut } from "@/app/(auth)/login/actions";
 
 /* 교사 앱 셸 (골프롬프트 8장) — 좌측 내비 5그룹 + 상단 바.
- * 진짜 인증 검증은 여기서 한다 (프록시는 쿠키 존재만 확인). */
-
-const NAV_GROUPS: Array<{
-  title: string;
-  items: Array<{ href: string; label: string; menu: MenuKey }>;
-}> = [
-  {
-    title: "오늘 수업",
-    items: [
-      { href: "/app/today", label: "오늘 수업", menu: "today" },
-      { href: "/app/calendar", label: "캘린더", menu: "calendar" },
-      { href: "/app/grading", label: "채점·예외", menu: "grading" },
-      { href: "/app/inbox", label: "알림·업무함", menu: "inbox" },
-    ],
-  },
-  {
-    title: "수업 설계",
-    items: [
-      { href: "/app/routes", label: "학습 루트", menu: "routes" },
-      { href: "/app/content/curriculum", label: "커리큘럼 스튜디오", menu: "curriculum_studio" },
-      { href: "/app/content/books", label: "교재", menu: "books" },
-    ],
-  },
-  {
-    title: "평가·문항",
-    items: [
-      { href: "/app/tests", label: "일일·확인테스트", menu: "tests" },
-      { href: "/app/content/questions", label: "문제은행", menu: "question_bank" },
-      { href: "/app/content/ingestion", label: "문제집 변환", menu: "ingestion" },
-      { href: "/app/content/review", label: "콘텐츠 검수", menu: "content_review" },
-    ],
-  },
-  {
-    title: "학습 분석",
-    items: [
-      { href: "/app/classes", label: "반·학습 그룹", menu: "groups" },
-      { href: "/app/students", label: "학습자", menu: "learners" },
-      { href: "/app/analytics", label: "개념 숙련도", menu: "mastery" },
-      { href: "/app/reports", label: "리포트", menu: "reports" },
-    ],
-  },
-  {
-    title: "연동·설정",
-    items: [
-      { href: "/app/settings/integrations", label: "외부 명단 연동", menu: "integrations" },
-      { href: "/app/settings", label: "설정", menu: "settings" },
-      { href: "/app/audit", label: "감사 로그", menu: "audit" },
-    ],
-  },
-];
+ * 진짜 인증 검증은 여기서 한다 (프록시는 쿠키 존재만 확인).
+ * 내비 정의는 lib/nav.ts가 단일 소스 — 페이지의 읽기 게이트와 같은 표를 본다.
+ * 링크 숨김은 접근 제한이 아니므로 각 페이지가 requireAccess로 따로 막는다. */
 
 export default async function AppLayout({
   children,
@@ -67,12 +16,7 @@ export default async function AppLayout({
   if (!user) redirect("/login?next=/app/today");
   if (user.role === "student") redirect("/learn/today");
 
-  const matrix = DEFAULT_MATRIX;
-
-  const visibleGroups = NAV_GROUPS.map((group) => ({
-    title: group.title,
-    items: group.items.filter((item) => canAccess(matrix, user.role, item.menu)),
-  })).filter((group) => group.items.length > 0);
+  const visibleGroups = visibleNavGroups(user.role);
 
   return (
     <div className="flex min-h-dvh bg-paper">
