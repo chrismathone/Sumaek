@@ -24,7 +24,11 @@ export interface OverrideDeltaInput {
   skipNodeIds?: string[];
   /** 삽입할 보충 노드 (기준 노드 앞에) */
   insertBefore?: { anchorNodeId: string | null; nodes: RouteNodeInput[] };
-  /** 재합류 지점 — 이 노드부터 반 공통 경로 복귀 */
+  /**
+   * 재합류 지점 — 이 노드부터 반 공통 경로 복귀.
+   * 이 노드 앞의 반 공통 노드는 학생 경로에서 빠진다 (반이 이미 지나간 구간을
+   * 따라잡지 않는다). 오버라이드가 삽입한 보충 노드는 그대로 남는다.
+   */
   rejoinNodeId?: string;
 }
 
@@ -130,6 +134,11 @@ export interface ScheduleProposalResult {
   diff: ScheduleDiff;
   conflicts: ScheduleConflict[];
   reasonCodes: ScheduleReasonCode[];
+  /**
+   * 오버라이드(건너뛰기·재합류)로 이 경로에서 빠진 노드.
+   * 항목이 만들어지지 않아 ProposedItem.reason으로는 표현할 수 없다.
+   */
+  skippedNodeIds: string[];
   /** 계산에 사용된 요약 (승인 화면 표시용) */
   summary: {
     plannedDays: number;

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   date,
   index,
   integer,
@@ -251,6 +252,53 @@ export const sessions = pgTable(
       t.startsAt,
     ),
     index("sessions_date_idx").on(t.organizationId, t.sessionDate),
+  ],
+);
+
+/**
+ * 학습자 스코프 일정 항목 (인수 4) — 학생 개별 경로의 실체화 결과.
+ *
+ * 반 공통 수업(sessions)을 복제하지 않는다. 학생이 그 차시에 실제로 무엇을
+ * 하는지만 기록하고, 같은 날짜·시간의 반 수업이 있으면 sessionId로 잇는다.
+ * 그래서 학생 일정을 다시 계산해도 sessions 행은 하나도 변하지 않는다
+ * (불변 조건 4 — 오버라이드는 반 루트·다른 학생에게 영향이 없다).
+ *
+ * 반 공통과 같은 계획이면 matchesGroup=true — 즉 이 차시에는 갈라지지 않는다.
+ * isRejoin=true인 행이 "학생이 반 진도로 돌아오는 차시"다.
+ */
+export const learnerScheduleItems = pgTable(
+  "learner_schedule_items",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    learnerId: uuid("learner_id").notNull(),
+    learningGroupId: uuid("learning_group_id").notNull(),
+    /** 이 항목을 만든 학습자 스코프 일정 리비전 */
+    scheduleRevisionId: uuid("schedule_revision_id"),
+    /** 같은 날짜·시간의 반 공통 수업 — 반 일정 밖으로 밀린 항목이면 null */
+    sessionId: uuid("session_id"),
+    /** 워크스페이스 시간대 기준 날짜 — 시간대 ID와 함께 보존 (불변 조건 14) */
+    itemDate: date("item_date").notNull(),
+    timezone: text("timezone").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    plannedNodeIds: jsonb("planned_node_ids").notNull().default(sql`'[]'::jsonb`),
+    /** 이 차시 배치의 엔진 이유 코드 */
+    reasonCodes: jsonb("reason_codes").notNull().default(sql`'[]'::jsonb`),
+    /** 반 공통 계획과 노드가 같은가 — false면 이 차시에서 학생이 갈라진다 */
+    matchesGroup: boolean("matches_group").notNull().default(false),
+    /** 이 차시에서 반 공통 경로로 재합류한다 */
+    isRejoin: boolean("is_rejoin").notNull().default(false),
+    ...timestamps(),
+  },
+  (t) => [
+    index("learner_schedule_items_learner_idx").on(
+      t.organizationId,
+      t.learnerId,
+      t.itemDate,
+    ),
+    index("learner_schedule_items_session_idx").on(t.sessionId),
+    index("learner_schedule_items_revision_idx").on(t.scheduleRevisionId),
   ],
 );
 

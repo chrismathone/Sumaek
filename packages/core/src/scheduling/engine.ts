@@ -44,7 +44,7 @@ export function calculateSchedule(
   }
 
   // ── 2. 오버라이드 적용 후 배치 대상 노드 계산 ──
-  const { orderedNodes, overrideReasons } = applyOverrides(
+  const { orderedNodes, overrideReasons, skippedNodeIds } = applyOverrides(
     input.nodes,
     input.overrides,
   );
@@ -157,6 +157,13 @@ export function calculateSchedule(
       : null,
   };
 
+  /* 건너뛴 노드는 항목이 없어 reason을 달 곳이 없다 — 결과 수준에서 한 번
+   * 보고해야 "왜 이 노드가 학생 일정에 없는가"를 감사에서 답할 수 있다. */
+  const reasonCodes: ScheduleReasonCode[] = [
+    ...new Set(allItems.map((i) => i.reason)),
+  ];
+  if (skippedNodeIds.length > 0) reasonCodes.push("SKIPPED_OVERRIDE");
+
   return {
     engineVersion: input.engineVersion,
     inputHash,
@@ -164,7 +171,8 @@ export function calculateSchedule(
     items: allItems,
     diff,
     conflicts,
-    reasonCodes: [...new Set(allItems.map((i) => i.reason))],
+    reasonCodes,
+    skippedNodeIds,
     summary,
   };
 }
@@ -192,10 +200,15 @@ function applyOverrides(
 ): {
   orderedNodes: RouteNodeInput[];
   overrideReasons: Map<string, string>;
+  skippedNodeIds: string[];
 } {
   const skip = new Set<string>();
   const overrideReasons = new Map<string, string>();
   let ordered = [...nodes].sort((a, b) => a.sortOrder - b.sortOrder);
+  /* 반 공통 루트에 원래 있던 노드. 재합류가 떨구는 대상은 이 집합뿐이다 —
+   * 오버라이드가 넣은 보충 노드는 재합류 지점 앞에 놓이지만 학생이 실제로
+   * 해야 할 일이므로 남아야 한다. */
+  const baseNodeIds = new Set(ordered.map((n) => n.nodeId));
 
   // 결정론: overrideId 순으로 적용
   const sortedOverrides = [...overrides].sort((a, b) =>
@@ -215,11 +228,28 @@ function applyOverrides(
         ordered = [...ordered.slice(0, at), ...inserted, ...ordered.slice(at)];
       }
     }
+    /* 재합류 — 이 노드부터 반 공통 경로로 복귀한다. 그 앞의 반 공통 노드는
+     * 반이 이미 지나간 구간이라 학생이 따라잡지 않는다: 보충을 마치면
+     * 반이 서 있는 지점에서 합류한다. 삽입 노드는 위 baseNodeIds 검사로 남는다.
+     * 기준 루트에 없는 재합류 지점은 무시한다 — 오타 하나로 학생 경로 전체가
+     * 사라지는 것보다 오버라이드가 아무것도 안 하는 편이 안전하다. */
+    if (ov.rejoinNodeId !== undefined) {
+      const at = ordered.findIndex((n) => n.nodeId === ov.rejoinNodeId);
+      if (at !== -1) {
+        for (const n of ordered.slice(0, at)) {
+          if (baseNodeIds.has(n.nodeId)) skip.add(n.nodeId);
+        }
+      }
+    }
   }
 
   return {
     orderedNodes: ordered.filter((n) => !skip.has(n.nodeId)),
     overrideReasons,
+    // ordered 순서를 따라 결정론적으로 보고한다 (Set 순회 순서에 기대지 않는다)
+    skippedNodeIds: ordered
+      .filter((n) => skip.has(n.nodeId))
+      .map((n) => n.nodeId),
   };
 }
 

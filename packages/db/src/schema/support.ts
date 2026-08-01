@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
+  boolean,
+  check,
   date,
   index,
   integer,
@@ -158,8 +161,13 @@ export const demoRequests = pgTable(
 );
 
 /**
- * break-glass 운영자 접근 승인 (27장). 시간 제한·사유·승인·감사.
+ * break-glass 운영자 접근 승인 (27장 · 인수 28). 시간 제한·사유·승인·감사.
  * 일반 관리자는 감사 로그를 수정할 수 없다.
+ *
+ * 컬럼만으로는 아무것도 집행되지 않는다 — 불변식(사유 비어 있지 않음, 만료
+ * 필수·최대 4시간, 승인자·승인시각 짝)은 CHECK로 테이블에 박혀 있고
+ * (0006a_operator_access_enforcement.sql), 열림/닫힘 판정은
+ * `@su-maek/core/authz`의 grantState 하나가 맡는다.
  */
 export const operatorAccessGrants = pgTable(
   "operator_access_grants",
@@ -170,6 +178,7 @@ export const operatorAccessGrants = pgTable(
     reason: text("reason").notNull(),
     approvedBy: uuid("approved_by"),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
+    /** 절대 시각. 조직 시간대와 무관하게 이 순간 접근이 닫힌다 */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     /** 워크스페이스 소유자에게 표시되었는가 */
@@ -178,6 +187,21 @@ export const operatorAccessGrants = pgTable(
   },
   (t) => [
     index("operator_grants_org_idx").on(t.organizationId, t.expiresAt),
+    /** 세션 해석 경로 — 운영자 한 명의 살아있는 승인 찾기 */
+    index("operator_grants_operator_idx").on(t.operatorUserId, t.expiresAt),
+    check("operator_access_grants_reason_not_blank", sql`btrim(reason) <> ''`),
+    check(
+      "operator_access_grants_window",
+      sql`expires_at > created_at and expires_at <= created_at + interval '4 hours'`,
+    ),
+    check(
+      "operator_access_grants_approval_pair",
+      sql`(approved_by is null) = (approved_at is null)`,
+    ),
+    check(
+      "operator_access_grants_revocation",
+      sql`revoked_at is null or revoked_at >= created_at`,
+    ),
   ],
 );
 
@@ -225,6 +249,119 @@ export const aiBudgets = pgTable(
     ...timestamps(),
   },
   (t) => [uniqueIndex("ai_budgets_org_uq").on(t.organizationId)],
+);
+
+/**
+ * AI 모델 버전 레지스트리 (인수 36) — 무엇이 실사용이고 무엇이 카나리인가.
+ *
+ * 조직 스코프인 이유: 카나리에 얹히는 것은 **그 조직의 실사용 원문**이고,
+ * 승격 판정도 그 조직에서 모인 표본으로 한다. 전역 롤아웃은 조직별 행을
+ * 만드는 운영 절차(`pnpm ai-canary register`)로 갈음한다 — 데이터 경계를
+ * 흐리는 것보다 행을 여러 개 만드는 편이 낫다.
+ *
+ * role 의미와 상태 전이는 packages/core/src/ai/model-registry.ts 가 단일 정의처.
+ * 조직·작업당 active 1행·canary 1행은 부분 유니크 인덱스로 강제한다
+ * (0008a 마이그레이션 — drizzle이 표현하지 못한다).
+ */
+export const aiModelVersions = pgTable(
+  "ai_model_versions",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    /** 담당 작업 — ai_usage_events.operation 과 같은 축 */
+    operation: text("operation").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    /** candidate | canary | active | halted | retired */
+    role: text("role").notNull().default("candidate"),
+    notes: text("notes"),
+    promotedAt: timestamp("promoted_at", { withTimezone: true }),
+    haltedAt: timestamp("halted_at", { withTimezone: true }),
+    /** 중단 사유 — 사유 없는 중단은 CHECK가 막는다 */
+    haltReason: text("halt_reason"),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("ai_model_versions_identity_uq").on(
+      t.organizationId,
+      t.operation,
+      t.provider,
+      t.model,
+    ),
+    index("ai_model_versions_role_idx").on(
+      t.organizationId,
+      t.operation,
+      t.role,
+    ),
+    check(
+      "ai_model_versions_role_allowed",
+      sql`role in ('candidate','canary','active','halted','retired')`,
+    ),
+    check(
+      "ai_model_versions_halt_reason",
+      sql`role <> 'halted' or (halted_at is not null and btrim(coalesce(halt_reason, '')) <> '')`,
+    ),
+  ],
+);
+
+/**
+ * 섀도 평가 관측 (인수 36) — 카나리 호출 1회당 1행.
+ *
+ * **여기에 카나리의 산출물(문항)은 없다.** 일치도·지연·비용·실패만 남는다.
+ * 산출물을 저장하면 언젠가 누군가 그것을 읽어 쓰게 되고, 그 순간 섀도가
+ * 아니게 된다.
+ */
+export const aiShadowEvaluations = pgTable(
+  "ai_shadow_evaluations",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    operation: text("operation").notNull(),
+    baselineProvider: text("baseline_provider").notNull(),
+    baselineModel: text("baseline_model").notNull(),
+    canaryProvider: text("canary_provider").notNull(),
+    canaryModel: text("canary_model").notNull(),
+    ok: boolean("ok").notNull(),
+    /** circuit_open | timeout | unavailable | other */
+    errorKind: text("error_kind"),
+    errorMessage: text("error_message"),
+    /** 0~1. 실패 표본은 null — 0으로 두면 "완전 불일치"와 구분되지 않는다 */
+    agreement: numeric("agreement", { precision: 4, scale: 3 }),
+    baselineLatencyMs: integer("baseline_latency_ms").notNull(),
+    canaryLatencyMs: integer("canary_latency_ms").notNull(),
+    /** null = 가격표에 없는 모델. 0(무료)과 구분한다 */
+    baselineCostUsd: numeric("baseline_cost_usd", {
+      precision: 10,
+      scale: 6,
+    }),
+    canaryCostUsd: numeric("canary_cost_usd", { precision: 10, scale: 6 }),
+    canaryInputTokens: integer("canary_input_tokens").notNull().default(0),
+    canaryOutputTokens: integer("canary_output_tokens").notNull().default(0),
+    /** 문항 수 차이·정답 불일치 수 등 일치도 내역 */
+    detail: jsonb("detail"),
+    relatedType: text("related_type"),
+    relatedId: uuid("related_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("ai_shadow_org_model_idx").on(
+      t.organizationId,
+      t.operation,
+      t.canaryModel,
+      t.createdAt,
+    ),
+    check(
+      "ai_shadow_agreement_pairs_ok",
+      sql`(ok and agreement is not null) or ((not ok) and agreement is null)`,
+    ),
+    check(
+      "ai_shadow_error_kind_pairs_ok",
+      sql`(ok and error_kind is null) or ((not ok) and error_kind is not null)`,
+    ),
+  ],
 );
 
 export const deletionRequestStatus = pgEnum("deletion_request_status", [

@@ -270,6 +270,11 @@ export const auditEvents = pgTable(
   (t) => [
     index("audit_events_org_created_idx").on(t.organizationId, t.createdAt),
     index("audit_events_target_idx").on(t.targetType, t.targetId),
+    /* 승인 하나가 만든 조회·변경을 모아 소유자에게 활동 요약으로 보여준다.
+     * 부분 인덱스라 break-glass가 아닌 일반 감사 쓰기에는 부담이 없다. */
+    index("audit_events_access_grant_idx")
+      .on(t.accessGrantId)
+      .where(sql`access_grant_id is not null`),
   ],
 );
 
