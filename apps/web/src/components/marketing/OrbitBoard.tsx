@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 
 /**
  * 수업 궤도판 — 제품의 시그니처 요소 (골프롬프트 5장).
@@ -77,7 +78,7 @@ export function OrbitBoard({ interactive = true }: { interactive?: boolean }) {
         )}
       </div>
 
-      <div className="grid-paper overflow-x-auto p-2">
+      <ScrollableRegion label="수업 궤도판 도해" className="grid-paper p-2">
         <svg
           viewBox="0 0 780 280"
           role="img"
@@ -242,7 +243,7 @@ export function OrbitBoard({ interactive = true }: { interactive?: boolean }) {
             <circle cx={X["0805"]} cy={LANE_HARIN + 22} r={4.5} fill="var(--color-highlight)" stroke="var(--color-ink)" strokeWidth={1.5} />
           )}
         </svg>
-      </div>
+      </ScrollableRegion>
 
       {/* 변경 이유·전후 패널 — 모션 감소 환경에서도 동등한 정보 제공 */}
       <div className="space-y-2 border-t border-rule-soft px-4 py-3 text-sm">

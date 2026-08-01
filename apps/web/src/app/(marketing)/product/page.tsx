@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 
 /* 제품 상세 (골프롬프트 6장 /product, 1A장 제품 경계).
  * 핵심 범위 다섯 가지와 명시적 비범위를 함께 밝힌다.
@@ -162,7 +163,7 @@ export default function ProductPage() {
         <h2 className="mt-2 font-[MaruBuri] text-2xl font-semibold lg:text-3xl">
           기능 수행에 필요한 최소한만 가집니다.
         </h2>
-        <div className="mt-8 overflow-x-auto">
+        <ScrollableRegion label="대상별 보관 항목 표" className="mt-8">
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-b-2 border-ink text-left">
@@ -183,7 +184,7 @@ export default function ProductPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
         <p className="mt-6 rounded-lg border border-rule bg-surface px-4 py-3 text-sm leading-relaxed">
           보호자 연락처, 주소, 학교 생활기록, 상담 전문, 결제 정보는 기본 데이터
           모델에 넣지 않습니다. 출결이 일정 재계산의 입력으로 필요한 경우에도

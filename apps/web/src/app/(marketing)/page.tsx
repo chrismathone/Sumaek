@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 import { FlowTabs } from "@/components/marketing/FlowTabs";
 import { OrbitBoard } from "@/components/marketing/OrbitBoard";
 
@@ -55,7 +56,7 @@ export default function LandingPage() {
           <h2 className="mt-3 font-[MaruBuri] text-2xl font-semibold lg:text-3xl">
             수업 준비를 ‘매일 반복’에서 ‘한 번 설계’로 바꿉니다.
           </h2>
-          <div className="mt-8 overflow-x-auto">
+          <ScrollableRegion label="지금의 운영과 수업 루트 설계 후 비교표" className="mt-8">
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className="border-b-2 border-ink text-left">
@@ -90,7 +91,7 @@ export default function LandingPage() {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </ScrollableRegion>
         </div>
       </section>
 

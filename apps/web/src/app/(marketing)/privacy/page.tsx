@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 
 /* 개인정보 처리방침 초안 (골프롬프트 6장 /privacy, 27장 개인정보).
  * 최소 수집 원칙에 근거한 초안이며 법률 자문 전임을 하단에 명시한다. */
@@ -95,7 +96,7 @@ export default function PrivacyPage() {
         <h2 className="font-[MaruBuri] text-xl font-semibold">
           1. 수집하는 항목과 이용 목적
         </h2>
-        <div className="mt-5 overflow-x-auto">
+        <ScrollableRegion label="수집 항목과 이용 목적 표" className="mt-5">
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-b-2 border-ink text-left">
@@ -120,7 +121,7 @@ export default function PrivacyPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
         <p className="mt-4 text-sm leading-relaxed text-ink-soft">
           내부 처리와 로그에서는 학습자의 이름 대신 불투명 식별자를 사용합니다.
           비밀번호, 인증 토큰, 학생 답안 전문은 로그에 남기지 않습니다.

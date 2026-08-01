@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 
 /* 데이터와 권한 원칙 (골프롬프트 6장 /security, 27장 보안·개인정보).
  * 취득하지 않은 인증, 가짜 고객, 검증되지 않은 수치를 표시하지 않는다.
@@ -114,7 +115,7 @@ export default function SecurityPage() {
         <h2 className="font-[MaruBuri] text-xl font-semibold">
           무엇을 수집하고, 무엇을 수집하지 않는지
         </h2>
-        <div className="mt-5 overflow-x-auto">
+        <ScrollableRegion label="수집·미수집 범위 표" className="mt-5">
           <table className="w-full min-w-[640px] border-collapse text-sm">
             <thead>
               <tr className="border-b-2 border-ink text-left">
@@ -139,7 +140,7 @@ export default function SecurityPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       </section>
 
       {/* ── 원칙 ── */}

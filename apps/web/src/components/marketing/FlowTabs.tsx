@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 /** 운영 흐름 5단계 — 누르면 동일한 샘플 반의 해당 화면 설명이 인라인 패널에서 바뀐다. */
 const STEPS = [
@@ -64,30 +64,67 @@ const STEPS = [
 export function FlowTabs() {
   const [active, setActive] = useState(0);
   const step = STEPS[active] ?? STEPS[0];
+
+  // 탭 목록은 한 번의 Tab으로 들어오고 좌우 화살표로 이동한다 (roving tabindex).
+  // 탭마다 Tab을 누르게 하면 다섯 번을 지나야 패널에 닿는다.
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const delta =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    const target =
+      delta !== 0
+        ? (active + delta + STEPS.length) % STEPS.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? STEPS.length - 1
+            : null;
+    if (target === null) return;
+    event.preventDefault();
+    setActive(target);
+    const tabs =
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    tabs[target]?.focus();
+  }
+
   return (
     <div>
-      <ol className="flex flex-wrap gap-2" role="tablist" aria-label="운영 흐름 단계">
+      {/*
+        tablist의 직계 자식은 tab만 허용된다 — 이전의 <ol><li><button role="tab">은
+        aria-required-children·aria-required-parent·listitem 세 규칙을 동시에 깼다.
+        단계 번호는 목록 마크업이 아니라 버튼 안 텍스트로 유지한다.
+      */}
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="운영 흐름 단계"
+        onKeyDown={onKeyDown}
+      >
         {STEPS.map((s, i) => (
-          <li key={s.title}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={i === active}
-              onClick={() => setActive(i)}
-              className={`rounded-[var(--radius-control)] border px-3 py-2 text-sm font-medium transition-colors ${
-                i === active
-                  ? "border-pen bg-pen text-white"
-                  : "border-rule bg-surface text-ink-soft hover:border-pen hover:text-ink"
-              }`}
-            >
-              <span className="mr-1.5 font-mono text-xs">{i + 1}</span>
-              {s.title}
-            </button>
-          </li>
+          <button
+            key={s.title}
+            type="button"
+            role="tab"
+            id={`flow-tab-${i}`}
+            aria-selected={i === active}
+            aria-controls={`flow-panel-${i}`}
+            tabIndex={i === active ? 0 : -1}
+            onClick={() => setActive(i)}
+            className={`rounded-[var(--radius-control)] border px-3 py-2 text-sm font-medium transition-colors ${
+              i === active
+                ? "border-pen bg-pen text-white"
+                : "border-rule bg-surface text-ink-soft hover:border-pen hover:text-ink"
+            }`}
+          >
+            <span className="mr-1.5 font-mono text-xs">{i + 1}</span>
+            {s.title}
+          </button>
         ))}
-      </ol>
+      </div>
       <div
         role="tabpanel"
+        id={`flow-panel-${active}`}
+        aria-labelledby={`flow-tab-${active}`}
+        tabIndex={0}
         className="mt-4 rounded-lg border border-rule bg-surface p-5"
       >
         <p className="font-mono text-xs text-ink-soft">{step.panel.heading}</p>

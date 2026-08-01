@@ -103,7 +103,8 @@ export function GroupForm({
       <div className="flex flex-wrap items-end gap-3">
         <fieldset className="text-sm">
           <legend className="text-sm">수업 요일</legend>
-          <div className="mt-1 flex gap-1.5">
+          {/* 요일 일곱 칸은 360px에서 한 줄에 안 들어간다 — 줄바꿈을 막으면 화면이 통째로 가로 스크롤된다 */}
+          <div className="mt-1 flex flex-wrap gap-1.5">
             {WEEKDAYS.map((d) => (
               <label key={d.value}
                 className="flex cursor-pointer items-center gap-1 rounded-[var(--radius-control)] border border-rule px-2 py-1.5 text-sm has-checked:border-pen has-checked:bg-pen-soft/50">

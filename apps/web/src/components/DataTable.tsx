@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { ScrollableRegion } from "@/components/ScrollableRegion";
 import {
   pageWindow,
   sortHref,
@@ -92,7 +93,15 @@ export function DataTable<T>({
 
   return (
     <div className="mt-3">
-      <div className="overflow-x-auto rounded-lg border border-rule bg-surface">
+      {/*
+        표는 min-w-[36rem]이라 좁은 화면에서 반드시 가로로 넘친다.
+        행 링크가 있는 표는 그 링크로 스크롤이 되지만, 링크 없는 참조 표
+        (예: 커리큘럼의 개념 목록)는 키보드로 밀 방법이 없었다.
+      */}
+      <ScrollableRegion
+        label={caption ?? "목록 표"}
+        className="rounded-lg border border-rule bg-surface"
+      >
         <table className="w-full min-w-[36rem] border-collapse text-sm">
           {caption && (
             <caption className="border-b border-rule-soft px-3 py-2 text-left text-xs text-ink-soft">
@@ -177,7 +186,7 @@ export function DataTable<T>({
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollableRegion>
 
       <nav
         aria-label="페이지 이동"
