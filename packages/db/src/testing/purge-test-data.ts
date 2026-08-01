@@ -136,6 +136,8 @@ export async function purgeTestData(
 
     if (groupIds.length > 0) {
       await tx`delete from learning_availability_events where learning_group_id = any(${groupIds}::uuid[])`;
+      // sessions보다 먼저 — 학생 항목이 수업을 참조한다 (R-01 고아 참조 방지)
+      await tx`delete from learner_schedule_items where learning_group_id = any(${groupIds}::uuid[])`;
       await tx`delete from sessions where learning_group_id = any(${groupIds}::uuid[])`;
       await tx`delete from learning_group_memberships where learning_group_id = any(${groupIds}::uuid[])`;
       await tx`delete from holidays where learning_group_id = any(${groupIds}::uuid[])`;
@@ -150,6 +152,7 @@ export async function purgeTestData(
       await tx`delete from concept_masteries where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from assignments where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from student_route_overrides where learner_id = any(${learnerIds}::uuid[])`;
+      await tx`delete from learner_schedule_items where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from learning_availability_events where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from data_deletion_requests where learner_id = any(${learnerIds}::uuid[])`;
       await tx`delete from learning_group_memberships where learner_id = any(${learnerIds}::uuid[])`;

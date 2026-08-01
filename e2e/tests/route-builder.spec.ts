@@ -93,6 +93,62 @@ test("루트 빌더: 반 만들기 → 노드 작성 → 검증 → 게시 → �
   await page.reload();
   await expect(page.getByText("충돌 유발 노드")).toHaveCount(0);
 
+  // 4c. 충돌 diff (인수 20 완결) — 진짜 두 사용자를 만든다.
+  //     같은 초안을 두 화면에서 열고 두 번째가 먼저 저장하면, 첫 화면의 제출은
+  //     거부되면서 "무엇이 어떻게 달라졌는지"를 항목 단위로 보여 준다.
+  const routeUrl = page.url();
+  const other = await page.context().newPage();
+  await other.goto(routeUrl);
+  const otherAddForm = other.locator("form").filter({ hasText: "노드 추가" });
+  await otherAddForm.getByLabel("노드 제목").fill("다른 사용자 노드");
+  await otherAddForm.getByRole("button", { name: "노드 추가" }).click();
+  await expect(
+    otherAddForm.getByRole("status").filter({ hasText: "다른 사용자 노드" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await other.close();
+
+  // 첫 화면은 아직 옛 상태(토큰 + 노드 스냅샷)를 들고 있다
+  await addForm.getByLabel("노드 제목").fill("내 노드");
+  await addForm.getByRole("button", { name: "노드 추가" }).click();
+
+  const conflictPanel = page.getByRole("dialog", { name: "동시 수정 충돌" });
+  await expect(conflictPanel).toBeVisible({ timeout: 30_000 });
+  // "충돌했습니다"의 다른 표현이 아니다 — 양쪽 변경이 항목으로 찍힌다
+  await expect(
+    conflictPanel.getByText('"다른 사용자 노드" 노드가 새로 생겼습니다'),
+  ).toBeVisible();
+  await expect(
+    conflictPanel.getByText('"내 노드" 노드가 새로 생겼습니다'),
+  ).toBeVisible();
+  // 나란히 놓인 두 목록 — 내 쪽에는 아직 저장되지 않았다고 표시된다
+  await expect(conflictPanel.getByText("저장된 최신 상태")).toBeVisible();
+  await expect(
+    conflictPanel.getByText("(저장 안 됨)", { exact: true }),
+  ).toBeVisible();
+
+  // 다음에 할 수 있는 일이 분명하고, 내 변경을 잃지 않는다
+  await conflictPanel
+    .getByRole("button", { name: "내 변경을 최신 상태에 다시 적용" })
+    .click();
+  await expect(conflictPanel).toBeHidden({ timeout: 30_000 });
+  await expect(page.getByText("내 노드", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("다른 사용자 노드", { exact: true })).toBeVisible();
+
+  // 정리 — 이후 검증·게시는 원래의 3개 노드 기준이다
+  for (const title of ["내 노드", "다른 사용자 노드"]) {
+    await page
+      .locator("li")
+      .filter({ hasText: title })
+      .first()
+      .getByRole("button", { name: "삭제" })
+      .click();
+    await expect(page.getByText(title, { exact: true })).toHaveCount(0, {
+      timeout: 30_000,
+    });
+  }
+
   // 검증 전에는 게시 버튼이 없다 (게이트)
   await expect(page.getByRole("button", { name: "게시", exact: true })).toHaveCount(0);
 

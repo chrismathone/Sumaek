@@ -31,6 +31,7 @@ const LIST_PAGES = [
   "inbox/page.tsx",
   "audit/page.tsx",
   "analytics/page.tsx",
+  "settings/operator-access/page.tsx",
 ] as const;
 
 /** 목록 → 상세 이동이 가능해야 하는 화면 (상세 라우트가 실제로 있는 것) */

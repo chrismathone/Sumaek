@@ -267,7 +267,14 @@ export async function materializeGroupSchedule(options: {
     { date: IsoDate; startTime: string; endTime: string; nodeIds: string[] }
   >();
   for (const item of result.items) {
-    if (item.completed || item.locked) continue; // 보존 — 재생성 대상 아님
+    /* 보존 항목은 재생성 대상이 아니다 — 이미 sessions에 있고 아래 DELETE
+     * 가드가 지킨다. completed·locked만 걸러서는 부족하다: 과거 날짜의
+     * planned 수업(노드가 달린)은 둘 다 false지만 엔진이 PAST_PRESERVED로
+     * 보존하고 DELETE 가드(session_date >= today)도 남긴다. 그걸 다시 넣으면
+     * 같은 시각에 수업이 둘이 되어 sessions_group_no_overlap에 걸린다. */
+    if (item.reason === "PAST_PRESERVED" || item.reason === "LOCK_PRESERVED") {
+      continue;
+    }
     const key = `${item.date}T${item.startTime}`;
     const entry =
       sessionsByKey.get(key) ??

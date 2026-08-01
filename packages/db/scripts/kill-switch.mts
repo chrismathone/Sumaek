@@ -1,7 +1,11 @@
 import { config } from "dotenv";
 config({ path: ["../../.env", ".env"] });
 import { v7 as uuidv7 } from "uuid";
-import { KILL_SWITCH_KEYS, KILL_SWITCH_TOPICS } from "../src/kill-switch";
+import {
+  KILL_SWITCH_DIRECT_ENFORCEMENT,
+  KILL_SWITCH_KEYS,
+  KILL_SWITCH_TOPICS,
+} from "../src/kill-switch";
 import { createSql } from "../src/client";
 
 /**
@@ -54,6 +58,8 @@ const STILL_WORKS: Readonly<Record<string, string>> = {
   formula_autofix: "수식 파싱·KaTeX 검증·수동 수정·기존 렌더",
   document_export: "온라인 응시·웹 미리보기·기존 산출물 다운로드",
   external_notifications: "앱 내 업무함 전체·알림 생성·조회·처리",
+  ai_model_canary:
+    "실사용 AI 추출 전부 (섀도는 사용자 경로가 아니다). 멈추는 것은 카나리 모델 호출과 표본 수집뿐",
   [AI_PROVIDER_PREFIX]: "게시 콘텐츠·검수 완료 문제은행·응시·수동 채점·다른 공급자",
 };
 
@@ -119,9 +125,23 @@ function isKnownKey(key: string): boolean {
   );
 }
 
-/** 이 키를 끄면 실제로 멈추는 워커 토픽. 비어 있으면 아직 집행 연결이 없다. */
+/** 이 키를 끄면 실제로 멈추는 워커 토픽. 비어 있어도 직접 집행이 있을 수 있다. */
 function enforcedTopics(key: string): readonly string[] {
   return KILL_SWITCH_TOPICS[key] ?? [];
+}
+
+/** 워커 토픽이 아닌 집행 지점 (있으면 설명, 없으면 null) */
+function directEnforcement(key: string): string | null {
+  return KILL_SWITCH_DIRECT_ENFORCEMENT[key] ?? null;
+}
+
+/**
+ * 이 키를 끄면 정말로 무언가 멈추는가.
+ * 토픽 매핑만 보고 판단하면 직접 집행되는 키(ai_model_canary)를
+ * "멈추지 않는다"고 거짓 경고한다.
+ */
+function isEnforced(key: string): boolean {
+  return enforcedTopics(key).length > 0 || directEnforcement(key) !== null;
 }
 
 function stillWorks(key: string): string {
@@ -145,7 +165,13 @@ function usage(): void {
   console.log("key:");
   for (const key of KILL_SWITCH_KEYS) {
     const topics = enforcedTopics(key);
-    const wired = topics.length > 0 ? `→ ${topics.join(", ")}` : "→ (집행 미연결)";
+    const direct = directEnforcement(key);
+    const wired =
+      topics.length > 0
+        ? `→ ${topics.join(", ")}`
+        : direct
+          ? `→ ${direct}`
+          : "→ (집행 미연결)";
     console.log(`  ${key.padEnd(24)} ${wired}`);
   }
   console.log(`  ${`${AI_PROVIDER_PREFIX}<공급자>`.padEnd(24)} → (집행 미연결)`);
@@ -195,7 +221,7 @@ async function runList(sql: ReturnType<typeof createSql>): Promise<void> {
         ? `${row.org_name ?? "(이름 없음)"}`.slice(0, 16)
         : "전역";
       const state = isStopping(row) ? "중지" : row.enabled ? "정상" : "정상(만료)";
-      const wired = enforcedTopics(row.key).length > 0 ? "연결" : "미연결";
+      const wired = isEnforced(row.key) ? "연결" : "미연결";
       const expires = row.expires_at ? row.expires_at.toISOString() : "-";
       console.log(
         `  ${row.key.padEnd(24)} ${scope.padEnd(18)} ${state.padEnd(11)} ${wired.padEnd(6)} ${expires.padEnd(22)} ${row.reason ?? "-"}`,
@@ -209,7 +235,7 @@ async function runList(sql: ReturnType<typeof createSql>): Promise<void> {
     console.log(`중지 중인 기능 ${stopped.length}건 — 그래도 되는 것:`);
     for (const row of stopped) {
       console.log(`  ${row.key}: ${stillWorks(row.key)}`);
-      if (enforcedTopics(row.key).length === 0) {
+      if (!isEnforced(row.key)) {
         console.log(
           "    주의: 이 키는 워커 집행에 연결되어 있지 않습니다 — 끈 것처럼 보이지만 멈추지 않습니다.",
         );
@@ -219,7 +245,7 @@ async function runList(sql: ReturnType<typeof createSql>): Promise<void> {
     console.log("켜둔 채 잊지 않도록 오늘 운영실 배너를 확인하세요 (README 5.2 규약 3).");
   }
 
-  const unwired = KILL_SWITCH_KEYS.filter((key) => enforcedTopics(key).length === 0);
+  const unwired = KILL_SWITCH_KEYS.filter((key) => !isEnforced(key));
   if (unwired.length > 0) {
     console.log("집행이 아직 연결되지 않은 키 (중지해도 워커가 멈추지 않음):");
     console.log(`  ${unwired.join(", ")}`);
@@ -366,8 +392,11 @@ async function runToggle(
 
   if (intent === "stop") {
     const topics = enforcedTopics(key);
+    const direct = directEnforcement(key);
     if (topics.length > 0) {
       console.log(`  멈추는 토픽: ${topics.join(", ")}`);
+    } else if (direct) {
+      console.log(`  집행 지점  : ${direct}`);
     } else {
       console.log("  주의: 이 키는 워커 집행(KILL_SWITCH_TOPICS)에 연결되어 있지 않습니다.");
       console.log("        행은 남지만 자동화는 그대로 돕니다. 다른 수단을 함께 쓰세요.");
