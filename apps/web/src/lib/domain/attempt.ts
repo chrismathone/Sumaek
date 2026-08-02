@@ -6,10 +6,11 @@ import { gradeAnswer } from "@su-maek/core/grading";
 import {
   DEFAULT_MASTERY_POLICY,
   estimateMastery,
-  nextReviewDate,
+  initialReviewSchedule,
   type MasteryEvidenceInput,
   type MasteryPolicySpec,
 } from "@su-maek/core/mastery";
+import type { IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 응시·채점·숙련도 연쇄 (시퀀스 4·5 · 19장 · 20장).
@@ -216,6 +217,10 @@ export async function submitAndGrade(options: {
   const evidenceDate = new Date().toLocaleDateString("en-CA", {
     timeZone: options.timezone,
   });
+  /* 복습 일정도 **정책**을 따른다. 예전에는 여기서 DEFAULT_MASTERY_POLICY를
+   * 하드코딩해, DB에서 정책을 바꿔도 실제 만들어지는 복습에는 반영되지 않았다 —
+   * "임계값 코드 상수 금지"(ADR-0009)를 어기는 유일한 지점이었다. */
+  const policy = await loadActivePolicy(organizationId);
   let totalScore = 0;
   let maxScore = 0;
   let needsReview = 0;
@@ -311,26 +316,24 @@ export async function submitAndGrade(options: {
           on conflict do nothing
         `;
 
-        /* 오답 → 간격 복습 (20장) */
+        /* 오답 → 망각곡선 복습 (20장) */
         if (ratio < 1) {
-          const review = nextReviewDate(
-            DEFAULT_MASTERY_POLICY,
-            0,
-            false,
-            evidenceDate,
-          );
-          if (review) {
-            await tx`
-              insert into review_items (
-                id, organization_id, learner_id, concept_id, source_kind,
-                source_response_id, question_id, due_on, interval_days, status
-              ) values (
-                ${uuidv7()}, ${organizationId}, ${learnerId}, ${conceptId},
-                'wrong_answer', ${resp.id}, ${q.question_id},
-                ${review.dueOn}, ${DEFAULT_MASTERY_POLICY.reviewIntervalsDays[0] ?? 1}, 'scheduled'
-              )
-            `;
-          }
+          const review = initialReviewSchedule({
+            policy: policy.spec,
+            occurredOn: evidenceDate as IsoDate,
+          });
+          await tx`
+            insert into review_items (
+              id, organization_id, learner_id, concept_id, source_kind,
+              source_response_id, question_id, due_on, interval_days, status,
+              stability_days, repetition_no, lapse_count
+            ) values (
+              ${uuidv7()}, ${organizationId}, ${learnerId}, ${conceptId},
+              'wrong_answer', ${resp.id}, ${q.question_id},
+              ${review.dueOn}, ${review.intervalDays}, 'scheduled',
+              ${review.stabilityDays}, ${review.repetitionNo}, ${review.lapseCount}
+            )
+          `;
         } else {
           /* 정답 → 그 개념의 밀린 복습을 닫는다.
            * 이게 없으면 review_items에 insert만 있고 완료 경로가 없어
@@ -340,6 +343,8 @@ export async function submitAndGrade(options: {
           await tx`
             update review_items
             set status = 'completed', completed_at = now(),
+                -- 다음 계산의 기준점 — 예측 기억률이 이 날짜부터 잰다
+                last_reviewed_on = ${evidenceDate}::date,
                 outcome = ${tx.json({
                   closedBy: "graded_response",
                   gradeDecisionId: decisionId,
@@ -381,7 +386,6 @@ export async function submitAndGrade(options: {
 
   /* 5) 숙련도 재계산 — 파생 (트랜잭션 밖 최종 일관성, 실패해도 원본 보존).
    * cutoff은 DB 시계 기준으로 recomputeMastery가 직접 잡는다. */
-  const policy = await loadActivePolicy(organizationId);
   for (const conceptId of touchedConcepts) {
     await recomputeMastery(organizationId, learnerId, conceptId, policy);
   }
@@ -575,6 +579,8 @@ export async function resolveGradingException(
     timeZone: input.timezone,
   });
   const touched = Object.keys(exception.concept_weights ?? {});
+  // 복습 일정도 정책을 따른다 — 트랜잭션 안에서 쓰므로 미리 읽는다
+  const policy = await loadActivePolicy(input.organizationId);
 
   await sql.begin(async (tx) => {
     const [next] = await tx<{ v: number }[]>`
@@ -634,24 +640,28 @@ export async function resolveGradingException(
         on conflict do nothing
       `;
       if (ratio < 1) {
-        const review = nextReviewDate(DEFAULT_MASTERY_POLICY, 0, false, evidenceDate);
-        if (review) {
-          await tx`
-            insert into review_items (
-              id, organization_id, learner_id, concept_id, source_kind,
-              source_response_id, question_id, due_on, interval_days, status
-            ) values (
-              ${uuidv7()}, ${input.organizationId}, ${exception.learner_id}, ${conceptId},
-              'wrong_answer', ${exception.response_id}, ${exception.question_id},
-              ${review.dueOn}, ${DEFAULT_MASTERY_POLICY.reviewIntervalsDays[0] ?? 1}, 'scheduled'
-            )
-          `;
-        }
+        const review = initialReviewSchedule({
+          policy: policy.spec,
+          occurredOn: evidenceDate as IsoDate,
+        });
+        await tx`
+          insert into review_items (
+            id, organization_id, learner_id, concept_id, source_kind,
+            source_response_id, question_id, due_on, interval_days, status,
+            stability_days, repetition_no, lapse_count
+          ) values (
+            ${uuidv7()}, ${input.organizationId}, ${exception.learner_id}, ${conceptId},
+            'wrong_answer', ${exception.response_id}, ${exception.question_id},
+            ${review.dueOn}, ${review.intervalDays}, 'scheduled',
+            ${review.stabilityDays}, ${review.repetitionNo}, ${review.lapseCount}
+          )
+        `;
       } else {
         // 교사가 정답으로 판정한 경우도 밀린 복습을 닫는다 (자동 채점과 같은 기준)
         await tx`
           update review_items
           set status = 'completed', completed_at = now(),
+              last_reviewed_on = ${evidenceDate}::date,
               outcome = ${tx.json({
                 closedBy: "grading_exception",
                 gradeDecisionId: decisionId,
@@ -710,7 +720,6 @@ export async function resolveGradingException(
   });
 
   /* 숙련도 파생 재계산 — cutoff은 DB 시계 기준 */
-  const policy = await loadActivePolicy(input.organizationId);
   for (const conceptId of touched) {
     await recomputeMastery(
       input.organizationId,

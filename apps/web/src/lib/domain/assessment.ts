@@ -6,6 +6,11 @@ import {
   type PoolQuestion,
   type SelectionBucket,
 } from "@su-maek/core/assessment";
+import {
+  DEFAULT_MASTERY_POLICY,
+  predictedRetention,
+  type MasteryPolicySpec,
+} from "@su-maek/core/mastery";
 import type { IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
@@ -170,17 +175,63 @@ export async function generateDailyTest(options: {
     r.concept_ids.some((c) => weakSet.has(c)),
   );
 
-  const reviewQuestionRows = await sql<{ question_id: string }[]>`
-    select distinct ri.question_id::text as question_id
+  /* 목표 유지율 θ는 조직 정책이 정한다 (ADR-0009 — 임계값 코드 상수 금지).
+   * 정렬만 하는 값이라 정책이 없으면 기본값으로 계속 진행한다. */
+  const [masteryPolicy] = await sql<{ spec: MasteryPolicySpec }[]>`
+    select spec from mastery_policy_versions
+    where organization_id = ${organizationId} and is_active = true
+    order by version desc limit 1
+  `;
+  const masterySpec = masteryPolicy?.spec ?? DEFAULT_MASTERY_POLICY;
+
+  /* 복습 후보 — **예측 기억률이 낮은 것부터**.
+   *
+   * 기한이 지났는지(due_on)는 예/아니오뿐이라 순서를 못 매긴다. 망각곡선의
+   * R = exp(-t·ln(1/θ)/S)는 "얼마나 잊혔는가"로 줄을 세운다. 한 문항이 여러
+   * 학습자에게 걸려 있으면 **가장 많이 잊은 학습자 기준**을 쓴다 — 반에 내는
+   * 문제이므로 가장 급한 사람에게 맞춘다.
+   *
+   * 경과일의 기준점은 마지막 복습일이고, 아직 한 번도 안 봤으면
+   * `due_on - interval_days`(= 항목이 생긴 날)다. `due_on`을 그대로 쓰면
+   * **오늘 기한인 항목이 전부 경과 0일 → R=1**이 되어 정렬이 통째로 뭉개진다. */
+  const reviewQuestionRows = await sql<
+    {
+      question_id: string;
+      stability_days: string | null;
+      days_since: number;
+    }[]
+  >`
+    select ri.question_id::text as question_id,
+           min(ri.stability_days)::text as stability_days,
+           max(${targetDate}::date - coalesce(ri.last_reviewed_on, ri.due_on - coalesce(ri.interval_days, 1)))::int as days_since
     from review_items ri
     join learning_group_memberships m
       on m.learner_id = ri.learner_id and m.learning_group_id = ${learningGroupId} and m.status = 'active'
     where ri.organization_id = ${organizationId}
       and ri.status = 'scheduled' and ri.due_on <= ${targetDate}
       and ri.question_id is not null
+    group by ri.question_id
   `;
-  const reviewSet = new Set(reviewQuestionRows.map((r) => r.question_id));
-  const reviewPool = pool.filter((r) => reviewSet.has(r.question_id));
+  const retentionByQuestion = new Map<string, number>();
+  for (const r of reviewQuestionRows) {
+    retentionByQuestion.set(
+      r.question_id,
+      predictedRetention({
+        stabilityDays: r.stability_days === null ? 1 : Number(r.stability_days),
+        daysSinceReview: r.days_since,
+        ...(masterySpec.targetRetention !== undefined
+          ? { targetRetention: masterySpec.targetRetention }
+          : {}),
+      }),
+    );
+  }
+  const reviewPool = pool
+    .filter((r) => retentionByQuestion.has(r.question_id))
+    .sort(
+      (a, b) =>
+        (retentionByQuestion.get(a.question_id) ?? 1) -
+        (retentionByQuestion.get(b.question_id) ?? 1),
+    );
   // 복습 풀이 비면 누적 복습으로 폴백 (오늘 개념 밖 전체)
   const cumulativePool = reviewPool.length > 0 ? reviewPool : otherPool;
 
@@ -202,6 +253,12 @@ export async function generateDailyTest(options: {
       reason: reviewPool.length > 0 ? "wrong_answer_review" : "cumulative",
       count: nReview,
       candidates: cumulativePool.map(toPoolQuestion),
+      /* 복습일 때만: 기억률 순서를 지키고, 재출제 제한에서 면제한다.
+       * 면제가 없으면 이 버킷은 구조적으로 언제나 0건이다 — 복습 항목은
+       * "최근에 그 문항을 틀려서" 생기므로 lastUsedOn이 반드시 창 안이다. */
+      ...(reviewPool.length > 0
+        ? { preserveOrder: true, allowRecentlyUsed: true }
+        : {}),
     },
   ];
 

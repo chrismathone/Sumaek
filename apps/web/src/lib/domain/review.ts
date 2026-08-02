@@ -2,6 +2,8 @@ import "server-only";
 import { getSharedSql } from "@su-maek/db";
 import { answerKey, studentAnswer } from "@su-maek/contracts";
 import { gradeAnswer } from "@su-maek/core/grading";
+import { forgettingParams, scheduleNextReview } from "@su-maek/core/mastery";
+import type { IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 복습 수행 (20장).
@@ -112,10 +114,25 @@ export async function answerReview(input: {
   /* learner_id를 반드시 조건에 둔다 — 남의 복습을 닫을 수 있으면 안 된다
    * (같은 실수를 saveResponse에서 한 번 했다). */
   const [item] = await sql<
-    { id: string; concept_id: string; answer_key: unknown; points: string | null }[]
+    {
+      id: string;
+      concept_id: string;
+      answer_key: unknown;
+      points: string | null;
+      stability_days: string | null;
+      repetition_no: number;
+      lapse_count: number;
+      due_on: string;
+      policy_spec: unknown;
+    }[]
   >`
     select r.id::text, r.concept_id::text as concept_id,
-           v.answer as answer_key, v.points::text as points
+           v.answer as answer_key, v.points::text as points,
+           r.stability_days::text as stability_days,
+           r.repetition_no, r.lapse_count, r.due_on::text as due_on,
+           (select spec from mastery_policy_versions
+             where organization_id = r.organization_id and is_active = true
+             order by version desc limit 1) as policy_spec
     from review_items r
     left join questions q on q.id = r.question_id
     left join question_versions v on v.id = q.current_version_id
@@ -154,16 +171,47 @@ export async function answerReview(input: {
   // needs_review·partial은 정답으로 치지 않는다 — 복습은 확실히 맞혀야 닫힌다
   const correct = outcome.verdict === "correct";
 
+  /* 망각곡선으로 다음 일정을 정한다.
+   *
+   * 예전에는 `today + 1`이 하드코딩돼 있었다 — 맞히면 그냥 닫히고 끝이라
+   * **간격이 자라지 않았고**, 틀리면 언제나 내일이었다. 이제 맞히면 안정성이
+   * 늘어 다음이 멀어지고, 틀리면 줄어 가까워진다. 상한은 정책이 정한다. */
+  const maxInterval = forgettingParams(
+    (item.policy_spec ?? undefined) as never,
+  ).maxIntervalDays;
+  const next = scheduleNextReview({
+    policy: (item.policy_spec ?? undefined) as never,
+    stabilityDays: item.stability_days === null ? null : Number(item.stability_days),
+    repetitionNo: item.repetition_no,
+    lapseCount: item.lapse_count,
+    wasCorrect: correct,
+    dueOn: item.due_on as IsoDate,
+    reviewedOn: input.today as IsoDate,
+  });
+
+  /* **맞혔다고 닫지 않는다.** 닫으면 늘어난 간격이 영영 쓰이지 않아 간격
+   * 반복이 성립하지 않는다 — 한 번 맞히면 끝나는 것은 복습이 아니다.
+   * 상한(정책의 최대 간격)에 도달하면 그때 졸업시킨다: "한 달 간격까지
+   * 버텼으면 익힌 것으로 본다"는 것이 사용자가 정한 최대 1달의 뜻이다. */
+  const graduated = correct && next.intervalDays >= maxInterval;
+
   await sql`
     update review_items
-    set status = ${correct ? "completed" : "scheduled"},
-        completed_at = ${correct ? sql`now()` : null},
-        due_on = ${correct ? sql`due_on` : sql`(${input.today}::date + 1)`},
+    set status = ${graduated ? "completed" : "scheduled"},
+        completed_at = ${graduated ? sql`now()` : null},
+        due_on = ${next.dueOn},
+        stability_days = ${next.stabilityDays},
+        repetition_no = ${next.repetitionNo},
+        lapse_count = ${next.lapseCount},
+        interval_days = ${next.intervalDays},
+        last_reviewed_on = ${input.today}::date,
         outcome = ${sql.json({
           closedBy: "learner_review",
           correct,
           scoreRatio: outcome.maxScore > 0 ? (outcome.score ?? 0) / outcome.maxScore : 0,
           answeredOn: input.today,
+          stabilityDays: next.stabilityDays,
+          explanation: next.explanation,
         } as never)},
         updated_at = now()
     where id = ${item.id}
@@ -175,8 +223,10 @@ export async function answerReview(input: {
     ok: true,
     correct,
     message: correct
-      ? "맞았습니다. 이 개념의 복습을 마쳤습니다."
-      : "아직 틀립니다. 내일 다시 올라옵니다.",
+      ? graduated
+        ? "맞았습니다. 이 개념은 충분히 익힌 것으로 보고 복습을 마칩니다."
+        : `맞았습니다. 다음에는 ${next.intervalDays}일 뒤에 확인합니다.`
+      : `아직 틀립니다. ${next.dueOn}에 다시 올라옵니다.`,
     remaining: await countDue(input),
   };
 }

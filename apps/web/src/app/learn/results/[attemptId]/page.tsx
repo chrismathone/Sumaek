@@ -109,8 +109,8 @@ export default async function ResultsPage({
 
       {wrongCount > 0 && (
         <p className="mt-4 rounded-lg border border-highlight bg-highlight-soft px-4 py-3 text-sm">
-          오답 {wrongCount}문항의 개념이 복습 일정에 배치되었습니다. 내일부터
-          간격을 두고 다시 확인합니다.
+          오답 {wrongCount}문항의 개념이 복습 일정에 배치되었습니다. 맞힐수록
+          간격이 늘어나고, 틀리면 다시 좁혀집니다.
         </p>
       )}
 

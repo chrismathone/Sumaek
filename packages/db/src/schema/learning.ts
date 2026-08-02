@@ -175,6 +175,17 @@ export const reviewItems = pgTable(
     status: reviewItemStatus("status").notNull().default("scheduled"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     outcome: jsonb("outcome"),
+    /* ── 망각곡선 (0010a) ──
+     * 안정성은 여기 산다 — 복습 결과는 숙련도 증거가 아니므로
+     * concept_masteries로 새면 안 된다 (불변 조건 10). */
+    /** 안정성 S(일) — 지금 복습하면 목표 유지율까지 버티는 일수 */
+    stabilityDays: numeric("stability_days", { precision: 6, scale: 2 }),
+    /** 몇 번째 복습인가 (0 = 아직 한 번도 안 봄) */
+    repetitionNo: integer("repetition_no").notNull().default(0),
+    /** 놓친 누적 횟수 */
+    lapseCount: integer("lapse_count").notNull().default(0),
+    /** 마지막으로 실제 복습한 날 — 예측 기억률의 기준점 */
+    lastReviewedOn: date("last_reviewed_on"),
     ...timestamps(),
   },
   (t) => [

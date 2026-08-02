@@ -39,6 +39,24 @@ export interface SelectionBucket {
   /** 목표 문항 수 */
   count: number;
   candidates: PoolQuestion[];
+  /**
+   * 호출자가 준 후보 순서를 그대로 지킨다 (셔플·노출순 정렬을 하지 않는다).
+   *
+   * 복습 버킷이 이것을 쓴다 — 후보가 **예측 기억률 오름차순**으로 들어오고,
+   * "가장 많이 잊은 것부터"가 곧 우선순위다. 노출 횟수로 다시 정렬하면 그
+   * 순서가 무너진다.
+   */
+  preserveOrder?: boolean;
+  /**
+   * 이 버킷만 재출제 제한(`excludeUsedSince`)에서 면제한다.
+   *
+   * 복습이 이것을 쓴다. 복습 항목은 "최근에 그 문항을 틀려서" 생기므로
+   * `lastUsedOn`이 반드시 제한 창 안이고, 그래서 복습 버킷은 **구조적으로
+   * 통째로 탈락**했다(실측: 쓸 수 있는 문항이 159개인데 0건이 됨). 복습의
+   * 목적이 "틀렸던 그 문항을 다시 내는 것"이므로 여기서는 제한을 적용하지
+   * 않는다. 다른 버킷의 동작은 그대로다.
+   */
+  allowRecentlyUsed?: boolean;
 }
 
 export interface SelectionConstraints {
@@ -87,10 +105,14 @@ export function selectQuestions(
 
   const bandTarget = constraints.difficultyDistribution ?? null;
 
-  const violatesConstraints = (q: PoolQuestion): boolean => {
+  const violatesConstraints = (
+    q: PoolQuestion,
+    bucket?: SelectionBucket,
+  ): boolean => {
     if (chosenIds.has(q.questionId)) return true;
     if (
       constraints.excludeUsedSince &&
+      !bucket?.allowRecentlyUsed &&
       q.lastUsedOn &&
       q.lastUsedOn >= constraints.excludeUsedSince
     ) {
@@ -125,16 +147,18 @@ export function selectQuestions(
   for (const bucket of buckets) {
     // 결정론적 셔플: 시드 + 버킷 이유. 노출 횟수 낮은 문항 우선(편중 방지),
     // 동률은 셔플 순서.
-    const ordered = seededShuffle(bucket.candidates, `${seed}:${bucket.reason}`)
-      .slice()
-      .sort((a, b) => (a.exposureCount ?? 0) - (b.exposureCount ?? 0));
+    const ordered = bucket.preserveOrder
+      ? bucket.candidates.slice()
+      : seededShuffle(bucket.candidates, `${seed}:${bucket.reason}`)
+          .slice()
+          .sort((a, b) => (a.exposureCount ?? 0) - (b.exposureCount ?? 0));
 
     let picked = 0;
 
     // 1차: 난이도 분포를 지키며 선택
     for (const q of ordered) {
       if (picked >= bucket.count) break;
-      if (violatesConstraints(q)) continue;
+      if (violatesConstraints(q, bucket)) continue;
       if (bandFull(q.difficultyBand)) continue;
       take(q, bucket.reason);
       picked++;
@@ -144,7 +168,7 @@ export function selectQuestions(
     if (picked < bucket.count) {
       for (const q of ordered) {
         if (picked >= bucket.count) break;
-        if (violatesConstraints(q)) continue;
+        if (violatesConstraints(q, bucket)) continue;
         take(q, bucket.reason);
         picked++;
       }

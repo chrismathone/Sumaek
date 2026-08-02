@@ -14,6 +14,11 @@ import {
   trimScore,
 } from "@/lib/format";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
+import {
+  DEFAULT_MASTERY_POLICY,
+  predictedRetention,
+  type MasteryPolicySpec,
+} from "@su-maek/core/mastery";
 import { DataTable, type Column } from "@/components/DataTable";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
@@ -51,6 +56,50 @@ export const metadata: Metadata = { title: "학습자 상세" };
 /* 학습자 상세 — 개념 숙련도는 상태 라벨만 보여주지 않는다.
  * 점 추정치·불확실성·증거 수·마지막 증거일을 함께 두어 자동 판정의 근거를
  * 교사가 직접 확인할 수 있게 한다 (20장·원칙 8). */
+
+/* 오늘 이 개념이 얼마나 남아 있는가 — 망각곡선의 예측 기억률.
+ *
+ * "간격 1일"만 보여 주던 자리를 대신한다. 그 라벨은 어떤 항목에서나 언제나
+ * 1이라 정보가 0이었다(간격 반복이 실제로는 작동하지 않았다). 경과일의
+ * 기준점은 마지막 복습일이고, 아직 한 번도 안 봤으면 항목이 생긴 날
+ * (= due_on - interval_days)이다.
+ *
+ * 안정성이 없는 낡은 행은 계산하지 않고 아무것도 표시하지 않는다 —
+ * 지어낸 수치보다 빈칸이 정직하다. */
+function retentionToday(
+  r: {
+    stability_days: string | null;
+    last_reviewed_on: string | null;
+    due_on: string;
+    interval_days: number | null;
+  },
+  today: string,
+  spec: MasteryPolicySpec,
+): number | null {
+  if (r.stability_days === null) return null;
+  const stability = Number(r.stability_days);
+  if (!Number.isFinite(stability) || stability <= 0) return null;
+  const base = r.last_reviewed_on ?? shiftIso(r.due_on, -(r.interval_days ?? 1));
+  return predictedRetention({
+    stabilityDays: stability,
+    daysSinceReview: isoDiffDays(today, base),
+    ...(spec.targetRetention !== undefined
+      ? { targetRetention: spec.targetRetention }
+      : {}),
+  });
+}
+
+function shiftIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function isoDiffDays(later: string, earlier: string): number {
+  const ms =
+    Date.parse(`${later}T00:00:00Z`) - Date.parse(`${earlier}T00:00:00Z`);
+  return Math.round(ms / 86_400_000);
+}
 
 const REVIEW_SOURCE_LABEL: Record<string, string> = {
   wrong_answer: "오답",
@@ -147,6 +196,7 @@ export default async function StudentDetailPage({
     overrides,
     deletionRequests,
     scheduleItems,
+    masteryPolicyRows,
   ] = await Promise.all([
     sql<
       {
@@ -211,10 +261,17 @@ export default async function StudentDetailPage({
         due_on: string;
         source_kind: string;
         interval_days: number | null;
+        stability_days: string | null;
+        last_reviewed_on: string | null;
+        repetition_no: number;
+        lapse_count: number;
         concept_name: string | null;
       }[]
     >`
       select r.id, r.due_on::text as due_on, r.source_kind, r.interval_days,
+             r.stability_days::text as stability_days,
+             r.last_reviewed_on::text as last_reviewed_on,
+             r.repetition_no, r.lapse_count,
              c.name as concept_name
       from review_items r
       left join canonical_concepts c on c.id = r.concept_id
@@ -292,7 +349,14 @@ export default async function StudentDetailPage({
                item_date asc, starts_at asc
       limit ${scheduleQuery.pageSize} offset ${scheduleQuery.offset}
     `,
+    /* 목표 유지율 θ — 기억률 표시의 기준. 코드 상수로 두지 않는다 (ADR-0009). */
+    sql<{ spec: MasteryPolicySpec }[]>`
+      select spec from mastery_policy_versions
+      where organization_id = ${user.organizationId} and is_active = true
+      order by version desc limit 1
+    `,
   ]);
+  const masterySpec = masteryPolicyRows[0]?.spec ?? DEFAULT_MASTERY_POLICY;
 
   const canManagePrivacy = canWrite(DEFAULT_MATRIX, user.role, "settings");
   const canManageLearners = canWrite(DEFAULT_MATRIX, user.role, "learners");
@@ -537,6 +601,8 @@ export default async function StudentDetailPage({
                   <span className="ml-2 font-mono text-xs text-ink-soft">
                     {label(REVIEW_SOURCE_LABEL, r.source_kind)}
                     {r.interval_days !== null && ` · 간격 ${r.interval_days}일`}
+                    {r.repetition_no > 0 && ` · ${r.repetition_no}회차`}
+                    {r.lapse_count > 0 && ` · 놓침 ${r.lapse_count}회`}
                   </span>
                 </p>
                 <span
@@ -544,6 +610,8 @@ export default async function StudentDetailPage({
                     r.due_on <= today ? "text-grade" : "text-ink-soft"
                   }`}
                 >
+                  {retentionToday(r, today, masterySpec) !== null &&
+                    `기억률 ${Math.round(retentionToday(r, today, masterySpec)! * 100)}% · `}
                   {r.due_on}
                   {r.due_on <= today && " (기한 도래)"}
                 </span>

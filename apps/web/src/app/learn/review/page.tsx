@@ -106,9 +106,12 @@ export default async function ReviewPage() {
           {first.overdue && " · 기한 지남"}
         </p>
       </div>
+      {/* 예전 문구는 "맞히면 끝, 틀리면 내일"이었는데 둘 다 사실이 아니다.
+          맞히면 간격이 늘어 더 뒤로 밀리고, 틀리면 간격이 줄어 더 빨리 온다.
+          정확한 날짜는 답을 낸 뒤에 알려 준다. */}
       <p className="mt-1 text-sm text-ink-soft">
-        전에 틀렸던 문항입니다. 맞히면 이 개념의 복습이 끝나고, 틀리면 내일 다시
-        올라옵니다.
+        전에 틀렸던 문항입니다. 맞히면 다음 복습이 더 뒤로 밀리고, 틀리면 더
+        빨리 다시 올라옵니다.
       </p>
       <div className="mt-4">
         <ReviewForm

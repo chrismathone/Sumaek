@@ -63,8 +63,33 @@ export interface MasteryPolicySpec {
   hintPenalty: number;
   /** 필수 차원 — 이 차원들에 증거가 있어야 stable 가능 */
   requiredDimensions: MasteryDimension[];
-  /** 간격 복습 간격 (일) — 연속 성공 단계별 */
+  /**
+   * 간격 복습 간격 (일) — 연속 성공 단계별.
+   *
+   * @deprecated 망각곡선 스케줄러(`forgetting.ts`)로 대체됐다. 지우지 않는 이유는
+   * DB에 이미 이 필드만 가진 정책 행이 있고, 낡은 spec도 계속 파싱되어야 하기
+   * 때문이다. 새 코드는 읽지 않는다.
+   */
   reviewIntervalsDays: number[];
+
+  /* ── 망각곡선 (forgetting.ts) ──
+   * 전부 선택 필드다. 없으면 FORGETTING_DEFAULTS로 메운다 — DB에 이미 들어 있는
+   * 정책 행에 이 필드들이 없기 때문이고, 그 행이 오늘 당장 깨지면 안 된다. */
+
+  /** 목표 유지율 θ — 다음 복습 시점의 예상 기억률 (0~1) */
+  targetRetention?: number;
+  /** 처음 틀렸을 때의 안정성 (일) */
+  initialStabilityDays?: number;
+  /** 맞혔을 때 안정성 배율 */
+  successMultiplier?: number;
+  /** 틀렸을 때 안정성 배율 (0~1) */
+  lapseMultiplier?: number;
+  /** 안정성 하한 (일) — 한 번 배운 것이 0이 되지는 않는다 */
+  minStabilityDays?: number;
+  /** 간격 상한 (일) */
+  maxIntervalDays?: number;
+  /** 늦게 보고도 맞혔을 때 붙는 보너스의 상한 배율 */
+  maxOverdueBonus?: number;
 }
 
 /**
@@ -82,6 +107,13 @@ export const DEFAULT_MASTERY_POLICY: MasteryPolicySpec = {
   hintPenalty: 0.6,
   requiredDimensions: ["conceptual", "procedural"],
   reviewIntervalsDays: [1, 3, 7, 14, 30],
+  targetRetention: 0.9,
+  initialStabilityDays: 1,
+  successMultiplier: 2.0,
+  lapseMultiplier: 0.4,
+  minStabilityDays: 1,
+  maxIntervalDays: 30,
+  maxOverdueBonus: 1.5,
 };
 
 export type MasteryState =

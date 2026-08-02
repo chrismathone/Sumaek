@@ -31,8 +31,13 @@ test.describe("인증·앱 셸 (인수 13의 기초)", () => {
     // dev 서버 첫 컴파일·원격 인증 왕복을 감안한 넉넉한 대기
     await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "오늘 수업" })).toBeVisible();
-    // 시드된 워크스페이스·반 데이터 (가짜 데이터 아님 — DB 실조회)
-    await expect(page.getByText("수맥 데모 학원").first()).toBeVisible();
+    // 시드된 워크스페이스·반 데이터 (가짜 데이터 아님 — DB 실조회).
+    // `.first()`는 DOM 순서상 좌측 내비의 이름을 집는데, 그 내비는 lg 미만에서
+    // 숨는다 — 태블릿·모바일에서 "안 보인다"고 틀렸다. 실제로는 상단 헤더에
+    // 언제나 있으므로, 화면 크기와 무관하게 보이는 그 쪽을 단언한다.
+    await expect(
+      page.getByText(/2026학년도 2학기 · 수맥 데모 학원/),
+    ).toBeVisible();
 
     // ADR-0016 이후 반 목록은 카드가 아니라 표다. 한 줄이던 "중2 심화 A ·
     // 학습자 5명"이 반 이름·과정·학습자 칸으로 쪼개졌으므로 칸별로 단언한다.
@@ -59,7 +64,11 @@ test.describe("인증·앱 셸 (인수 13의 기초)", () => {
       page.getByRole("link", { name: "학습 루트에서 일정 생성하기" }),
     ).toBeVisible();
 
-    // 로그아웃 → 보호 경로 재차단
+    // 로그아웃 → 보호 경로 재차단.
+    // lg 미만에서는 로그아웃이 접힌 <details> 안에 있어 접근성 트리에 없다.
+    // 사용자가 하는 대로 메뉴를 먼저 편다.
+    const mobileMenu = page.locator("summary").filter({ hasText: "메뉴" });
+    if (await mobileMenu.isVisible()) await mobileMenu.click();
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.goto("/app/today");
