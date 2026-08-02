@@ -496,8 +496,8 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
   for (const i of instructionSpans) nonQuestion.add(i);
 
   let typeContext: TypeContext | null = null;
-  let pendingTypeNumber: string | null = null;
-  let pendingTypeTitle: string | null = null;
+  /** 바로 앞 줄이 머리글이었나 — 두 줄로 넘어간 유형 제목을 잇는 데 쓴다 */
+  let prevWasHeader = false;
   let pendingTextbookRef: string | null = null;
 
   /** 현재 문항이 모으는 줄들 */
@@ -581,28 +581,59 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     const isTextbookRef = profile.patterns.textbookRef.test(refText);
 
     if (isTypeHeader || isTextbookRef) {
+      /* 「유형」 라벨이 붙은 줄만 출제 유형이다. 같은 제목 폰트를 쓰지만
+       * 라벨이 없는 줄은 **소단원 머리글**이다(「소수와 합성수」 「공약수와
+       * 최대공약수」). 둘을 구별하지 않으면 소단원 머리글이 번호를 못 찾아
+       * 통째로 버려지고, 「개념 익히기」 118문항이 개념 없이 남는다. */
+      const hasTypeLabel = [...fontsInLine].some((f) =>
+        profile.fonts.typeLabel.test(f),
+      );
+
+      /* 제목·번호는 **이 줄에서만** 모은다. 줄을 넘겨 누적했더니 서로 다른
+       * 머리글 셋이 「소수와 합성수 소인수분해 소인수분해를 이용하여 약수
+       * 구하기」 한 덩어리로 붙었다. */
+      let lineNumber: string | null = null;
+      let lineTitle = "";
       for (const group of groups) {
         const text = cleanBodyText(groupText(group)).trim();
         const font = group[0]!.font;
         if (profile.fonts.typeNumber.test(font) && /^\d{1,2}$/.test(text)) {
-          pendingTypeNumber = text;
+          lineNumber = text;
         } else if (profile.fonts.typeTitle.test(font) && text !== "") {
-          pendingTypeTitle = text;
+          lineTitle = lineTitle === "" ? text : `${lineTitle} ${text}`;
         }
       }
       if (isTextbookRef) pendingTextbookRef = refText.trim();
-      if (pendingTypeNumber && pendingTypeTitle) {
-        typeContext = {
-          number: pendingTypeNumber,
-          title: pendingTypeTitle,
-          textbookRef: pendingTextbookRef,
-        };
-        pendingTypeNumber = null;
-        pendingTypeTitle = null;
+
+      /* TS가 이 지점의 typeContext를 null로 좁혀 버린다 (flush 클로저가 같은
+       * 변수를 잡고 있어 흐름 분석이 끊긴다). 선언 타입을 그대로 쓴다. */
+      const previous = typeContext as TypeContext | null;
+      if (lineTitle !== "") {
+        /* 유형 제목이 두 줄로 넘어가는 것이 있다 (「유형 04 최대공약수의 활용
+         * / 일정한 양을 가능한 한 많은 사람에게 나누어 주기」). 바로 앞 줄도
+         * 머리글이었고 이 줄엔 번호·라벨이 없으면 앞 제목의 뒷부분이다 —
+         * 새 머리글로 보면 「한 많은 사람에게 나누어 주기」만 남는다. */
+        if (previous !== null && prevWasHeader && !hasTypeLabel && lineNumber === null) {
+          typeContext = { ...previous, title: `${previous.title} ${lineTitle}` };
+        } else {
+          typeContext = {
+            /* 「유형」 라벨이 붙은 것만 출제 유형이다. 라벨 없이 제목만
+             * 있는 줄은 소단원 머리글이다 — 개념 익히기 쪽이 그렇다. */
+            kind: hasTypeLabel ? "type" : "section",
+            number: lineNumber ?? "",
+            title: lineTitle,
+            textbookRef: pendingTextbookRef,
+          };
+        }
+      } else if (lineNumber !== null && previous !== null) {
+        // 번호만 따로 온 줄 — 바로 앞 머리글의 번호다
+        typeContext = { ...previous, number: lineNumber };
       }
+      prevWasHeader = true;
       for (const s of line.spans) markNonQuestion(s);
       continue;
     }
+    prevWasHeader = false;
 
     /* ── 유형 설명 상자: 유형 머리글 뒤·첫 문항 앞의 줄들.
      * 개념 설명이지 문항이 아니다. 문항에 붙이면 발문이 오염된다. */

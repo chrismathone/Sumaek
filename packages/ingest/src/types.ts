@@ -63,9 +63,15 @@ export interface ConditionItem {
   runs: Run[];
 }
 
-/** 문항이 속한 유형(대단원 아래의 출제 유형) 맥락 */
+/** 문항이 속한 유형(출제 유형) 또는 소단원 맥락 */
 export interface TypeContext {
-  /** 유형 번호 (01, 02 …) */
+  /**
+   * `type` — 「유형 01 서로소」 (유형 익히기 쪽)
+   * `section` — 「소수와 합성수」 (개념 익히기 쪽의 소단원 머리글)
+   * 둘은 같은 폰트를 쓰지만 유형에만 「유형」 라벨이 붙는다.
+   */
+  kind: "type" | "section";
+  /** 유형 번호 (01, 02 …). 소단원 머리글에는 없다. */
   number: string;
   title: string;
   /** 「개념원리 중학 수학 1-1 32쪽」 같은 교과서 참조 */

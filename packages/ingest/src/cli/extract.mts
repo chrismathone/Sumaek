@@ -37,12 +37,45 @@ const score = scoreExtraction(extractions, expected);
 const render = (runs: Run[]): string =>
   runs.map((r) => (r.kind === "text" ? r.text : `$${r.latex}$`)).join("");
 
+/* --outline: 유형 구조만 훑어본다. 문항을 개념에 잇는 표를 사람이 만들려면
+ * 먼저 이 교재가 무엇을 어떤 이름으로 묶어 두었는지 봐야 한다. */
+if (args.includes("--outline")) {
+  const seen = new Map<string, { title: string; ref: string | null; numbers: string[] }>();
+  const orphan: string[] = [];
+  for (const page of extractions) {
+    for (const q of page.questions) {
+      if (!q.typeContext) {
+        orphan.push(q.printedNumber);
+        continue;
+      }
+      const c = q.typeContext;
+      const key = c.kind === "type" ? `유형 ${c.number} ${c.title}` : `소단원 ${c.title}`;
+      const entry = seen.get(key) ?? {
+        title: q.typeContext.title,
+        ref: q.typeContext.textbookRef,
+        numbers: [],
+      };
+      entry.numbers.push(q.printedNumber);
+      seen.set(key, entry);
+    }
+  }
+  console.log(`유형 ${seen.size}개`);
+  for (const [key, v] of seen) {
+    console.log(
+      `  ${key.padEnd(28)} ${String(v.numbers.length).padStart(3)}문항  ` +
+        `${v.numbers[0]}~${v.numbers[v.numbers.length - 1]}  ${v.ref ?? ""}`,
+    );
+  }
+  console.log(`\n유형 없는 문항 ${orphan.length}개: ${orphan.slice(0, 40).join(" ")}`);
+  process.exit(0);
+}
+
 if (verbose) {
   for (const page of extractions) {
     console.log(`\n${"═".repeat(72)}\n  p.${page.page} — ${page.questions.length}문항`);
     for (const q of page.questions) {
       console.log(`\n  [${q.printedNumber}] 단${q.column + 1}` +
-        (q.typeContext ? `  · 유형 ${q.typeContext.number} ${q.typeContext.title}` : "") +
+        (q.typeContext ? `  · ${q.typeContext.kind === "type" ? "유형 " + q.typeContext.number : "소단원"} ${q.typeContext.title}` : "") +
         (q.figureBoxes.length > 0 ? `  · 그림 ${q.figureBoxes.length}` : ""));
       console.log(`    발문: ${render(q.stem)}`);
       if (q.conditionBox) {
