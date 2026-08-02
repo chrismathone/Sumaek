@@ -17,7 +17,8 @@
     "load": "tsx src/cli/load.mts",
     "verify-templates": "tsx src/cli/verify-templates.mts",
     "variants": "tsx src/cli/variants.mts",
-    "audit-katex": "tsx src/cli/audit-katex.mts"
+    "audit-katex": "tsx src/cli/audit-katex.mts",
+    "strategy-review": "tsx src/cli/strategy-review.mts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",

@@ -1,5 +1,10 @@
-import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex } from "./hwp-encoding";
+import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex, tidyBodyText } from "./hwp-encoding";
 import type { PageDump, Run, SourceDump } from "./types";
+
+/** 2행 분수로 합쳐진 span — 분자·분모를 구조로 들고 간다 */
+type MaybeStacked = PageDump["spans"][number] & {
+  stacked?: { numerator: string; denominator: string };
+};
 
 /* ─────────────────────────────────────────────────────────────
  * 정답 별책 → 문항별 정답·해설
@@ -34,6 +39,11 @@ export interface ParsedAnswer {
    * 된다. 버릴 자료가 아니라 **다른 칸에 들어가야 할** 자료다.
    */
   rubric: Run[];
+  /**
+   * 「전략」 지침 상자 — 해설에서 뺀 내용. **버리지 않고 여기 담는다.**
+   * 무엇을 뺐는지 볼 수 없으면 경계가 맞는지 확인할 방법이 없다.
+   */
+  strategy: Run[][];
 }
 
 export interface AnswerProfile {
@@ -59,6 +69,25 @@ export interface AnswerProfile {
    * 됐다 — 채점이 영원히 틀리는 종류의 오염이다.
    */
   bottomMarginRatio: number;
+  /**
+   * 전략(지침) 상자의 **본문 글꼴**. 별책은 전략을 고딕으로, 풀이를 명조로
+   * 짜 놓았다 — 눈으로 봐도 다르고 파일에도 그렇게 있다. 들여쓰기나 마침표로
+   * 재는 것보다 정확하다.
+   */
+  strategyBodyFont: RegExp;
+  /**
+   * 글자가 아니라 **그림 조각**을 담은 글꼴. 밑줄 중괄호(⏟)를 「(」·「\」·
+   * 「[{」·「9」 같은 조각으로 그린다. LaTeX으로 옮길 수 없고 그대로 두면
+   * KaTeX가 실패한다 — 문항 0083이 그랬다. 내용이 아니므로 버린다.
+   */
+  decorationFont: RegExp;
+  /**
+   * **인라인 분수** 글꼴. 「;2&;」(=7/2)처럼 분수를 한 글자로 담는데,
+   * 세로로 커서 기준선이 본문보다 아래로 내려간다(본문 611.0 : 분수 615.8).
+   * 줄 세우기 허용 오차를 넘으므로 이 글꼴만 세로 겹침으로 흡수한다.
+   * 수식 글꼴 전체에 적용하면 세로셈 표의 행까지 한 줄로 뭉친다.
+   */
+  inlineFractionFont: RegExp;
 }
 
 /** 개념원리 RPM (2022 개정) 『정답 및 해설』 — 실측값 */
@@ -71,7 +100,70 @@ export const RPM_2022_ANSWERS: AnswerProfile = {
   lineToleranceY: 4,
   rightMarginPt: 35, // 세로 단원명이 x=599부터 (지면 폭 623.6)
   bottomMarginRatio: 0.925, // 본책과 같은 자리에 러닝헤드가 온다
+  strategyBodyFont: /YDVYGOStd12/, // 풀이는 YDVYMjOStd12 (명조)
+  decorationFont: /EHSunm/,
+  inlineFractionFont: /EHboNA/,
 };
+
+/**
+ * 2행 분수를 한 조각으로 합친다 — 본책 파서와 같은 이유, 같은 근거.
+ *
+ * 별책에도 `-7/2` 같은 분수가 분자·분모 두 span으로 나뉘어 있고 사이의
+ * 막대는 높이 0인 벡터 선분이다. 합치지 않으면 절댓값 막대 안에서 조각이
+ * 흩어져 「$-$$=$, $|3|=3$, … $|$$\frac{7}{2}|$」처럼 뒤엉킨다
+ * (문항 0323이 그랬다).
+ */
+function mergeStackedFractions(
+  spans: PageDump["spans"],
+  page: PageDump,
+  profile: AnswerProfile,
+): PageDump["spans"] {
+  const bars = page.drawings.filter((d) => d.y1 - d.y0 < 1.5 && d.x1 - d.x0 >= 3);
+  if (bars.length === 0) return spans;
+
+  const math = spans.filter((s) => profile.mathFont.test(s.font));
+  const used = new Set<PageDump["spans"][number]>();
+  const merged: PageDump["spans"] = [];
+
+  for (const bar of bars) {
+    const within = (s: PageDump["spans"][number]): boolean =>
+      s.x0 >= bar.x0 - 2 && s.x1 <= bar.x1 + 2;
+    const above = math
+      .filter(
+        (s) =>
+          !used.has(s) && within(s) &&
+          (s.y0 + s.y1) / 2 < bar.y0 && s.y1 <= bar.y0 + 4 && s.y1 >= bar.y0 - 14,
+      )
+      .sort((a, b) => b.y1 - a.y1);
+    const below = math
+      .filter(
+        (s) =>
+          !used.has(s) && within(s) &&
+          (s.y0 + s.y1) / 2 > bar.y1 && s.y0 >= bar.y1 - 4 && s.y0 <= bar.y1 + 14,
+      )
+      .sort((a, b) => a.y0 - b.y0);
+
+    const numerator = above[0];
+    const denominator = below[0];
+    if (!numerator || !denominator) continue;
+    used.add(numerator);
+    used.add(denominator);
+    merged.push({
+      ...numerator,
+      /* 원문은 그대로 보존하고(2O), 분수라는 사실은 **구조로** 들고 간다.
+       * 텍스트로 다시 인코딩하면 해독표를 두 번 거치며 틀어진다. */
+      text: `${numerator.text}/${denominator.text}`,
+      stacked: { numerator: numerator.text, denominator: denominator.text },
+      x0: Math.min(numerator.x0, denominator.x0),
+      x1: Math.max(numerator.x1, denominator.x1),
+      y0: numerator.y0,
+      y1: (numerator.y1 + denominator.y1) / 2,
+    } as PageDump["spans"][number]);
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s)), ...merged];
+}
 
 export function parseAnswerPage(
   page: PageDump,
@@ -84,21 +176,64 @@ export function parseAnswerPage(
   /* 줄 세우기 — 본책과 같은 이유로 아래끝을 기준선으로 쓴다 */
   interface Line {
     y: number;
+    /** 줄이 차지한 세로 띠 — 위첨자를 흡수할 때 쓴다 */
+    top: number;
+    bottom: number;
+    /** 줄의 대표 글자 크기 (가장 큰 것) */
+    size: number;
     column: number;
     spans: (typeof page.spans)[number][];
   }
   const lines: Line[] = [];
   const bodyRight = page.width - profile.rightMarginPt;
-  for (const span of [...page.spans].sort((a, b) => a.y1 - b.y1 || a.x0 - b.x0)) {
+  /* 큰 글자부터 넣어 줄의 세로 띠를 먼저 세운다 — 본책 파서와 같은 이유다.
+   * 작은 위첨자가 먼저 들어와 자기만의 줄을 만들면 흡수할 대상이 없다. */
+  const prepared = mergeStackedFractions(page.spans, page, profile);
+  const ordered = [...prepared].sort(
+    (a, b) => b.size - a.size || a.y1 - b.y1 || a.x0 - b.x0,
+  );
+  for (const span of ordered) {
     if (span.text.trim() === "") continue;
     if (span.x0 >= bodyRight) continue; // 세로 단원명 — 본문이 아니다
     if (span.y0 > page.height * profile.bottomMarginRatio) continue; // 러닝헤드
+    if (profile.decorationFont.test(span.font)) continue; // 괄호 그림 조각
     const column = columnOf((span.x0 + span.x1) / 2);
-    const line = lines.find(
-      (l) => l.column === column && Math.abs(l.y - span.y1) <= profile.lineToleranceY,
-    );
-    if (line) line.spans.push(span);
-    else lines.push({ y: span.y1, column, spans: [span] });
+    const center = (span.y0 + span.y1) / 2;
+    const line = lines.find((l) => {
+      if (l.column !== column) return false;
+      if (Math.abs(l.y - span.y1) <= profile.lineToleranceY) return true;
+      /* 위첨자·아래첨자 — 작고, 줄의 세로 띠 안에 든다.
+       * 이걸 안 하면 `3^a×5^b`의 a·b가 자기들끼리 한 줄이 되어 그 줄이
+       * 전략과 풀이 사이를 끊는다 — 문항 0096의 전략이 반만 잡혔다. */
+      if (span.size < l.size * 0.8 && center > l.top && center < l.bottom) return true;
+      /* 분수 글꼴(EHboNA)은 크기가 같아도 **기준선이 아래로 내려간다** —
+       * 본문 y1=611.0인데 `;2&;`(=7/2)는 615.8이다. 허용 오차를 넘어
+       * 다른 줄로 갈라지면 |−7/2| 같은 식이 조각나 뒤로 밀린다
+       * (문항 0323이 그랬다). 세로로 겹치면 같은 줄로 본다. */
+      /* 같은 글꼴이 **세로셈 나눗셈 기호**(`>`)에도 쓰인다. 그 조각은 두 줄
+       * 높이라 겹침만 보면 표의 두 행을 하나로 묶는다(문항 0027이 그랬다).
+       * 높이로도 갈리지 않는다 — 분수도 두 줄 높이다. 기호 자체로 가른다. */
+      return (
+        profile.inlineFractionFont.test(span.font) &&
+        !span.text.includes(">") &&
+        span.y0 < l.bottom &&
+        span.y1 > l.top + (l.bottom - l.top) * 0.3
+      );
+    });
+    if (line) {
+      line.spans.push(span);
+      line.top = Math.min(line.top, span.y0);
+      line.bottom = Math.max(line.bottom, span.y1);
+    } else {
+      lines.push({
+        y: span.y1,
+        top: span.y0,
+        bottom: span.y1,
+        size: span.size,
+        column,
+        spans: [span],
+      });
+    }
   }
   for (const line of lines) line.spans.sort((a, b) => a.x0 - b.x0);
   lines.sort((a, b) => a.column - b.column || a.y - b.y);
@@ -124,6 +259,41 @@ export function parseAnswerPage(
     const edge = columnRight.get(line.column) ?? right;
     return edge - right > 12;
   };
+  /* ── 「전략」 지침 상자 ────────────────────────────────────
+   *
+   * 별책은 풀이 앞에 「전략 …임을 이용한다.」로 접근법을 귀띔한다. 이건
+   * 문항의 해설이 아니라 **교재 편집자가 학생에게 주는 힌트**여서 우리
+   * 해설에는 넣지 않는다.
+   *
+   * 지우는 것이 내용만의 문제가 아니다. 이 상자 안에는 밑줄 중괄호(⏟)를
+   * 그리는 조각 글리프가 들어 있다(EHSunm-Plain의 `(`·`\`·`[{`·`9`).
+   * 글자가 아니라 그림이라 LaTeX으로 옮길 수 없고, 그대로 두면 KaTeX가
+   * 실패한다 — 남아 있던 렌더 실패 1건이 바로 이것이었다(문항 0083).
+   *
+   * 경계는 **문장 하나**다. 처음에는 「들여쓰기가 끝날 때까지」로 잡았는데,
+   * 그러면 전략 아래 딸린 **세로셈 표까지 지운다**(문항 0197의
+   * 2²×3 / 3×5 / 2×3×5). 그 표는 힌트가 아니라 풀이다.
+   * 전략은 「…을 이용한다.」 한 문장이고, 마침표에서 끝난다. */
+  const isStrategyLabel = (line: Line): boolean =>
+    line.spans.some((s) => cleanBodyText(s.text).trim() === "전략");
+
+  /**
+   * 이 줄의 한글이 **전략 글꼴**인가.
+   *
+   * 별책은 전략과 풀이를 글꼴로 갈라 놓았다 — 전략은 고딕(YDVYGOStd12),
+   * 풀이는 명조(YDVYMjOStd12). 눈으로 봐도 다르고, 파일에도 그렇게 있다.
+   * 들여쓰기나 마침표로 재는 것보다 이쪽이 정확하다.
+   *
+   * 전략이 두 줄인 문항이 있고(0096: 「…뿐이므로 / …꼴임을 이용한다.」)
+   * 전략 아래에 세로셈 표가 붙는 문항이 있다(0197). 표에는 한글이 없으므로
+   * 이 판정으로 자연히 갈린다 — 표는 풀이로 남는다.
+   */
+  const hasStrategyKorean = (line: Line): boolean => {
+    const korean = line.spans.filter((s) => /[가-힣]/.test(s.text));
+    if (korean.length === 0) return false;
+    return korean.some((s) => profile.strategyBodyFont.test(s.font));
+  };
+
   /** 줄이 새 단계로 시작하는가 — ∴·따라서·즉은 언제나 새 줄이다 */
   const startsNew = (line: Line): boolean =>
     /^\s*(∴|따라서|즉|그러므로)/.test(
@@ -166,11 +336,21 @@ export function parseAnswerPage(
     raw: string,
     x0: number,
     x1: number,
+    stacked?: { numerator: string; denominator: string },
   ): void => {
     const adjacent = x0 - lastX1 < 1.5;
     lastX1 = x1;
     if (isMath) {
-      const decoded = decodeHwpMath(raw);
+      const decoded = stacked
+        ? (() => {
+            const top = decodeHwpMath(stacked.numerator);
+            const bottom = decodeHwpMath(stacked.denominator);
+            return {
+              latex: `\frac{${top.latex}}{${bottom.latex}}`,
+              unknown: [...top.unknown, ...bottom.unknown],
+            };
+          })()
+        : decodeHwpMath(raw);
       if (decoded.latex === "") return;
       const last = runs[runs.length - 1];
       if (last?.kind === "math" && adjacent) {
@@ -198,7 +378,34 @@ export function parseAnswerPage(
     return explanationLine;
   };
 
+  /** 「전략」 상자를 지나는 중인가 — 한글이 풀이 글꼴로 바뀌면 끝난다 */
+  let inStrategy = false;
+  /** 지금 담고 있는 전략 줄. **조각을 담을 때** 만든다 — 줄 단위로 미리
+   * 만들면 번호를 처리하기 전이라 앞 문항에 붙는다(실제로 그랬다). */
+  let strategyLine: Run[] | null = null;
+  const strategyTarget = (): Run[] => {
+    if (!strategyLine) {
+      strategyLine = [];
+      current!.strategy.push(strategyLine);
+    }
+    return strategyLine;
+  };
+
   for (const line of lines) {
+    if (inStrategy && !hasStrategyKorean(line)) {
+      inStrategy = false;
+      strategyLine = null;
+    }
+    /* 문항 번호와 「전략」이 **같은 기준선에 온다**(0083: 번호 y=591,
+     * 전략 y=588). 줄째로 건너뛰면 문항 자체가 사라진다 — 실제로 그랬다.
+     * 상태만 세우고 건너뛰기는 span 단위로 한다. */
+    if (isStrategyLabel(line)) {
+      inStrategy = true;
+      explanationLine = null;
+      strategyLine = null;
+    }
+    if (inStrategy) strategyLine = null; // 줄이 바뀌었다 — 다음 조각에서 새로 만든다
+
     /* 앞 줄이 오른쪽 끝을 못 채웠거나 이 줄이 ∴·따라서로 시작하면
      * 거기서 끊긴 것이다 — 다음 조각은 새 줄에 담는다. */
     if (startsNew(line)) explanationLine = null;
@@ -218,11 +425,15 @@ export function parseAnswerPage(
               current.printedNumber.length + digits.length <= 4) {
             current.printedNumber += digits;
           } else {
-            current = { printedNumber: digits, page: page.page, answer: [], explanation: [], rubric: [] };
+            current = { printedNumber: digits, page: page.page, answer: [], explanation: [], rubric: [], strategy: [] };
             inAnswer = false;
             answerClosed = false;
             inRubric = false;
             explanationLine = null;
+            /* 번호는 「전략」보다 **앞에** 온다(같은 기준선). 여기서 무조건
+             * 끄면 방금 줄 단위로 세운 상태가 지워져 전략이 그대로 들어온다.
+             * 이 줄에 전략 라벨이 있었는지로 다시 정한다. */
+            inStrategy = isStrategyLabel(line);
             lastX1 = Number.NEGATIVE_INFINITY;
             out.push(current);
           }
@@ -231,6 +442,14 @@ export function parseAnswerPage(
       }
 
       if (!current) continue;
+      /* 전략 상자 안의 글자는 해설에 담지 않는다 — 대신 strategy에 모아
+       * 무엇을 뺐는지 볼 수 있게 한다 (번호는 위에서 이미 처리됐다). */
+      if (inStrategy) {
+        if (cleanBodyText(span.text).trim() !== "전략") {
+          push(strategyTarget(), cleanBodyText(span.text), profile.mathFont.test(span.font), span.text, span.x0, span.x1);
+        }
+        continue;
+      }
 
       // 「답」 표식 — 여기서부터가 정답이다
       if (profile.answerLabelFont.test(span.font) && cleaned.includes("답")) {
@@ -264,10 +483,21 @@ export function parseAnswerPage(
         span.text,
         span.x0,
         span.x1,
+        (span as MaybeStacked).stacked,
       );
     }
     /* 이 줄이 오른쪽 끝을 못 채웠다면 여기서 끊긴 것이다 */
     if (!inAnswer && !inRubric && endsHere(line)) explanationLine = null;
+  }
+
+  /* 이어 붙이기가 끝난 뒤 텍스트 조각을 손질한다 — 양쪽 정렬이 벌려 놓은
+   * 공백이 「공약수는   (2+1)×(1+1)」처럼 한가운데를 뚫어 놓는다. */
+  for (const entry of out) {
+    for (const group of [entry.answer, ...entry.explanation, ...entry.strategy, entry.rubric]) {
+      for (const run of group) {
+        if (run.kind === "text") run.text = tidyBodyText(run.text);
+      }
+    }
   }
 
   /* 번호가 네 자리로 완성되지 않은 것은 버린다 — 쪽 번호·각주가 섞인 것이다 */

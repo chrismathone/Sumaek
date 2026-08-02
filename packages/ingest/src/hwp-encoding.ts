@@ -85,6 +85,9 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
  * (숫자가 뒤에 올 때는 우연히 통과해서 더 나쁘다 — 변수 문항에서만 깨진다).
  */
 const OPERATOR: ReadonlyMap<string, string> = new Map([
+  /* EHyak 글꼴의 y는 가운뎃점 말줄임(…)이다.
+   * 지면 대조: 별책 0083 「a×a×…×a=aⁿ임을 이용한다」 */
+  ["y", "\\cdots "],
   ["_", "\\times "], // p.20 「2_3Û`」 = 2×3²
   ["Ö", "\\div "], // Ö — p.75 「4Öa」 = 4÷a
   ["×", "\\times "], // × (진짜 유니코드로 들어온 경우)
@@ -218,6 +221,26 @@ export function decodeHwpMath(raw: string): DecodeResult {
  */
 export function cleanBodyText(raw: string): string {
   return raw.replace(DROPPABLE, "").replace(/[ \t]+/g, " ");
+}
+
+/**
+ * 조각을 다 이어 붙인 뒤의 마무리 손질.
+ *
+ * 조판기는 줄을 오른쪽 끝까지 채우려고 낱말 사이를 벌린다. 그 공백이
+ * span 텍스트에 그대로 실려 와서, 이어 붙이면 「공약수는   (2+1)×(1+1)」처럼
+ * 한가운데가 뻥 뚫린다 — 지면에서는 양쪽 정렬이라 자연스럽지만 화면에서는
+ * 그냥 이상하다.
+ *
+ * 여는 괄호 앞·닫는 괄호와 문장부호 뒤의 군더더기 공백도 함께 턴다.
+ */
+export function tidyBodyText(text: string): string {
+  /* **끝의 공백을 지우지 않는다.** 조각 하나만 놓고 보면 군더더기 같지만,
+   * 그 공백이 다음 수식 조각과의 띄어쓰기다 — trim을 넣었더니 「과 」가
+   * 「과」가 되어 화면에 「16과81의」로 붙어 나왔다. */
+  return text
+    .replace(/[ \t]{2,}/g, " ") // 양쪽 정렬이 벌려 놓은 공백
+    .replace(/[ \t]+([,.)\]}%])/g, "$1") // 문장부호 앞 공백
+    .replace(/([([{])[ \t]+/g, "$1"); // 여는 괄호 뒤 공백
 }
 
 /**
