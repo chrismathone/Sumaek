@@ -594,6 +594,38 @@ async function markOutboxFailed(
   `;
 }
 
+/**
+ * 실행 중 lease 연장 (ADR-0010 「처리 중 갱신 — 30초마다 lease_until 연장」).
+ *
+ * 클레임이 lease를 5분 주는데, 그보다 오래 걸리는 작업은 갱신하지 않으면
+ * 만료된다. 클레임 조건이 `status='running' and lease_expires_at < now()`를
+ * 회수 대상으로 삼으므로, **아직 돌고 있는 작업을 다른 워커가 다시 집는다**
+ * — 같은 작업이 자기 자신과 동시에 돈다. ADR의 위험 F-4가 이것이고,
+ * 곧 들어올 OCR 반입(20분·5만 페이지)이 정확히 그 길이다.
+ *
+ * 돌려주는 값이 false면 **이 작업은 더 이상 내 것이 아니다** — 리스가 만료돼
+ * 다른 워커가 가져갔거나 취소됐다. 그때는 계속 붙들지 말고 중단해야 한다
+ * (ADR F-4: 「갱신 실패 시 작업 자체 중단」). 완료·실패 기록도 남기면 안 된다.
+ * 남의 실행 결과를 덮어쓰기 때문이다.
+ */
+export async function renewLease(
+  sql: postgres.Sql,
+  input: { jobId: string; workerId: string; leaseSeconds?: number },
+): Promise<boolean> {
+  const lease = input.leaseSeconds ?? 300;
+  const rows = await sql<{ id: string }[]>`
+    update jobs
+    set lease_expires_at = now() + make_interval(secs => ${lease}),
+        updated_at = now()
+    where id = ${input.jobId}
+      and worker_id = ${input.workerId}
+      and status = 'running'
+      and lease_expires_at >= now()
+    returning id
+  `;
+  return rows.length > 0;
+}
+
 /** Inbox 멱등 처리 — 처음이면 true(처리 진행), 중복이면 false(건너뜀) */
 export async function tryMarkInbox(
   tx: postgres.Sql,

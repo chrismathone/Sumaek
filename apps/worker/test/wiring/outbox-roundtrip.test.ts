@@ -105,6 +105,13 @@ async function jobsOf(eventId: string): Promise<JobRow[]> {
   `;
 }
 
+async function leaseOf(jobId: string): Promise<number> {
+  const [row] = await sql<{ t: Date }[]>`
+    select lease_expires_at as t from jobs where id = ${jobId}
+  `;
+  return row ? new Date(row.t).getTime() : 0;
+}
+
 async function jobById(jobId: string): Promise<JobRow> {
   const [row] = await sql<JobRow[]>`
     select id, topic, status::text as status, attempts, last_error,
@@ -479,5 +486,88 @@ describe.skipIf(!hasDb)("아웃박스 일시 실패 (작업 삽입이 터질 때
 
   it("한도는 기본 8이다 — 한 번 터졌다고 바로 버리지 않는다", () => {
     expect(OUTBOX_MAX_ATTEMPTS).toBe(8);
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 장시간 작업의 lease — 곧 들어올 OCR 반입(20분·5만 페이지)이 밟을 길.
+ *
+ * 클레임이 lease를 5분 준다. 그보다 오래 걸리는 작업은 갱신하지 않으면
+ * 만료되고, 클레임 조건이 `status='running' and lease_expires_at < now()`를
+ * 회수 대상으로 삼으므로 **아직 돌고 있는 작업을 다른 워커가 다시 집는다.**
+ * 반입 작업이 그렇게 두 번 돌면 같은 문항이 DB에 두 벌 들어간다.
+ *
+ * ADR-0010이 위험 F-4로 적어 두고 「30초마다 갱신」을 규정했는데 구현이
+ * 없었다. 여기서는 갱신 주기를 짧게 줄여 실제로 만료를 넘겨 본다.
+ * ───────────────────────────────────────────────────────────── */
+describe.skipIf(!hasDb)("장시간 작업의 lease 갱신", () => {
+  const TOPIC_SLOW = "itest.roundtrip-slow";
+  let slowJobId: string;
+  let slowRun: RunOnceResult;
+  let afterSlow: JobRow;
+  let leaseGrew: boolean;
+
+  beforeAll(async () => {
+    sql = createSql();
+    await sql`delete from jobs where organization_id = ${ORG}`;
+    slowJobId = await enqueueDueJob(TOPIC_SLOW);
+    /* lease를 2초로 좁혀 둔다 — 핸들러가 그보다 오래 돌게 해서
+     * "갱신이 없으면 만료된다"를 실제로 재현한다. */
+    await sql`update jobs set lease_expires_at = now() + interval '2 seconds' where id = ${slowJobId}`;
+
+    const before = await leaseOf(slowJobId);
+    const slow: JobHandler = async () => {
+      await new Promise((r) => setTimeout(r, 2_500));
+      return { ok: true };
+    };
+    slowRun = await runOnce({
+      sql,
+      handlers: new Map([[TOPIC_SLOW, slow]]),
+      workerId: WORKER,
+      concurrency: 4,
+      organizationId: ORG,
+      leaseRenewMs: 300, // ADR의 30초를 테스트에서만 줄인다
+    });
+    afterSlow = await jobById(slowJobId);
+    leaseGrew = (await leaseOf(slowJobId)) > before;
+  });
+
+  afterAll(async () => {
+    await sql`delete from jobs where organization_id = ${ORG}`;
+    await sql.end({ timeout: 5 });
+  });
+
+  it("lease보다 오래 걸려도 완료로 끝난다 — 재클레임되지 않는다", () => {
+    expect(slowRun.claimed).toBe(1);
+    expect(slowRun.succeeded).toBe(1);
+    expect(slowRun.leaseLost).toBe(0);
+    expect(afterSlow.status).toBe("succeeded");
+  });
+
+  it("도는 동안 lease가 실제로 연장됐다", () => {
+    expect(leaseGrew).toBe(true);
+  });
+
+  it("소유권을 잃으면 결과를 기록하지 않는다 — 남의 실행을 덮어쓰지 않는다", async () => {
+    const jobId = await enqueueDueJob(TOPIC_SLOW);
+    /* 핸들러가 도는 사이 다른 워커가 가져간 상황을 만든다 */
+    const steal: JobHandler = async () => {
+      await sql`update jobs set worker_id = 'itest-다른워커' where id = ${jobId}`;
+      await new Promise((r) => setTimeout(r, 700));
+      return { ok: true };
+    };
+    const run = await runOnce({
+      sql,
+      handlers: new Map([[TOPIC_SLOW, steal]]),
+      workerId: WORKER,
+      concurrency: 4,
+      organizationId: ORG,
+      leaseRenewMs: 200,
+    });
+    expect(run.leaseLost).toBe(1);
+    expect(run.succeeded).toBe(0);
+    const row = await jobById(jobId);
+    // 뺏어 간 워커의 것으로 남아 있어야 한다 — succeeded로 덮이면 안 된다
+    expect(row.status).toBe("running");
   });
 });

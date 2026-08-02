@@ -7,6 +7,8 @@ import {
   filterTopicsBySwitches,
   isDeferSignal,
   loadGloballyDisabledSwitches,
+  renewLease,
+  type ClaimedJob,
   type DispatchOutboxResult,
   type Sql,
 } from "@su-maek/db";
@@ -30,6 +32,8 @@ export interface RunOnceOptions {
   organizationId?: string | null | undefined;
   outboxLimit?: number | undefined;
   log?: ((message: string) => void) | undefined;
+  /** lease 갱신 주기(ms). 테스트가 짧게 줄여 쓴다 — 기본은 ADR의 30초 */
+  leaseRenewMs?: number | undefined;
 }
 
 export interface RunOnceResult {
@@ -43,6 +47,8 @@ export interface RunOnceResult {
   blockedTopics: string[];
   /** 클레임됐지만 핸들러가 없던 작업 (있으면 배선 결손이다) */
   unhandled: number;
+  /** 실행 중 lease를 잃은 작업 — 다른 워커가 가져갔다는 뜻 */
+  leaseLost: number;
 }
 
 export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
@@ -97,6 +103,7 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     deferred: 0,
     blockedTopics,
     unhandled: 0,
+    leaseLost: 0,
   };
 
   await Promise.all(
@@ -108,8 +115,20 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
         result.failed += 1;
         return;
       }
+      /* 도는 동안 lease를 붙들고 있는다. 갱신을 멈추면 5분 뒤 만료돼
+       * 다른 워커가 **아직 돌고 있는 이 작업을** 다시 집는다 (ADR F-4). */
+      const keeper = startLeaseKeeper(sql, job, workerId, options.leaseRenewMs);
       try {
         const handled = await handler(job);
+        /* 잃은 뒤에 완료·실패를 쓰면 남의 실행 결과를 덮어쓴다 — 아무것도
+         * 기록하지 않고 물러난다. 지금 그 작업은 다른 워커의 것이다. */
+        if (keeper.lost) {
+          result.leaseLost += 1;
+          log(
+            `[job:${job.topic}] ${job.id} lease 상실 — 결과를 기록하지 않는다 (다른 워커가 가져갔다)`,
+          );
+          return;
+        }
         if (isDeferSignal(handled)) {
           // 조직 스코프 kill switch 등 — 시도 소모 없이 뒤로 미룬다
           await deferJob(sql, job.id, handled.reason);
@@ -120,15 +139,66 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
         await completeJob(sql, job.id, handled);
         result.succeeded += 1;
       } catch (error) {
+        if (keeper.lost) {
+          result.leaseLost += 1;
+          log(`[job:${job.topic}] ${job.id} lease 상실 (핸들러도 실패)`);
+          return;
+        }
         const message = error instanceof Error ? error.message : String(error);
         const outcome = await failJob(sql, job, message, isRetryable(error));
         result.failed += 1;
         log(`[job:${job.topic}] ${job.id} 실패 (${outcome}): ${message}`);
+      } finally {
+        keeper.stop();
       }
     }),
   );
 
   return result;
+}
+
+/** ADR-0010 「처리 중 갱신 — 30초마다 lease_until 연장 (장시간 작업)」 */
+export const LEASE_RENEW_MS = 30_000;
+
+export interface LeaseKeeper {
+  /** 갱신에 실패해 이 작업의 소유권을 잃었는가 */
+  readonly lost: boolean;
+  stop(): void;
+}
+
+/**
+ * 작업이 도는 동안 주기적으로 lease를 연장한다.
+ *
+ * 핸들러를 중간에 죽일 수는 없다(콜백일 뿐이다). 대신 소유권을 잃은 사실을
+ * 남겨, 핸들러가 끝났을 때 **결과를 기록하지 않게** 한다 — 이미 다른 워커가
+ * 같은 작업을 돌고 있으므로 여기서 completeJob을 쓰면 그쪽 실행을 덮어쓴다.
+ *
+ * 갱신 쿼리가 예외를 던지는 경우(DB 순단)는 소유권 상실로 보지 않는다.
+ * 다음 주기에 다시 시도한다 — 순단 한 번으로 20분짜리 작업을 버릴 이유가 없다.
+ */
+export function startLeaseKeeper(
+  sql: Sql,
+  job: ClaimedJob,
+  workerId: string,
+  everyMs = LEASE_RENEW_MS,
+): LeaseKeeper {
+  const keeper = { lost: false, stop: () => {} };
+  const timer = setInterval(() => {
+    void renewLease(sql, { jobId: job.id, workerId })
+      .then((ok) => {
+        if (!ok) {
+          keeper.lost = true;
+          clearInterval(timer);
+        }
+      })
+      .catch(() => {
+        /* DB 순단 — 다음 주기에 재시도 */
+      });
+  }, everyMs);
+  // 갱신 타이머가 프로세스 종료를 붙잡지 않게 한다
+  timer.unref?.();
+  keeper.stop = () => clearInterval(timer);
+  return keeper;
 }
 
 /** 408·429·일시적 5xx·네트워크 오류만 재시도 (28장) */
