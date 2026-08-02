@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { TEACHER } from "../lib/accounts";
 
 // axe-core는 e2e의 직접 의존이 아니다(@axe-core/playwright의 전이 의존).
 // 타입만 쓰자고 의존을 하나 더 늘리지 않고 analyze()의 반환에서 뽑아 쓴다.
@@ -32,10 +33,6 @@ type AxeViolation = Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"][num
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa"];
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
 
 /** 로그인 없이 볼 수 있는 화면 */
 const PUBLIC_PAGES = [

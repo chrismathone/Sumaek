@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
 import { gotoTableRow } from "../lib/table";
+import { TEACHER } from "../lib/accounts";
 
-const DEMO_EMAIL = "demo-teacher@su-maek.app";
-const DEMO_PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";
+const DEMO_EMAIL = TEACHER.email;
+const DEMO_PASSWORD = TEACHER.password;
 
 /** 인수 7의 기초: 검수·권한 통과 문항만 자동 선정 + 멱등 생성 (시퀀스 3) */
 test("일일테스트 생성·게시 → 배정 → 중복 생성 방지", async ({ page }) => {

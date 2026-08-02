@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { nthIsoDate, todayIso } from "../lib/dates";
 import { gotoTableRow, tableRow } from "../lib/table";
+import { TEACHER } from "../lib/accounts";
 
-const DEMO_EMAIL = "demo-teacher@su-maek.app";
-const DEMO_PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";
+const DEMO_EMAIL = TEACHER.email;
+const DEMO_PASSWORD = TEACHER.password;
 
 /** 인수 3·5의 기초: 게시된 루트에서 날짜별 수업 생성 (시퀀스 1) */
 test("루트 → 미래 일정 생성 → 오늘 운영실 반영", async ({ page }) => {

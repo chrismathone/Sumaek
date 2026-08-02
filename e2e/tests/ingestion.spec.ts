@@ -1,11 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { gotoTableRow, tableRow } from "../lib/table";
+import { TEACHER } from "../lib/accounts";
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
 
 async function login(page: Page) {
   await page.goto("/login");

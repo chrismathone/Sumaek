@@ -2,15 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { config } from "dotenv";
 import { createSql } from "@su-maek/db";
 import { gotoTableRow } from "../lib/table";
+import { TEACHER, STUDENT } from "../lib/accounts";
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
-const STUDENT = {
-  email: "demo-student@su-maek.app",
-  password: process.env.DEMO_STUDENT_PASSWORD ?? "sumaek-student-2026!",
-};
 
 async function login(page: Page, who: { email: string; password: string }) {
   await page.goto("/login");

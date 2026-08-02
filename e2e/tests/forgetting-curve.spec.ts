@@ -1,13 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { TEACHER, STUDENT } from "../lib/accounts";
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
-const STUDENT = {
-  email: "demo-student@su-maek.app",
-  password: process.env.DEMO_STUDENT_PASSWORD ?? "sumaek-student-2026!",
-};
 /** 시드 학습자 박서윤 — 복습 항목을 가진 데모 학생 */
 const SEED_LEARNER_ID = "00000000-0000-7000-8000-000000000101";
 

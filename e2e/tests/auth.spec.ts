@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { tableRowIn } from "../lib/table";
+import { TEACHER } from "../lib/accounts";
 
-const DEMO_EMAIL = "demo-teacher@su-maek.app";
-const DEMO_PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";
+const DEMO_EMAIL = TEACHER.email;
+const DEMO_PASSWORD = TEACHER.password;
 
 test.describe("인증·앱 셸 (인수 13의 기초)", () => {
   test("비로그인으로 /app 접근 시 로그인으로 보낸다", async ({ page }) => {

@@ -21,11 +21,15 @@ import { createSql } from "../client";
  */
 const ORG_ID = "00000000-0000-7000-8000-000000000001";
 const EMAIL = "demo-teacher@su-maek.app";
-const PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!";
+/* 전부 같은 기본값을 쓴다 — 사람이 손으로 로그인해 확인하는 일이 잦은데
+ * 계정마다 다른 문자열을 외우게 할 이유가 없다. 개발 시드 자격증명이고,
+ * 실제 운영에 올릴 때는 .env로 반드시 덮어써야 한다(교사 계정이 owner다). */
+const DEFAULT_PASSWORD = "1234@@@@";
+const PASSWORD = process.env.DEMO_TEACHER_PASSWORD ?? DEFAULT_PASSWORD;
 /* 사람이 쓰는 계정의 비밀번호. .env로 바꿀 수 있고, 바꾸면 다음 실행에서
  * 그 값으로 재설정된다 — 잊었을 때 되돌릴 방법이 이것이다. */
-const MY_TEACHER_PASSWORD = process.env.MY_TEACHER_PASSWORD ?? "sumaek-my-2026!";
-const MY_STUDENT_PASSWORD = process.env.MY_STUDENT_PASSWORD ?? "sumaek-my-2026!";
+const MY_TEACHER_PASSWORD = process.env.MY_TEACHER_PASSWORD ?? DEFAULT_PASSWORD;
+const MY_STUDENT_PASSWORD = process.env.MY_STUDENT_PASSWORD ?? DEFAULT_PASSWORD;
 
 /** admin API 중 이 스크립트가 쓰는 부분만 — supabase-js 제네릭에 얽히지 않는다 */
 type SupabaseAdmin = ReturnType<typeof createClient>["auth"]["admin"];
@@ -102,7 +106,7 @@ async function main(): Promise<void> {
     /* 데모 학생 계정 — 박서윤 학습자에 연결 */
     const STUDENT_EMAIL = "demo-student@su-maek.app";
     const STUDENT_PASSWORD =
-      process.env.DEMO_STUDENT_PASSWORD ?? "sumaek-student-2026!";
+      process.env.DEMO_STUDENT_PASSWORD ?? DEFAULT_PASSWORD;
     const LEARNER_ID = "00000000-0000-7000-8000-000000000101"; // 박서윤
 
     let studentId: string | null = null;

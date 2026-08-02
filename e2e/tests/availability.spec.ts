@@ -1,11 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { futureIso, isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
 import { gotoTableRow } from "../lib/table";
+import { TEACHER } from "../lib/accounts";
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
 
 async function login(page: Page) {
   await page.goto("/login");

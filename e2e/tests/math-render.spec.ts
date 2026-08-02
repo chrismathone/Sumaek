@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { TEACHER } from "../lib/accounts";
 
 /* ─────────────────────────────────────────────────────────────
  * 수식 렌더 무결성 하네스 (인수 51·53·56·59).
@@ -119,10 +120,6 @@ test("샘플 응시 화면 — 학생이 보는 수식이 깨지지 않는다", 
 
 /* ── 로그인이 필요한 수식 화면 ── */
 
-const TEACHER = {
-  email: "demo-teacher@su-maek.app",
-  password: process.env.DEMO_TEACHER_PASSWORD ?? "sumaek-demo-2026!",
-};
 
 test("문항 상세 — 검수 화면의 수식", async ({ page }) => {
   await page.goto("/login");
