@@ -1,7 +1,11 @@
 /**
  * 기하 덤프(JSON) → 문항 추출 → 자가채점 리포트.
  *
- *   pnpm --filter @su-maek/ingest extract <dump.json> [--pages 20,21] [--verbose]
+ *   pnpm --filter @su-maek/ingest extract <dump.json> \
+ *     [--pages=20,21] [--expect=1-213] [--outline] [--verbose]
+ *
+ * **등호를 빼면 조용히 무시된다.** 파서가 `--pages=`만 읽으므로 `--pages 20,21`은
+ * 오류 없이 전 쪽을 처리한다. 아래 사용법을 그대로 복사해 쓸 것.
  *
  * 화면에 뽑힌 문항을 그대로 보여 주는 이유: 점수만 보면 "무엇이 틀렸는지"를
  * 알 수 없다. 지면과 나란히 놓고 읽을 수 있어야 고칠 수 있다.
@@ -15,7 +19,7 @@ import type { PageExtraction, Run, SourceDump } from "../types";
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
 if (!file) {
-  console.error("사용법: extract <dump.json> [--pages 20,21] [--verbose]");
+  console.error("사용법: extract <dump.json> [--pages=20,21] [--expect=1-213] [--outline] [--verbose]");
   process.exit(1);
 }
 const pagesArg = args.find((a) => a.startsWith("--pages="))?.split("=")[1];

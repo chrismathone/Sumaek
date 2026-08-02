@@ -11,6 +11,14 @@ export interface Span {
   size: number;
   flags: number;
   color: number;
+  /**
+   * 글자 하나하나의 상자 `[x0, y0, x1, y1]` — `text`와 자리수가 같다.
+   *
+   * span 좌표만으로는 **한 span 안에 섞인 위첨자**를 알 수 없다. 이 교재는
+   * `2^a×3^b`를 span 두 개(`2` + `` b`_3º` ``)로 내는데, 뒤 span의 첫 글자
+   * `b`가 폭 0인 위첨자 글리프다. 글자 상자를 봐야 그것이 갈린다.
+   */
+  chars?: [number, number, number, number][];
 }
 
 export interface Rect {

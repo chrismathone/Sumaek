@@ -97,3 +97,5 @@ pnpm verify:recovery   # 불변 조건 29건 (읽기 전용. 이벤트 사슬 R-
 - `docs/phase0/` — 가정·용량, C4, 도메인 맵, ERD, 상태 머신, 계약, 위협 모델, SLO
 - `docs/adr/` — 아키텍처 결정 기록
 - `docs/runbooks/` — 운영 런북
+- `docs/handoff.md` — **교재 반입 작업 인수인계** — 재현 절차·설계 근거·남은 일
+- `docs/acceptance-status.md` — 인수 시나리오 62개 현재 상태

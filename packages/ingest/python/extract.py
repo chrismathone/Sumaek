@@ -29,12 +29,18 @@ except ImportError:  # pragma: no cover - 실행 환경 안내
 def dump_page(page: "fitz.Page", index: int) -> dict:
     """한 쪽의 span·벡터도형·이미지를 좌표째로 싣는다."""
     spans = []
-    for block in page.get_text("dict")["blocks"]:
+    # "dict"이 아니라 "rawdict"인 이유: **글자 하나하나의 좌표**가 필요하다.
+    # 이 교재의 위첨자 중 일부는 span이 따로 서지 않고 본문 글자와 한 span에
+    # 섞여 들어온다 — `2^a×3^b`가 span 두 개(`2` + `b`_3º`)로 오고, 그중
+    # 첫 글자 `b`만 **폭이 0인** 위첨자 글리프다. span 단위 좌표로는 그것을
+    # 알 방법이 없어 발문이 `2b×3^b`가 됐다(문항 0160·0199 …).
+    for block in page.get_text("rawdict")["blocks"]:
         if block["type"] != 0:  # 0 = 텍스트
             continue
         for line in block["lines"]:
             for span in line["spans"]:
-                text = span["text"]
+                chars = span.get("chars", [])
+                text = "".join(c["c"] for c in chars)
                 if not text.strip():
                     continue
                 x0, y0, x1, y1 = span["bbox"]
@@ -50,6 +56,10 @@ def dump_page(page: "fitz.Page", index: int) -> dict:
                         "size": round(span["size"], 2),
                         "flags": span["flags"],
                         "color": span["color"],
+                        # text와 **자리수가 같다** — i번째 글자의 상자
+                        "chars": [
+                            [round(v, 2) for v in c["bbox"]] for c in chars
+                        ],
                     }
                 )
 

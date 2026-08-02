@@ -1,4 +1,11 @@
-import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex } from "./hwp-encoding";
+import {
+  cleanBodyText,
+  decodeHwpMath,
+  joinKorean,
+  joinLatex,
+  markSuperscripts,
+} from "./hwp-encoding";
+import { isInvisibleInk } from "./ink";
 import type { ExtractionProfile } from "./profiles/types";
 import type {
   ChoiceItem,
@@ -65,25 +72,23 @@ function mergeStackedFractions(
   for (const bar of bars) {
     const within = (s: IndexedSpan): boolean =>
       s.x0 >= bar.x0 - 2 && s.x1 <= bar.x1 + 2;
+    /* 위·아래는 span의 **가운데**로 가른다. 끝점으로 재면 세로로 큰
+     * span이 탈락한다 — 문항 0049 선택지 ⑤의 분모 `2×2×5×5×5`는 높이가
+     * 18pt(글자는 10.5pt)라 막대보다 위에서 시작해, 짝을 못 찾고 분자만
+     * 홀로 남았다. 가운데가 어느 쪽인지가 분자·분모를 가르는 사실이다. */
+    const near = (center: number, edge: number): boolean =>
+      Math.abs(center - edge) <= 16;
     const above = math
-      .filter(
-        (s) =>
-          !used.has(s.index) &&
-          within(s) &&
-          (s.y0 + s.y1) / 2 < bar.y0 &&
-          s.y1 <= bar.y0 + 4 &&
-          s.y1 >= bar.y0 - 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s.index) && within(s) && center < bar.y0 && near(center, bar.y0);
+      })
       .sort((a, b) => b.y1 - a.y1);
     const below = math
-      .filter(
-        (s) =>
-          !used.has(s.index) &&
-          within(s) &&
-          (s.y0 + s.y1) / 2 > bar.y1 &&
-          s.y0 >= bar.y1 - 4 &&
-          s.y0 <= bar.y1 + 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s.index) && within(s) && center > bar.y1 && near(center, bar.y1);
+      })
       .sort((a, b) => a.y0 - b.y0);
 
     const numerator = above[0];
@@ -250,7 +255,16 @@ function toLines(
       if (l.column !== column) return false;
       if (Math.abs(l.y - span.y1) <= profile.layout.lineToleranceY) return true;
       // 위첨자·아래첨자: 작고, 줄의 세로 띠 안에 든다
-      return span.size < l.size * 0.8 && center > l.top && center < l.bottom;
+      if (span.size < l.size * 0.8 && center > l.top && center < l.bottom) return true;
+      /* 인라인 분수는 크기가 같아도 **기준선이 아래로 내려간다**. 별책
+       * 파서는 이미 이렇게 하고 있었는데 본책 파서에는 없어서, 문항 0049
+       * 선택지 ④가 `$\times$$\times$…` 다음에 분수 다섯 개가 오는 꼴로
+       * 순서째 뒤집혔다. 세로로 겹치면 같은 줄로 본다. */
+      return (
+        profile.fonts.inlineFraction.test(span.font) &&
+        span.y0 < l.bottom &&
+        span.y1 > l.top + (l.bottom - l.top) * 0.3
+      );
     });
     if (line) {
       line.spans.push(span);
@@ -310,14 +324,14 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
       const unknown: string[] = [];
       for (const span of cluster) {
         if (span.stacked) {
-          const top = decodeHwpMath(span.stacked.numerator.text);
-          const bottom = decodeHwpMath(span.stacked.denominator.text);
+          const top = decodeHwpMath(span.stacked.numerator.text, span.stacked.numerator.font);
+          const bottom = decodeHwpMath(span.stacked.denominator.text, span.stacked.denominator.font);
           raw += span.text;
           unknown.push(...top.unknown, ...bottom.unknown);
           latex = joinLatex(latex, `\\frac{${top.latex}}{${bottom.latex}}`);
           continue;
         }
-        const decoded = decodeHwpMath(span.text);
+        const decoded = decodeHwpMath(markSuperscripts(span.text, span.chars), span.font);
         raw += span.text;
         unknown.push(...decoded.unknown);
         if (decoded.latex === "") continue;
@@ -390,7 +404,11 @@ function figureClusters(page: PageDump, area: Rect, profile: ExtractionProfile):
 }
 
 export function extractPage(page: PageDump, profile: ExtractionProfile): PageExtraction {
-  const indexed: IndexedSpan[] = page.spans.map((s, index) => ({ ...s, index }));
+  /* 인덱스는 **거르기 전에** 매긴다 — 커버리지 계산이 `page.spans`의 자리를
+   * 가리키므로, 걸러 낸 뒤에 매기면 번호가 밀려 엉뚱한 span을 짚는다. */
+  const indexed: IndexedSpan[] = page.spans
+    .map((s, index) => ({ ...s, index }))
+    .filter((s) => !isInvisibleInk(s, page));
 
   const topLimit = page.height * profile.layout.topMarginRatio;
   const bottomLimit = page.height * profile.layout.bottomMarginRatio;

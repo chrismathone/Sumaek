@@ -26,6 +26,30 @@ e2e/.auth/
 # generated render artifacts (재생성 가능한 파생 계층)
 artifacts/
 
+# 교재 원본과 추출 덤프 — 저장소에 들어오면 안 된다
+#
+# 교재 PDF에는 **구매자 이메일이 워터마크로 박혀 있다**(packages/ingest/README.md).
+# 공개 저장소에 올라가면 구매자가 특정되고, 되돌릴 수 없다. 덤프 JSON도
+# 그 워터마크를 텍스트로 담고 있으며 한 파일이 1MB를 넘는다. 둘 다 PDF에서
+# 언제든 다시 만들 수 있으므로 저장소에 둘 이유가 없다.
+#
+# 규칙은 **docs/handoff.md가 시키는 산출물 이름**을 실제로 덮어야 한다.
+# 좁게 잡았다가 `book.json`이 안 걸리는 것을 검증에서 잡았다.
+# e2e 픽스처(461바이트, 워터마크 없음)는 예외로 남긴다.
+*.pdf
+!e2e/fixtures/*.pdf
+/*.json
+!/package.json
+!/tsconfig*.json
+!/turbo.json
+!/vercel.json
+/*-dump.json
+/audit*.md
+packages/ingest/**/*-dump.json
+# 지면을 눈으로 볼 때 뽑는 이미지 — 워터마크가 그대로 찍힌다
+/*.png
+packages/ingest/**/*.png
+
 # os / editor
 .DS_Store
 Thumbs.db

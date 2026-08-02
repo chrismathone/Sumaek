@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanBodyText, decodeHwpMath } from "../src/hwp-encoding";
+import { cleanBodyText, decodeHwpMath, markSuperscripts } from "../src/hwp-encoding";
 
 /* ─────────────────────────────────────────────────────────────
  * 여기 적힌 기댓값은 전부 **지면을 열어 눈으로 확인한 것**이다.
@@ -159,5 +159,75 @@ describe("본문 문자열 청소", () => {
     expect(cleanBodyText("다음 중 두 수가 서로소인 것은?")).toBe(
       "다음 중 두 수가 서로소인 것은?",
     );
+  });
+});
+
+describe("같은 코드가 글꼴마다 다른 글자다", () => {
+  /* 이 표는 전부 지면을 그려서 눈으로 대조한 값이다. 글꼴을 안 보고
+   * 옮겼더니 발문의 변수 y가 말줄임(⋯)이 되고, 답 `x≥-4`와 `+7℃`가
+   * 한 표로는 둘 중 하나가 반드시 틀렸다. */
+  it("EHyak의 y는 말줄임이지만 EHsang의 y는 변수다", () => {
+    expect(decodeHwpMath("4, 8, 12, y", "EHyak-Plain").latex).toContain("\\cdots");
+    expect(decodeHwpMath("y", "EHsang-Italic").latex).toBe("y");
+  });
+
+  it("EHyak의 ¾·É는 부등호, EHsang의 ¾는 섭씨다", () => {
+    expect(decodeHwpMath("x\u00be-4", "EHyak-Plain").latex).toBe("x\\ge -4");
+    expect(decodeHwpMath("x\u00c911", "EHyak-Plain").latex).toBe("x\\le 11");
+    expect(decodeHwpMath("+7\u00be", "EHsang-Italic").latex).toBe("+7\\degree\\mathrm{C}");
+  });
+
+  it("글꼴을 모르면 글꼴별 표를 쓰지 않는다 — 짐작하지 않는다", () => {
+    expect(decodeHwpMath("y").latex).toBe("y");
+  });
+
+  it("EHsang의 Ç·¡는 위첨자 n·8이다", () => {
+    expect(decodeHwpMath("5\u00c7", "EHsang-Italic").latex).toBe("5^{n}");
+    expect(decodeHwpMath("256=2\u00a1", "EHsang-Italic").latex).toBe("256=2^{8}");
+  });
+});
+
+describe("겹쳐 찍은 위첨자", () => {
+  /* 폭 0인 글리프는 앞 글자 위에 겹쳐 찍힌다. 코드가 본문 글자와 같아
+   * (위첨자 a가 b로 온다) 글자만 봐서는 영영 알 수 없고, KaTeX는 아무
+   * 오류 없이 `2b`를 그려 낸다 — 렌더 검사로는 잡히지 않는 종류다.
+   * 상자는 본책 0160의 실측값이다. */
+  const boxes = (widths: number[]): [number, number, number, number][] => {
+    let x = 0;
+    return widths.map((w) => {
+      const box: [number, number, number, number] = [x, 216.27, x + w, 228.73];
+      x += w;
+      return box;
+    });
+  };
+
+  it("폭 0인 글자를 위첨자로 표시한다", () => {
+    // "2" + 폭 0인 "b"  →  2^a
+    const marked = markSuperscripts("2b", boxes([5.25, 0]));
+    expect(decodeHwpMath(marked, "EHsang-Italic").latex).toBe("2^{a}");
+  });
+
+  it("폭이 있는 b는 그대로 변수 b다", () => {
+    const marked = markSuperscripts("2b", boxes([5.25, 5.25]));
+    expect(decodeHwpMath(marked, "EHsang-Italic").latex).toBe("2b");
+  });
+
+  it("본책 0160의 발문 조각을 지면대로 옮긴다", () => {
+    // 「2^a×3²×5」 — 폭 0인 b · 백틱 · _ · 3 · 폭 0인 Û · 백틱 · _ · 5
+    const marked = markSuperscripts(
+      "b`_3\u00db`_5",
+      boxes([0, 2.62, 10.5, 5.25, 0, 2.62, 10.5, 5.25]),
+    );
+    expect(decodeHwpMath(marked, "EHsang-Italic").latex).toBe(
+      "^{a}\\times 3^{2}\\times 5",
+    );
+  });
+
+  it("글자 상자가 없으면 원문을 그대로 둔다 — 없는 근거로 판단하지 않는다", () => {
+    expect(markSuperscripts("2b", undefined)).toBe("2b");
+  });
+
+  it("상자 개수가 글자 수와 어긋나면 손대지 않는다", () => {
+    expect(markSuperscripts("2b", boxes([5.25]))).toBe("2b");
   });
 });

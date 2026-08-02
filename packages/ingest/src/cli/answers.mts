@@ -1,7 +1,9 @@
 /**
  * 정답 별책 덤프 → 문항별 정답·해설 확인.
  *
- *   pnpm --filter @su-maek/ingest answers <answers-dump.json> [--range 1-213]
+ *   pnpm --filter @su-maek/ingest answers <answers-dump.json> [--range=1-213] [--verbose]
+ *
+ * **등호를 빼면 조용히 무시된다** — 파서가 `--range=`만 읽는다.
  *
  * 눈으로 대조하기 위한 도구다. 답이 비었거나 이상한 문항이 있으면 여기서
  * 먼저 드러나야지, DB에 들어간 뒤에 학생 채점으로 드러나면 늦다.
@@ -13,7 +15,7 @@ import type { SourceDump } from "../types";
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
 if (!file) {
-  console.error("사용법: answers <answers-dump.json> [--range 1-213]");
+  console.error("사용법: answers <answers-dump.json> [--range=1-213] [--verbose]");
   process.exit(1);
 }
 const rangeArg = args.find((a) => a.startsWith("--range="))?.split("=")[1];
