@@ -1,0 +1,29 @@
+{
+  "name": "@su-maek/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./profiles": "./src/profiles/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "extract": "tsx src/cli/extract.mts",
+    "score": "tsx src/cli/score.mts"
+  },
+  "dependencies": {
+    "@su-maek/contracts": "workspace:*",
+    "@su-maek/core": "workspace:*",
+    "uuid": "^11.1.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

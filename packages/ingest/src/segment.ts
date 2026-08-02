@@ -1,0 +1,763 @@
+import { cleanBodyText, decodeHwpMath } from "./hwp-encoding";
+import type { ExtractionProfile } from "./profiles/types";
+import type {
+  ChoiceItem,
+  ConditionItem,
+  ExtractedQuestion,
+  PageDump,
+  PageExtraction,
+  Rect,
+  Run,
+  Span,
+  TypeContext,
+} from "./types";
+
+/* ─────────────────────────────────────────────────────────────
+ * 지면 → 문항.
+ *
+ * 이 파일이 조심하는 것은 **조용한 누락**이다. 문항을 그럴듯하게 만들어
+ * 놓고 지면의 한 줄을 흘리면, 결과물만 봐서는 알 수 없다. 그래서 모든
+ * span은 셋 중 하나로 반드시 분류된다: 어떤 문항에 들어갔거나, 문항이
+ * 아닌 것으로 알려진 영역(머리글·유형 머리말·쪽번호)이거나, **미분류**다.
+ * 미분류가 곧 손실이고, 채점기가 그 수를 센다.
+ * ───────────────────────────────────────────────────────────── */
+
+interface IndexedSpan extends Span {
+  index: number;
+  /** 2행 분수로 합쳐진 span — 분자·분모 원본을 함께 들고 있는다 */
+  stacked?: { numerator: IndexedSpan; denominator: IndexedSpan };
+  /** 이 span이 대표하는 다른 원본 span의 인덱스 (커버리지 계산용) */
+  alsoIndexes?: number[];
+}
+
+/**
+ * 2행 분수를 한 span으로 합친다.
+ *
+ * 조판기는 `110/n`을 분자·분모 두 span으로 나누고 그 사이에 가로 막대를
+ * 그린다. 막대는 벡터라 텍스트 레이어에 없다. 그대로 두면 분자들이 한 줄,
+ * 분모들이 다른 줄로 갈라져 「110 220 275 세 수 , , 를 … n n n」처럼
+ * 뒤섞인다 — 문항 0192가 실제로 그렇게 나왔다.
+ *
+ * 짝을 찾는 근거는 **막대 자체**다. 처음에는 막대 없이 「위아래로 가운데
+ * 맞춰 붙어 있으면 분수」라고 했는데, 그러면 줄바꿈된 선택지 ①과 ④까지
+ * 분수로 묶여 `\frac{2}{2}\frac{^{3}}{^{3}}` 같은 것이 쏟아졌다. 막대는
+ * 분수에만 그려진다. 합친 span은 두 조각의 중간 높이에 놓아 본문 줄에
+ * 자연스럽게 얹힌다.
+ */
+function mergeStackedFractions(
+  spans: IndexedSpan[],
+  page: PageDump,
+  profile: ExtractionProfile,
+): IndexedSpan[] {
+  const math = spans.filter((s) => profile.fonts.math.test(s.font));
+  const used = new Set<number>();
+  const merged: IndexedSpan[] = [];
+
+  /* 분수 막대 — 높이 0인 가로 선분이다. 이 막대를 근거로 삼는 것이 요점:
+   * 기하만으로 「위아래로 가운데 맞춰 붙어 있으면 분수」라고 하면 선택지
+   * ①과 ④ 같은 줄바꿈까지 분수로 묶어 버린다(실제로 그랬다). 막대는
+   * 분수에만 그려진다. */
+  const bars = page.drawings.filter(
+    (d) => d.y1 - d.y0 < 1.5 && d.x1 - d.x0 >= 3,
+  );
+
+  for (const bar of bars) {
+    const within = (s: IndexedSpan): boolean =>
+      s.x0 >= bar.x0 - 2 && s.x1 <= bar.x1 + 2;
+    const above = math
+      .filter(
+        (s) =>
+          !used.has(s.index) &&
+          within(s) &&
+          (s.y0 + s.y1) / 2 < bar.y0 &&
+          s.y1 <= bar.y0 + 4 &&
+          s.y1 >= bar.y0 - 14,
+      )
+      .sort((a, b) => b.y1 - a.y1);
+    const below = math
+      .filter(
+        (s) =>
+          !used.has(s.index) &&
+          within(s) &&
+          (s.y0 + s.y1) / 2 > bar.y1 &&
+          s.y0 >= bar.y1 - 4 &&
+          s.y0 <= bar.y1 + 14,
+      )
+      .sort((a, b) => a.y0 - b.y0);
+
+    const numerator = above[0];
+    const denominator = below[0];
+    if (!numerator || !denominator) continue;
+    used.add(numerator.index);
+    used.add(denominator.index);
+    merged.push({
+      ...numerator,
+      text: `${numerator.text}/${denominator.text}`,
+      x0: Math.min(numerator.x0, denominator.x0),
+      x1: Math.max(numerator.x1, denominator.x1),
+      y0: numerator.y0,
+      // 본문 줄에 얹히도록 두 조각의 가운데 높이로 놓는다
+      y1: (numerator.y1 + denominator.y1) / 2,
+      stacked: { numerator, denominator },
+      alsoIndexes: [denominator.index],
+    });
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s.index)), ...merged];
+}
+
+interface Line {
+  /** 기준선 (span 아래끝) */
+  y: number;
+  /** 줄이 차지한 세로 띠 — 위첨자를 흡수할 때 쓴다 */
+  top: number;
+  bottom: number;
+  /** 줄의 대표 글자 크기 (가장 큰 것) */
+  size: number;
+  column: number;
+  spans: IndexedSpan[];
+}
+
+/** 인접한 같은 폰트·같은 크기의 span을 붙인다 — 「0」+「131」 → 「0131」 */
+function mergeAdjacent(spans: IndexedSpan[]): IndexedSpan[][] {
+  const groups: IndexedSpan[][] = [];
+  for (const span of spans) {
+    const last = groups[groups.length - 1];
+    const prev = last?.[last.length - 1];
+    if (
+      prev &&
+      prev.font === span.font &&
+      Math.abs(prev.size - span.size) < 0.05 &&
+      span.x0 - prev.x1 < 1.2
+    ) {
+      last!.push(span);
+      continue;
+    }
+    groups.push([span]);
+  }
+  return groups;
+}
+
+const groupText = (g: IndexedSpan[]): string => g.map((s) => s.text).join("");
+
+/** 문항 번호 후보인가 — 제어문자를 털고 본다 (「0」+「187 \b」 꼴이 온다) */
+function questionNumberOf(
+  group: IndexedSpan[],
+  profile: ExtractionProfile,
+): string | null {
+  const head = group[0]!;
+  if (!profile.fonts.questionNumber.font.test(head.font)) return null;
+  if (head.size < profile.fonts.questionNumber.minSize) return null;
+  const text = cleanBodyText(groupText(group)).trim();
+  return profile.patterns.questionNumber.test(text) ? text : null;
+}
+
+/**
+ * 쪽마다 단 수를 알아낸다.
+ *
+ * 이 교재는 쪽 종류에 따라 단이 다르다 — 「유형 익히기」는 2단이지만
+ * 「개념 익히기」는 2단 안에 다시 2열 격자가 들어가 사실상 4단이다.
+ * 프로파일에 2단이라고 못 박아 두었더니 격자 쪽에서 **한 줄에 놓인 두
+ * 문항 중 뒤엣것을 통째로 흘렸다**(0002·0004·0006 …).
+ *
+ * 문항 번호가 찍힌 x좌표를 모아 뭉치면 그것이 곧 단의 시작점이다.
+ * 조판이 무엇이든 번호는 단 머리에 온다.
+ */
+function detectColumnEdges(
+  spans: IndexedSpan[],
+  profile: ExtractionProfile,
+  pageWidth: number,
+): number[] {
+  const xs: number[] = [];
+  const sorted = [...spans].sort((a, b) => a.y1 - b.y1 || a.x0 - b.x0);
+  for (const group of mergeAdjacent(sorted)) {
+    if (questionNumberOf(group, profile) !== null) xs.push(group[0]!.x0);
+  }
+
+  const clusters: number[] = [];
+  for (const x of xs.sort((a, b) => a - b)) {
+    const last = clusters[clusters.length - 1];
+    if (last === undefined || x - last > 25) clusters.push(x);
+  }
+
+  if (clusters.length < 2) {
+    const width = pageWidth / profile.layout.columns;
+    return Array.from({ length: profile.layout.columns }, (_, i) => i * width);
+  }
+  /* 번호가 찍힌 x는 단의 **왼쪽 끝**이다. 앞 단과의 중점으로 경계를 잡으면
+   * 경계가 왼쪽으로 밀려 선택지 ③이 옆 단으로 넘어간다 — 실제로 그랬다.
+   * 번호 x 바로 앞을 경계로 삼는다. */
+  return clusters.map((x, i) => (i === 0 ? 0 : x - 6));
+}
+
+/**
+ * 줄의 앞쪽에서, **큰 틈이 나오기 전까지**의 span만 취한다.
+ *
+ * 단을 무시하고 세운 줄에는 옆 단의 내용이 같은 기준선으로 딸려 온다.
+ * 글자 사이 틈은 몇 pt지만 단 사이 틈은 수십 pt다. 문항 번호를 만나도 끊는다
+ * — 거기서부터는 다른 문항이다.
+ */
+function takeContiguous(
+  spans: IndexedSpan[],
+  profile: ExtractionProfile,
+): IndexedSpan[] {
+  const out: IndexedSpan[] = [];
+  /* 병합 **그룹** 단위로 본다. 문항 번호는 「000」+「3」처럼 쪼개져 오므로
+   * span 하나씩 보면 어느 쪽도 네 자리가 아니어서 번호인 줄 모르고 지나친다
+   * — 그렇게 문항 0003이 지시문에 먹혔다. */
+  for (const group of mergeAdjacent(spans)) {
+    const prev = out[out.length - 1];
+    if (prev && group[0]!.x0 - prev.x1 > 25) break;
+    if (questionNumberOf(group, profile) !== null) break;
+    out.push(...group);
+  }
+  return out;
+}
+
+function boundsOf(spans: { x0: number; y0: number; x1: number; y1: number }[]): Rect {
+  return {
+    x0: Math.min(...spans.map((s) => s.x0)),
+    y0: Math.min(...spans.map((s) => s.y0)),
+    x1: Math.max(...spans.map((s) => s.x1)),
+    y1: Math.max(...spans.map((s) => s.y1)),
+  };
+}
+
+/**
+ * span을 줄로 묶는다.
+ *
+ * 아래끝(y1)을 기준선으로 쓰되, **위첨자를 놓치지 않는 것이 요점이다.**
+ * `2^a×3^b`의 a·b는 크기가 절반이고 6pt쯤 위에 앉는다. 기준선만 보면
+ * 다른 줄로 갈라지고, 줄 순서상 앞으로 튀어 「ab세 수 2×3」처럼 된다 —
+ * 실제로 그렇게 뽑혔다. 작고 윗줄에 걸친 span은 그 줄의 세로 띠 안에
+ * 들어오면 같은 줄로 흡수한다.
+ */
+function toLines(
+  spans: IndexedSpan[],
+  profile: ExtractionProfile,
+  columnOf: (s: Span) => number,
+): Line[] {
+  const lines: Line[] = [];
+  /* 큰 글자부터 넣어 줄의 띠를 먼저 세운다. 작은 위첨자가 먼저 들어와
+   * 자기만의 줄을 만들어 버리면 흡수할 대상이 없다. */
+  const sorted = [...spans].sort((a, b) => b.size - a.size || a.y1 - b.y1 || a.x0 - b.x0);
+  for (const span of sorted) {
+    const column = columnOf(span);
+    const center = (span.y0 + span.y1) / 2;
+    const line = lines.find((l) => {
+      if (l.column !== column) return false;
+      if (Math.abs(l.y - span.y1) <= profile.layout.lineToleranceY) return true;
+      // 위첨자·아래첨자: 작고, 줄의 세로 띠 안에 든다
+      return span.size < l.size * 0.8 && center > l.top && center < l.bottom;
+    });
+    if (line) {
+      line.spans.push(span);
+      line.top = Math.min(line.top, span.y0);
+      line.bottom = Math.max(line.bottom, span.y1);
+    } else {
+      lines.push({
+        y: span.y1,
+        top: span.y0,
+        bottom: span.y1,
+        size: span.size,
+        column,
+        spans: [span],
+      });
+    }
+  }
+  for (const line of lines) line.spans.sort((a, b) => a.x0 - b.x0);
+  return lines.sort((a, b) => a.column - b.column || a.y - b.y);
+}
+
+/**
+ * 한 줄의 span을 본문 조각으로 옮긴다 — 수식 폰트면 해독, 아니면 한글.
+ *
+ * 수식은 **인접한 것끼리 한 덩어리로 묶는다.** 조판기는 한 수식을 여러
+ * span으로 쪼개 놓는다: `2³×3³`이 「2」(Italic) + 「Ü`」(Plain) + 「_3Ü`」로
+ * 세 조각이다. 폰트가 다르다고 따로 두면 `$2$$^{3}$`처럼 파편이 된다.
+ *
+ * 묶는 기준은 **x가 이어지는가**다 — 조판기가 붙여 놓은 것은 좌표가 붙어
+ * 있다. 크기가 작고 위로 올라앉은 조각은 위첨자로 본다 (`2^a`의 a).
+ */
+function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
+  const runs: Run[] = [];
+  const isMath = (s: IndexedSpan): boolean => profile.fonts.math.test(s.font);
+  const ordered = [...spans].sort((a, b) => a.x0 - b.x0);
+
+  let i = 0;
+  while (i < ordered.length) {
+    const head = ordered[i]!;
+
+    if (isMath(head)) {
+      const cluster: IndexedSpan[] = [head];
+      let j = i + 1;
+      while (j < ordered.length) {
+        const next = ordered[j]!;
+        if (!isMath(next)) break;
+        if (next.x0 - cluster[cluster.length - 1]!.x1 > 1.5) break;
+        cluster.push(next);
+        j += 1;
+      }
+
+      /* 덩어리의 기준 크기·기준선. 위첨자는 이보다 작고 위에 있다. */
+      const baseSize = Math.max(...cluster.map((c) => c.size));
+      const baseY1 = Math.max(...cluster.map((c) => c.y1));
+
+      let raw = "";
+      let latex = "";
+      const unknown: string[] = [];
+      for (const span of cluster) {
+        if (span.stacked) {
+          const top = decodeHwpMath(span.stacked.numerator.text);
+          const bottom = decodeHwpMath(span.stacked.denominator.text);
+          raw += span.text;
+          unknown.push(...top.unknown, ...bottom.unknown);
+          latex += `\\frac{${top.latex}}{${bottom.latex}}`;
+          continue;
+        }
+        const decoded = decodeHwpMath(span.text);
+        raw += span.text;
+        unknown.push(...decoded.unknown);
+        if (decoded.latex === "") continue;
+        const raised =
+          span.size < baseSize * 0.8 && span.y1 < baseY1 - baseSize * 0.1;
+        latex += raised ? `^{${decoded.latex}}` : decoded.latex;
+      }
+      if (latex !== "") runs.push({ kind: "math", raw, latex, unknown });
+      i = j;
+      continue;
+    }
+
+    const text = cleanBodyText(head.text);
+    i += 1;
+    if (text.trim() === "") continue;
+    const last = runs[runs.length - 1];
+    if (last?.kind === "text") last.text += text;
+    else runs.push({ kind: "text", text });
+  }
+  return runs;
+}
+
+/** 조각 배열을 마커 기준으로 쪼갠다 (①②③ 선택지, ㄱㄴㄷ 보기) */
+function splitByMarker(
+  spans: IndexedSpan[],
+  profile: ExtractionProfile,
+  isMarker: (s: IndexedSpan) => string | null,
+): { marker: string; spans: IndexedSpan[] }[] {
+  const out: { marker: string; spans: IndexedSpan[] }[] = [];
+  for (const span of spans) {
+    const marker = isMarker(span);
+    if (marker) {
+      out.push({ marker, spans: [] });
+      continue;
+    }
+    out[out.length - 1]?.spans.push(span);
+  }
+  return out;
+}
+
+/** 벡터 도형을 뭉치로 묶는다 — 밑줄·괄호 같은 장식은 걸러 낸다 */
+function figureClusters(page: PageDump, area: Rect, profile: ExtractionProfile): Rect[] {
+  const inside = page.drawings.filter(
+    (d) => d.x0 >= area.x0 - 4 && d.x1 <= area.x1 + 4 && d.y0 >= area.y0 && d.y1 <= area.y1,
+  );
+  const clusters: { rect: Rect; count: number }[] = [];
+  for (const d of inside) {
+    const hit = clusters.find(
+      (c) =>
+        d.x0 <= c.rect.x1 + profile.figures.clusterGap &&
+        d.x1 >= c.rect.x0 - profile.figures.clusterGap &&
+        d.y0 <= c.rect.y1 + profile.figures.clusterGap &&
+        d.y1 >= c.rect.y0 - profile.figures.clusterGap,
+    );
+    if (hit) {
+      hit.rect = boundsOf([hit.rect, d]);
+      hit.count += 1;
+    } else {
+      clusters.push({ rect: { ...d }, count: 1 });
+    }
+  }
+  return clusters
+    .filter(
+      (c) =>
+        c.count >= profile.figures.minDrawings &&
+        c.rect.x1 - c.rect.x0 >= profile.figures.minWidth &&
+        c.rect.y1 - c.rect.y0 >= profile.figures.minHeight,
+    )
+    .map((c) => c.rect);
+}
+
+export function extractPage(page: PageDump, profile: ExtractionProfile): PageExtraction {
+  const indexed: IndexedSpan[] = page.spans.map((s, index) => ({ ...s, index }));
+
+  const topLimit = page.height * profile.layout.topMarginRatio;
+  const bottomLimit = page.height * profile.layout.bottomMarginRatio;
+
+  const edges = detectColumnEdges(indexed, profile, page.width);
+  const columnWidth = page.width / edges.length;
+  /* 폭이 한 단을 넘는 span(여러 단에 걸친 지시문)은 시작점이 속한 단에
+   * 넣는다. 중앙으로 판단하면 「[0007~0010] 다음 …」 같은 공통 지시문이
+   * 엉뚱한 단으로 간다. */
+  const columnOf = (s: Span): number => {
+    const probe = s.x1 - s.x0 > columnWidth ? s.x0 + 1 : (s.x0 + s.x1) / 2;
+    let column = 0;
+    for (let i = 0; i < edges.length; i += 1) if (probe >= edges[i]!) column = i;
+    return column;
+  };
+
+  /* 머리글·꼬리말은 문항이 아니다. 여기서 갈라 두지 않으면 첫 문항이
+   * 쪽 번호와 단원명을 삼킨다. */
+  const margin: IndexedSpan[] = [];
+  const body: IndexedSpan[] = [];
+  for (const span of indexed) {
+    /* 구매자 워터마크는 본문 한가운데에도 찍힌다 — 여백 규칙으로는 안 잡힌다.
+     * 실제로 문항 0205 발문 끝에 이메일 주소가 붙어 나왔다. */
+    if (profile.patterns.purchaserStamp.test(span.text)) margin.push(span);
+    else if (span.y1 < topLimit || span.y0 > bottomLimit) margin.push(span);
+    else body.push(span);
+  }
+
+  const prepared = mergeStackedFractions(body, page, profile);
+  const lines = toLines(prepared, profile, columnOf);
+
+  /* 공통 지시문은 **단을 가로지른다.** 단으로 나눈 뒤에 찾으면
+   * 「다음 수가 소수이면 ◯」과 「안에 써넣으시오.」가 서로 다른 단으로
+   * 갈라져 가운데 토막이 사라진다 — 실제로 그렇게 잘렸다.
+   * 그래서 단 구분 없이 한 번 더 줄을 세워 지시문만 먼저 건진다. */
+  const fullWidthLines = toLines(prepared, profile, () => 0);
+  const instructionSpans = new Set<number>();
+  const sharedInstructions: { from: number; to: number; runs: Run[] }[] = [];
+  for (let i = 0; i < fullWidthLines.length; i += 1) {
+    const line = fullWidthLines[i]!;
+    const text = cleanBodyText(line.spans.map((s) => s.text).join("")).trim();
+    const range = profile.patterns.sharedInstruction.exec(text);
+    if (!range) continue;
+
+    /* 같은 기준선에는 **옆 절반의 문항도 있다.** 단을 무시하고 줄을 세웠으니
+     * 그대로 쓰면 「… ◯, 합성수이면 △를 ( ) 0019 16 0020 27 안에 써넣으시오」가
+     * 된다. 지시문은 왼쪽에서 오른쪽으로 이어지다 큰 틈에서 끝난다 —
+     * 그 틈에서 자른다. */
+    /* 지시문이 오른쪽 절반에 있으면 같은 기준선의 **왼쪽 절반**이 줄의 앞을
+     * 차지한다. 줄머리부터 자르면 엉뚱한 절반을 지시문으로 읽는다.
+     * 「[」가 있는 span에서 시작한다. */
+    const startIdx = line.spans.findIndex((s) => s.text.includes("["));
+    const own = takeContiguous(
+      startIdx >= 0 ? line.spans.slice(startIdx) : line.spans,
+      profile,
+    );
+    const instructionX = own[0]?.x0 ?? 0;
+    const runs = toRuns(own, profile);
+    for (const s of own) instructionSpans.add(s.index);
+    /* 「[0001~0006]」은 지면에서 묶음을 가리키는 표식이지 문제의 말이 아니다.
+     * 학생 화면에 그대로 나가면 없는 문제 번호를 찾게 만든다. */
+    const head = runs[0];
+    if (head?.kind === "text") {
+      head.text = head.text.replace(profile.patterns.sharedInstruction, "").trimStart();
+    }
+    /* 지시문이 다음 줄로 넘어가는 일이 잦다 (「… ( ) / 안에 써넣으시오.」).
+     * 문항 번호로 시작하지 않는 바로 다음 줄까지만 이어 받는다. */
+    const next = fullWidthLines[i + 1];
+    if (next) {
+      // 이어지는 줄도 지시문이 시작한 x 언저리에서부터 읽는다
+      const nextOwn = takeContiguous(
+        next.spans.filter((s) => s.x0 >= instructionX - 12),
+        profile,
+      );
+      /* 문항 번호가 **줄 어디에라도** 있으면 그 줄은 이미 문항의 것이다.
+       * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다. */
+      const hasNumber = mergeAdjacent(
+        next.spans.filter((s) => s.x0 >= instructionX - 12),
+      ).some((g) => questionNumberOf(g, profile) !== null);
+      const nextText = cleanBodyText(nextOwn.map((s) => s.text).join("")).trim();
+      if (!hasNumber && !profile.patterns.sharedInstruction.test(nextText)) {
+        runs.push(...toRuns(nextOwn, profile));
+        for (const s of nextOwn) instructionSpans.add(s.index);
+        i += 1;
+      }
+    }
+    sharedInstructions.push({
+      from: Number(range[1]),
+      to: Number(range[2]),
+      runs,
+    });
+  }
+
+  const questions: ExtractedQuestion[] = [];
+  /** 문항이 아닌 것으로 **분류에 성공한** span — 미분류와 구별해야 한다 */
+  const nonQuestion = new Set<number>();
+  /* 2행 분수로 합쳐진 span은 원본 둘을 대표한다. 대표 인덱스만 세면
+   * 분모 쪽이 「미분류」로 남아 없는 누락이 있다고 보고된다. */
+  const markNonQuestion = (s: IndexedSpan): void => {
+    nonQuestion.add(s.index);
+    for (const i of s.alsoIndexes ?? []) nonQuestion.add(i);
+  };
+  for (const s of margin) markNonQuestion(s);
+  for (const i of instructionSpans) nonQuestion.add(i);
+
+  let typeContext: TypeContext | null = null;
+  let pendingTypeNumber: string | null = null;
+  let pendingTypeTitle: string | null = null;
+  let pendingTextbookRef: string | null = null;
+
+  /** 현재 문항이 모으는 줄들 */
+  let current: { number: string; column: number; lines: Line[] } | null = null;
+
+  /* 도형 뭉치는 쪽 단위로 미리 잡는다. 문항을 먼저 만들고 나서 잡으면
+   * 도형 안의 치수 라벨(「90 cm」 「120 cm」)이 이미 발문에 섞여 버린 뒤다 —
+   * 문항 0148이 그랬다. 라벨은 그림의 일부이지 발문이 아니다. */
+  const pageFigures = figureClusters(
+    page,
+    { x0: 0, y0: topLimit, x1: page.width, y1: bottomLimit },
+    profile,
+  );
+
+
+  const flush = (): void => {
+    if (!current) return;
+    const built = buildQuestion(
+      current,
+      typeContext,
+      page,
+      profile,
+      columnWidth,
+      pageFigures,
+    );
+    const n = Number(built.printedNumber);
+    const shared = sharedInstructions.find((i) => n >= i.from && n <= i.to);
+    if (shared) built.stem = [...shared.runs, ...built.stem];
+    questions.push(built);
+    current = null;
+  };
+
+  for (const line of lines) {
+    /* 단이 바뀌면 문항은 거기서 끝난다. 이걸 빠뜨리면 왼쪽 단 마지막
+     * 문항이 오른쪽 단 머리말(유형 설명 상자)까지 삼킨다 — 실제로 그랬다. */
+    if (current && line.column !== current.column) flush();
+
+    const lineText = cleanBodyText(line.spans.map((s) => s.text).join("")).trim();
+    /* 러닝헤드(「20 I. 소인수분해」)는 여백 비율만으로는 놓치는 쪽이 있다
+     * — 쪽 번호가 y0=791.3에서 시작해 여백선을 걸친다. 쪽 번호 폰트가
+     * 들어 있으면 그 줄은 통째로 문항이 아니다. */
+    if (
+      line.spans.some((s) => profile.fonts.pageNumber.test(s.font)) ||
+      profile.patterns.runningHead.test(lineText)
+    ) {
+      for (const s of line.spans) markNonQuestion(s);
+      continue;
+    }
+
+    /* ── 공통 지시문 줄 → 문항이 아니라 번호 구간에 걸어 둔다.
+     * 지시문이 다음 줄로 넘어가기도 하므로(「… ( ) / 안에 써넣으시오.」)
+     * 뒤이어 오는 줄 중 문항 번호로 시작하지 않는 것을 이어 붙인다. */
+    if (instructionSpans.has(line.spans[0]!.index)) {
+      flush();
+      continue;
+    }
+
+    const groups = mergeAdjacent(line.spans);
+    const first = groups[0]!;
+
+    // ── 문항 번호로 시작하는 줄 → 새 문항
+    const number = questionNumberOf(first, profile);
+    if (number !== null) {
+      flush();
+      current = { number, column: line.column, lines: [] };
+      for (const s of first) markNonQuestion(s); // 번호 자체는 본문이 아니다
+      const rest = line.spans.filter((s) => !first.includes(s));
+      if (rest.length > 0) current.lines.push({ ...line, spans: rest });
+      continue;
+    }
+
+    // ── 유형 머리글 (라벨·번호·제목·교과서 참조) → 문항이 아니라 맥락
+    const fontsInLine = new Set(line.spans.map((s) => s.font));
+    const isTypeHeader = [...fontsInLine].some(
+      (f) =>
+        profile.fonts.typeLabel.test(f) ||
+        profile.fonts.typeNumber.test(f) ||
+        profile.fonts.typeTitle.test(f),
+    );
+    const refText = cleanBodyText(line.spans.map((s) => s.text).join(""));
+    const isTextbookRef = profile.patterns.textbookRef.test(refText);
+
+    if (isTypeHeader || isTextbookRef) {
+      for (const group of groups) {
+        const text = cleanBodyText(groupText(group)).trim();
+        const font = group[0]!.font;
+        if (profile.fonts.typeNumber.test(font) && /^\d{1,2}$/.test(text)) {
+          pendingTypeNumber = text;
+        } else if (profile.fonts.typeTitle.test(font) && text !== "") {
+          pendingTypeTitle = text;
+        }
+      }
+      if (isTextbookRef) pendingTextbookRef = refText.trim();
+      if (pendingTypeNumber && pendingTypeTitle) {
+        typeContext = {
+          number: pendingTypeNumber,
+          title: pendingTypeTitle,
+          textbookRef: pendingTextbookRef,
+        };
+        pendingTypeNumber = null;
+        pendingTypeTitle = null;
+      }
+      for (const s of line.spans) markNonQuestion(s);
+      continue;
+    }
+
+    /* ── 유형 설명 상자: 유형 머리글 뒤·첫 문항 앞의 줄들.
+     * 개념 설명이지 문항이 아니다. 문항에 붙이면 발문이 오염된다. */
+    if (!current) {
+      for (const s of line.spans) markNonQuestion(s);
+      continue;
+    }
+
+    current.lines.push(line);
+  }
+  flush();
+
+  /* 커버리지 — 이 계산이 이 파일의 존재 이유다.
+   * span 하나하나가 「문항에 들어갔다」거나 「문항이 아니라고 판단했다」
+   * 중 하나로 설명돼야 한다. 설명되지 않은 것이 곧 조용한 누락이다. */
+  const consumed = new Set<number>();
+  for (const q of questions) for (const i of q.consumedSpanIndexes) consumed.add(i);
+  const unaccounted = indexed.filter(
+    (s) => !consumed.has(s.index) && !nonQuestion.has(s.index),
+  );
+
+  return {
+    page: page.page,
+    questions,
+    unaccounted,
+    accountedNonQuestion: nonQuestion.size,
+  };
+}
+
+function buildQuestion(
+  current: { number: string; column: number; lines: Line[] },
+  typeContext: TypeContext | null,
+  page: PageDump,
+  profile: ExtractionProfile,
+  columnWidth: number,
+  pageFigures: Rect[],
+): ExtractedQuestion {
+  const stem: Run[] = [];
+  const choices: ChoiceItem[] = [];
+  let conditionBox: { label: string; items: ConditionItem[] } | null = null;
+  const consumed: number[] = [];
+
+  type Mode = "stem" | "choices" | "condition";
+  let mode: Mode = "stem";
+
+  const markerOf = (s: IndexedSpan): string | null => {
+    const t = s.text.trim();
+    if (profile.patterns.choiceMarker.test(t)) return t;
+    return null;
+  };
+  const conditionMarkerOf = (s: IndexedSpan): string | null => {
+    const m = /^([ㄱ-ㅎ]|\([가-힣]\))\.?\s*$/.exec(s.text.trim());
+    return m ? m[1]! : null;
+  };
+
+  /* 이 문항 영역에 걸친 도형. 그 안의 글자는 치수·꼭짓점 라벨이므로
+   * 발문에서 뺀다 (그림의 대체 텍스트를 만들 때 다시 쓴다). */
+  const figureBoxes = pageFigures.filter((f) =>
+    current.lines.some((l) =>
+      l.spans.some((s) => s.x0 >= f.x0 && s.x1 <= f.x1 && s.y0 >= f.y0 && s.y1 <= f.y1),
+    ),
+  );
+  /* 치수 라벨은 그림의 **가장자리에 걸쳐** 놓인다(「90 cm」가 변 바깥으로
+   * 반쯤 나온다). 완전 포함으로 보면 절반이 발문으로 새어 문항 0148처럼
+   * 「오른쪽 90cm그림과 같이」가 된다. 글자의 중심이 그림 안이면 그림의
+   * 것으로 본다. */
+  const insideFigure = (s: IndexedSpan): boolean => {
+    const cx = (s.x0 + s.x1) / 2;
+    const cy = (s.y0 + s.y1) / 2;
+    return figureBoxes.some(
+      (f) => cx >= f.x0 - 6 && cx <= f.x1 + 6 && cy >= f.y0 - 4 && cy <= f.y1 + 4,
+    );
+  };
+  const figureLabels: string[] = [];
+
+  for (let line of current.lines) {
+    for (const s of line.spans) consumed.push(s.index, ...(s.alsoIndexes ?? []));
+
+    const labelled = line.spans.filter(insideFigure);
+    for (const s of labelled) {
+      const t = cleanBodyText(s.text).trim();
+      if (t !== "") figureLabels.push(t);
+    }
+    line = { ...line, spans: line.spans.filter((s) => !insideFigure(s)) };
+    if (line.spans.length === 0) continue;
+
+    const hasChoiceMarker = line.spans.some((s) => markerOf(s) !== null);
+    const labelSpan = line.spans.find(
+      (s) =>
+        profile.fonts.conditionLabel.test(s.font) &&
+        profile.patterns.conditionLabel.test(s.text.trim()) &&
+        s.size < 8.5,
+    );
+
+    if (labelSpan) {
+      conditionBox = { label: labelSpan.text.trim(), items: [] };
+      mode = "condition";
+      continue;
+    }
+    if (hasChoiceMarker) mode = "choices";
+
+    if (mode === "choices" && hasChoiceMarker) {
+      for (const part of splitByMarker(line.spans, profile, markerOf)) {
+        choices.push({
+          marker: part.marker,
+          order: choices.length + 1,
+          runs: toRuns(part.spans, profile),
+        });
+      }
+      continue;
+    }
+
+    if (mode === "condition" && conditionBox) {
+      const parts = splitByMarker(line.spans, profile, conditionMarkerOf);
+      if (parts.length > 0) {
+        for (const part of parts) {
+          conditionBox.items.push({
+            marker: part.marker,
+            runs: toRuns(part.spans, profile),
+          });
+        }
+        continue;
+      }
+    }
+
+    if (mode === "choices") {
+      // 선택지 줄바꿈 — 마지막 선택지에 이어 붙인다
+      const last = choices[choices.length - 1];
+      if (last) {
+        last.runs.push(...toRuns(line.spans, profile));
+        continue;
+      }
+    }
+
+    stem.push(...toRuns(line.spans, profile));
+  }
+
+  const allSpans = current.lines.flatMap((l) => l.spans);
+  const columnLeft = current.column * columnWidth;
+  const bbox: Rect =
+    allSpans.length > 0
+      ? boundsOf(allSpans)
+      : { x0: columnLeft, y0: 0, x1: columnLeft + columnWidth, y1: 0 };
+
+  return {
+    printedNumber: current.number,
+    page: page.page,
+    column: current.column,
+    bbox,
+    stem,
+    choices: choices.length > 0 ? choices : null,
+    conditionBox,
+    figureBoxes,
+    figureLabels,
+    typeContext,
+    consumedSpanIndexes: consumed,
+  };
+}

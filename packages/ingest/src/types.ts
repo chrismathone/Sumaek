@@ -1,0 +1,100 @@
+/* 추출 파이프라인의 자료형 — 파이썬 덤프(packages/ingest/python/extract.py)의 계약. */
+
+export interface Span {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** 부분집합 접두사가 없는 폰트 이름 (예: EHsang-Italic) */
+  font: string;
+  size: number;
+  flags: number;
+  color: number;
+}
+
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface PageDump {
+  page: number;
+  width: number;
+  height: number;
+  spans: Span[];
+  drawings: (Rect & { fill: boolean })[];
+  images: (Rect & { xref: number })[];
+}
+
+export interface SourceDump {
+  source: {
+    fileName: string;
+    checksum: string;
+    pageCount: number;
+    extractedRange: [number, number];
+  };
+  pages: PageDump[];
+}
+
+/** 본문 한 조각 — 한글이거나 수식이거나 */
+export type Run =
+  | { kind: "text"; text: string }
+  | {
+      kind: "math";
+      /** PDF가 준 원문 그대로 — 불변 (원칙 2O) */
+      raw: string;
+      latex: string;
+      /** 해독표가 확신하지 못한 글리프 */
+      unknown: string[];
+    };
+
+export interface ChoiceItem {
+  /** ①②③④⑤ */
+  marker: string;
+  order: number;
+  runs: Run[];
+}
+
+export interface ConditionItem {
+  marker?: string;
+  runs: Run[];
+}
+
+/** 문항이 속한 유형(대단원 아래의 출제 유형) 맥락 */
+export interface TypeContext {
+  /** 유형 번호 (01, 02 …) */
+  number: string;
+  title: string;
+  /** 「개념원리 중학 수학 1-1 32쪽」 같은 교과서 참조 */
+  textbookRef: string | null;
+}
+
+export interface ExtractedQuestion {
+  printedNumber: string;
+  page: number;
+  column: number;
+  bbox: Rect;
+  /** 발문 (선택지·보기 박스 앞까지) */
+  stem: Run[];
+  choices: ChoiceItem[] | null;
+  conditionBox: { label: string; items: ConditionItem[] } | null;
+  /** 이 문항 영역에 벡터 도형 뭉치가 있는가 — 그림 없이는 못 푸는 문항 표시 */
+  figureBoxes: Rect[];
+  /** 그림 안에 찍힌 글자 (치수·꼭짓점 라벨). 발문이 아니라 그림의 일부다. */
+  figureLabels: string[];
+  typeContext: TypeContext | null;
+  /** 커버리지 계산용 — 이 문항이 소비한 span의 페이지 내 인덱스 */
+  consumedSpanIndexes: number[];
+}
+
+export interface PageExtraction {
+  page: number;
+  questions: ExtractedQuestion[];
+  /** 문항에도, 알려진 비문항 영역에도 속하지 않은 span (= 누락 후보) */
+  unaccounted: Span[];
+  /** 알려진 비문항 영역으로 분류된 span 수 */
+  accountedNonQuestion: number;
+}
