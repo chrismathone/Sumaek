@@ -23,6 +23,8 @@ export interface MaterialRow {
   videoUrl: string | null;
   videoSeconds: number | null;
   questionIds: string[];
+  /** AI 생성 고지 — 있으면 학생 화면에 반드시 그대로 보여 준다 */
+  disclosure: string | null;
   /** 이 학습자의 진도 — 없으면 아직 시작하지 않은 것 */
   progress: "none" | "in_progress" | "completed";
 }
@@ -62,12 +64,13 @@ export async function listMaterials(input: {
       video_url: string | null;
       video_seconds: number | null;
       question_ids: unknown;
+      disclosure: string | null;
       progress: string | null;
     }[]
   >`
     select m.id::text, m.concept_id::text as concept_id, c.name as concept_name,
            m.kind::text as kind, m.title, m.body, m.video_url,
-           m.video_seconds, m.question_ids,
+           m.video_seconds, m.question_ids, m.disclosure,
            p.status::text as progress
     from learning_materials m
     join canonical_concepts c on c.id = m.concept_id
@@ -93,6 +96,7 @@ export async function listMaterials(input: {
           (v): v is string => typeof v === "string",
         )
       : [],
+    disclosure: r.disclosure,
     progress: (r.progress as MaterialRow["progress"]) ?? "none",
   }));
 }
@@ -137,6 +141,16 @@ export async function markMaterialProgress(input: {
   };
 }
 
+interface PracticeQuestionRow {
+  question_id: string;
+  version_id: string;
+  body: unknown;
+  choices: unknown;
+  kind: string;
+  points: string;
+  answer: unknown;
+}
+
 export interface PracticeQuestion {
   assessmentQuestionId: string; // 연습에서는 question_version_id를 키로 쓴다
   questionId: string;
@@ -152,6 +166,11 @@ export interface PracticeQuestion {
  * 자료에 questionIds가 지정돼 있으면 그것을, 비어 있으면 그 개념의 출제
  * 가능 문항에서 고른다 — 연습은 무반복 정책의 대상이 아니다(같은 문제를
  * 여러 번 푸는 것이 연습이다).
+ *
+ * 지정이 있으면 **지정한 순서 그대로** 낸다. 교사가 순서를 정하는 이유가
+ * "쉬운 것부터"인데 DB 생성순으로 뒤집어 내면 지정한 의미가 사라진다.
+ * 개수도 지정 개수를 따른다 — limit로 잘라 내면 뒤쪽 지정 문항이 조용히
+ * 사라져 교사가 만든 묶음과 학생이 받는 묶음이 달라진다.
  */
 export async function listPracticeQuestions(input: {
   organizationId: string;
@@ -174,39 +193,48 @@ export async function listPracticeQuestions(input: {
       )
     : [];
 
-  const rows = await sql<
-    {
-      question_id: string;
-      version_id: string;
-      body: unknown;
-      choices: unknown;
-      kind: string;
-      points: string;
-      answer: unknown;
-    }[]
-  >`
-    select q.id::text as question_id, v.id::text as version_id,
-           v.body, v.choices, q.kind::text as kind, v.points::text as points, v.answer
-    from questions q
-    join question_versions v on v.id = q.current_version_id
-    join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-    where q.organization_id = ${input.organizationId}
-      and q.review_status = 'published'
-      and (
-        ${curated.length > 0}
-        and q.id = any(${curated.length > 0 ? curated : [null]}::uuid[])
-        or (
-          ${curated.length === 0}
+  /* 지정·자동을 한 문장에 섞어 넣으면 and/or 우선순위에 기대게 된다.
+   * 갈래를 눈에 보이게 나눈다 — 어느 쪽이 도는지가 곧 교사가 본 화면이다. */
+  const rows = curated.length > 0
+    ? await sql<PracticeQuestionRow[]>`
+        select q.id::text as question_id, v.id::text as version_id,
+               v.body, v.choices, q.kind::text as kind,
+               v.points::text as points, v.answer
+        from questions q
+        join question_versions v on v.id = q.current_version_id
+        join content_rights r on r.id = q.content_right_id and r.status = 'usable'
+        where q.organization_id = ${input.organizationId}
+          and q.review_status = 'published'
+          and q.id = any(${curated}::uuid[])
+      `
+    : await sql<PracticeQuestionRow[]>`
+        select q.id::text as question_id, v.id::text as version_id,
+               v.body, v.choices, q.kind::text as kind,
+               v.points::text as points, v.answer
+        from questions q
+        join question_versions v on v.id = q.current_version_id
+        join content_rights r on r.id = q.content_right_id and r.status = 'usable'
+        where q.organization_id = ${input.organizationId}
+          and q.review_status = 'published'
           and exists (
             select 1 from question_alignments a
             where a.question_id = q.id and a.concept_id = ${material.concept_id}
           )
-        )
-      )
-    order by q.created_at
-    limit ${input.limit ?? 5}
-  `;
-  return rows.map((r) => ({
+        order by q.created_at
+        limit ${input.limit ?? 5}
+      `;
+
+  /* 지정 순서 복원 — SQL의 any()는 배열 순서를 지켜 주지 않는다.
+   * 검수에서 빠지거나 권한이 막힌 문항은 조용히 사라진다(위 where가 거른다).
+   * 그것이 맞다: 낼 수 없는 문항을 순서 맞추자고 낼 수는 없다. */
+  const ordered =
+    curated.length > 0
+      ? curated
+          .map((id) => rows.find((r) => r.question_id === id))
+          .filter((r): r is PracticeQuestionRow => r !== undefined)
+      : rows;
+
+  return ordered.map((r) => ({
     assessmentQuestionId: r.version_id,
     questionId: r.question_id,
     body: r.body,

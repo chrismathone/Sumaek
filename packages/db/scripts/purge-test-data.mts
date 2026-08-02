@@ -23,9 +23,12 @@ try {
   console.log(`  루트 삭제          ${r.routePlansDeleted}`);
   console.log(`  학습자 삭제        ${r.learnersDeleted}`);
   console.log(`  학습자 보관 처리   ${r.learnersArchived}  (불변 증거 보유 — 삭제 불가)`);
+  console.log(`  데모 계정 복구     ${r.demoAccountRestored ? "했음 (빌린 채 남아 있었다)" : "불필요"}`);
   console.log(`  개념 삭제          ${r.conceptsDeleted}`);
+  console.log(`  개념 폐기 처리     ${r.conceptsDeprecated}  (증거·문항 보유 — 삭제 불가, 목록에서만 제외)`);
   console.log(`  학생 오버라이드    ${r.learnerOverridesDeleted}  (딸린 학습자 일정 포함)`);
   console.log(`  사용권 삭제        ${r.contentRightsDeleted}`);
+  console.log(`  학습 자료 삭제     ${r.materialsDeleted}  (딸린 진도 포함)`);
 } finally {
   await sql.end();
 }

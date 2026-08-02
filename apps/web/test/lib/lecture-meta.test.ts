@@ -29,6 +29,24 @@ describe("강의 meta.json 해석", () => {
     expect(r.meta.jobId).toBe("20260722-0953-d093ce3f");
   });
 
+  it("AI 고지를 뽑는다 — 학생에게 보여 줄 문구가 여기서만 온다", () => {
+    const r = parseLectureMeta(REAL_META);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.meta.disclosure).toBe("선생님이 검수한 AI 보충 강의입니다.");
+  });
+
+  it("고지가 없거나 비어 있으면 지어내지 않는다", () => {
+    for (const raw of [
+      JSON.stringify({ lessonTitle: "제목", fps: 30, totalFrames: 900 }),
+      JSON.stringify({ lessonTitle: "제목", fps: 30, totalFrames: 900, disclosure: "   " }),
+    ]) {
+      const r = parseLectureMeta(raw);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.meta.disclosure).toBeNull();
+    }
+  });
+
   it("앞뒤 공백이 있어도 읽는다 (붙여넣기 현실)", () => {
     expect(parseLectureMeta(`\n  ${REAL_META}  \n`).ok).toBe(true);
   });

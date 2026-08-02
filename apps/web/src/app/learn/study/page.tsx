@@ -81,6 +81,13 @@ export default async function StudyPage() {
                     done={m.progress === "completed"}
                   />
                 </div>
+                {/* AI 고지 — 읽기 자료도 AI가 쓸 수 있다. 본문 위에 둔다:
+                    읽고 난 뒤에 알리는 것은 알린 것이 아니다. */}
+                {m.disclosure && (
+                  <p className="mt-3 rounded-[var(--radius-control)] border border-highlight bg-highlight-soft px-3 py-2 text-sm">
+                    {m.disclosure}
+                  </p>
+                )}
                 <div
                   className="mt-3 space-y-2 text-[15px] leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: rendered.html }}

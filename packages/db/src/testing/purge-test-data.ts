@@ -30,18 +30,50 @@ const CONCEPT_SLUG_PATTERNS = ["itest-%", "ctest-%"];
  * 없다 (실측: 31건이 활성으로 누적되어 학생 경로가 보충으로만 채워졌다).
  */
 const OVERRIDE_REASON_PATTERNS = ["E2E%", "ITEST%", "%확인테스트 미통과 보충%"];
+/**
+ * E2E가 저작 화면에서 만드는 학습 자료 — 제목으로 고른다.
+ *
+ * 남겨 두면 실행마다 **게시된** 자료가 시드 개념에 쌓이고, 그 개념을 배우는
+ * 날 데모 학생의 「오늘 학습」에 테스트 쓰레기가 그대로 나온다 (실측: 세 번
+ * 돌리자 게시 자료 3건이 학생 화면에 실렸다). 자료는 불변 데이터가 아니므로
+ * 진도와 함께 지운다.
+ */
+const MATERIAL_TITLE_PATTERN = "E2E자료-%";
 /** 시드가 만든 고정 ID 접두사 — 절대 지우지 않는다 */
 const SEED_ID_PREFIX = "00000000-";
+/**
+ * 데모 학생 계정과 그 계정이 붙어 있어야 할 시드 학습자.
+ *
+ * learner-flow 통합 테스트가 이 계정을 잠시 **빌려** 쓴다(학생 로그인 경로를
+ * 검증할 다른 방법이 없다). 그 스펙은 afterAll에서 무조건 돌려주지만,
+ * 프로세스가 중간에 죽거나 두 실행이 겹치면 계정이 테스트 학습자에게 붙은
+ * 채로 남는다 — 실측으로 겪었다. 그러면 학생 화면이 통째로 빈 상태가 되어
+ * E2E가 로그인부터가 아니라 **한참 뒤 엉뚱한 단언에서** 깨져 원인을 찾기
+ * 어렵다. 뒷정리가 돌 때마다 제자리로 돌려놓는다.
+ */
+const DEMO_STUDENT_EMAIL = "demo-student@su-maek.app";
+const DEMO_STUDENT_LEARNER = "00000000-0000-7000-8000-000000000101";
 
 export interface PurgeResult {
   learnersDeleted: number;
   learnersArchived: number;
+  /** 데모 학생 계정을 시드 학습자에게 되돌렸는가 (빌린 채 죽은 실행 복구) */
+  demoAccountRestored: boolean;
   groupsDeleted: number;
   routePlansDeleted: number;
   conceptsDeleted: number;
+  /**
+   * 지울 수 없어서 **폐기 처리**한 개념 — 증거·문항이 걸려 삭제가 막힌 것들.
+   * 그냥 두면 조직 스코프가 없는 canonical_concepts라 모든 학원의 개념
+   * 선택 목록을 덮는다 (실측: 190건이 쌓여 교사 드롭다운 기본 20개가
+   * 전부 테스트 찌꺼기였다). 지울 수 없으면 최소한 목록에서는 빼야 한다.
+   */
+  conceptsDeprecated: number;
   contentRightsDeleted: number;
   /** E2E가 시드 학습자에게 붙인 개별 경로 오버라이드 (딸린 학습자 일정 포함) */
   learnerOverridesDeleted: number;
+  /** E2E가 저작 화면에서 만든 학습 자료 (딸린 진도 포함) */
+  materialsDeleted: number;
   /** dry-run이면 실제로 지우지 않고 셈만 한다 */
   dryRun: boolean;
 }
@@ -114,14 +146,36 @@ export async function purgeTestData(
         and o.reason like any(${OVERRIDE_REASON_PATTERNS}::text[])
     `;
 
+    /* ── 4c. E2E가 저작 화면에서 만든 학습 자료 ── */
+    const purgeableMaterials = await tx<{ id: string }[]>`
+      select m.id from learning_materials m
+      where m.organization_id = ${organizationId}
+        and m.id::text not like ${`${SEED_ID_PREFIX}%`}
+        and m.title like ${MATERIAL_TITLE_PATTERN}
+    `;
+
+    /* 데모 학생 계정이 시드 학습자를 떠나 있으면 되돌린다 (빌린 채 죽은 실행) */
+    const [strayDemo] = await tx<{ id: string; user_id: string }[]>`
+      select l.id, l.user_id::text as user_id
+      from learners l
+      join users u on u.id = l.user_id
+      where l.organization_id = ${organizationId}
+        and u.email = ${DEMO_STUDENT_EMAIL}
+        and l.id <> ${DEMO_STUDENT_LEARNER}
+      limit 1
+    `;
+
     const result: PurgeResult = {
       learnersDeleted: learnerIds.length,
       learnersArchived: archivable.length,
+      demoAccountRestored: Boolean(strayDemo),
       groupsDeleted: groupIds.length,
       routePlansDeleted: planIds.length,
       conceptsDeleted: 0,
+      conceptsDeprecated: 0,
       contentRightsDeleted: 0,
       learnerOverridesDeleted: purgeableOverrides.length,
+      materialsDeleted: purgeableMaterials.length,
       dryRun,
     };
 
@@ -135,6 +189,17 @@ export async function purgeTestData(
                          where e.from_concept_id = c.id or e.to_concept_id = c.id)
     `;
     result.conceptsDeleted = purgeableConcepts.length;
+
+    /* 지울 수 없는 테스트 개념 — 증거(불변)나 문항이 걸려 있다. 삭제 대신
+     * 폐기 처리한다. 화면의 개념 선택은 status in ('reviewed','active')로
+     * 좁히므로 이것만으로 목록에서 사라지고, 증거는 그대로 남는다. */
+    const deprecatableConcepts = await tx<{ id: string }[]>`
+      select c.id from canonical_concepts c
+      where c.slug like any(${CONCEPT_SLUG_PATTERNS}::text[])
+        and c.status <> 'deprecated'
+        and not (c.id = any(${purgeableConcepts.map((r) => r.id)}::uuid[]))
+    `;
+    result.conceptsDeprecated = deprecatableConcepts.length;
 
     if (dryRun) return result;
 
@@ -185,15 +250,32 @@ export async function purgeTestData(
       const overrideLearnerIds = [
         ...new Set(purgeableOverrides.map((r) => r.learner_id)),
       ];
+      /* 고정 ID 시드 행은 남긴다 — 이 파일의 원칙 그대로(위 머리말: 고정 ID
+       * 시드 행은 데모 워크스페이스의 실제 데이터다). 지워야 하는 것은 스펙이
+       * 계산으로 만든 항목(uuidv7)이지 시드가 심은 항목이 아니다.
+       *
+       * 다만 이것만으로 시드 항목이 안전해지지는 않는다: 「개별 일정 계산」은
+       * 오늘 이후의 미배정 항목을 교체하므로 시드 항목도 정상적으로 지운다
+       * (materializeLearnerSchedule의 과거 보존 가드 참고). 여기서 하는 일은
+       * **뒷정리가 그것까지 대신 지우지는 않게** 하는 것뿐이다. */
       await tx`
         delete from learner_schedule_items
         where organization_id = ${organizationId}
           and learner_id = any(${overrideLearnerIds}::uuid[])
+          and id::text not like ${`${SEED_ID_PREFIX}%`}
       `;
       await tx`
         delete from student_route_overrides
         where id = any(${purgeableOverrides.map((r) => r.id)}::uuid[])
       `;
+    }
+
+    /* 자료보다 진도를 먼저 — 진도가 자료를 참조한다 (R-01 고아 참조 방지) */
+    if (purgeableMaterials.length > 0) {
+      const materialIds = purgeableMaterials.map((r) => r.id);
+      await tx`delete from learner_material_progress
+               where material_id = any(${materialIds}::uuid[])`;
+      await tx`delete from learning_materials where id = any(${materialIds}::uuid[])`;
     }
 
     if (archivable.length > 0) {
@@ -202,9 +284,28 @@ export async function purgeTestData(
         where id = any(${archivable.map((r) => r.id)}::uuid[])`;
     }
 
+    if (strayDemo) {
+      // 떼어 내고 → 붙인다. 한 계정이 두 학습자에 걸리지 않게 순서가 중요하다.
+      await tx`
+        update learners set user_id = null, updated_at = now()
+        where id = ${strayDemo.id}`;
+      await tx`
+        update learners set user_id = ${strayDemo.user_id}, updated_at = now()
+        where id = ${DEMO_STUDENT_LEARNER} and organization_id = ${organizationId}`;
+      await tx`
+        update memberships set status = 'active', updated_at = now()
+        where organization_id = ${organizationId} and user_id = ${strayDemo.user_id}`;
+    }
+
     if (purgeableConcepts.length > 0) {
       await tx`delete from canonical_concepts
                where id = any(${purgeableConcepts.map((r) => r.id)}::uuid[])`;
+    }
+
+    if (deprecatableConcepts.length > 0) {
+      await tx`
+        update canonical_concepts set status = 'deprecated', updated_at = now()
+        where id = any(${deprecatableConcepts.map((r) => r.id)}::uuid[])`;
     }
 
     /* 사용권 — 문항이 하나도 걸리지 않은 테스트 사용권만 */

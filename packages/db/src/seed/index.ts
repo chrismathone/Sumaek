@@ -471,8 +471,124 @@ async function main(): Promise<void> {
       .onConflictDoNothing();
   }
 
+  /* 8. 학습 자료 (개념 공부 · 인강 · 연습문제)
+   *
+   * 지금까지 시드에 자료가 한 건도 없어서, 시드만 돌린 상태의 학생 화면은
+   * 「개념 공부·인강·연습문제」 세 단계가 전부 「없음」이었다 — 제품의 절반이
+   * 빈 채로 데모되고, 저작→소비 왕복이 자동 검증된 적도 없었다.
+   *
+   * 가감법(m2-simeq-elimination)에 붙인다. 이 개념에는 시드 문항이 2개 있어
+   * 연습문제가 실제로 출제되고, 루트 노드로도 존재해 오늘 일정에 실릴 수 있다. */
+  const materialConceptId = conceptIdBySlug.get("m2-simeq-elimination");
+  if (materialConceptId) {
+    await db
+      .insert(schema.learningMaterials)
+      .values({
+        id: "00000000-0000-7000-8000-000000000070",
+        organizationId: ORG_ID,
+        conceptId: materialConceptId,
+        kind: "reading",
+        title: "가감법 — 한 문자를 없애는 법",
+        body: [
+          {
+            type: "text",
+            text: "두 식을 더하거나 빼서 한 문자를 없애는 방법을 가감법이라고 합니다.\n\n$\\begin{cases} x+y=5 \\\\ x-y=1 \\end{cases}$ 에서 두 식을 더하면 $2x=6$ 이 되어 $x=3$ 입니다. 구한 $x$를 아무 식에나 넣으면 $y=2$ 입니다.\n\n계수가 맞지 않을 때는 한쪽 또는 양쪽에 적당한 수를 곱해 계수를 맞춘 뒤 더하거나 뺍니다.",
+          },
+        ],
+        sortOrder: 1,
+        status: "published",
+        createdBy: TEACHER_USER_ID,
+      })
+      .onConflictDoNothing();
+
+    await db
+      .insert(schema.learningMaterials)
+      .values({
+        id: "00000000-0000-7000-8000-000000000071",
+        organizationId: ORG_ID,
+        conceptId: materialConceptId,
+        kind: "video",
+        title: "가감법 5분 정리",
+        /* 합성 영상 ID — 형식은 유튜브 그대로(11자)지만 실재하는 영상이
+         * 아니다. 실제 영상을 걸면 시드가 남의 콘텐츠에 의존하게 된다. */
+        videoUrl: "https://www.youtube.com/watch?v=SUMAEKDEMO1",
+        videoSeconds: 312,
+        /* AI 고지 — 파이프라인 meta.json의 disclosure가 여기까지 오는 경로를
+         * 시드에서도 보여 준다. 학생 화면(watch)에 그대로 표시된다. */
+        disclosure: "선생님이 검수한 AI 보충 강의입니다.",
+        sourceJobId: "20260722-0953-d093ce3f",
+        sortOrder: 2,
+        status: "published",
+        createdBy: TEACHER_USER_ID,
+      })
+      .onConflictDoNothing();
+
+    /* 연습문제 — 문항을 **지정**한다. 자동 선정만 시드하면 큐레이션 경로가
+     * 여전히 한 번도 실행되지 않는다. 지정 순서는 생성순의 역순으로 둔다:
+     * 순서가 실제로 지켜지는지 눈으로 확인할 수 있어야 한다. */
+    await db
+      .insert(schema.learningMaterials)
+      .values({
+        id: "00000000-0000-7000-8000-000000000072",
+        organizationId: ORG_ID,
+        conceptId: materialConceptId,
+        kind: "practice",
+        title: "가감법 연습 2문항",
+        questionIds: [
+          "00000000-0000-7000-8000-000000000204", // a+b 구하기 (생성순 5번째)
+          "00000000-0000-7000-8000-000000000200", // x+y=5, x-y=1 (생성순 1번째)
+        ],
+        sortOrder: 3,
+        status: "published",
+        createdBy: TEACHER_USER_ID,
+      })
+      .onConflictDoNothing();
+
+    /* 데모 학생(박서윤)의 **오늘** 개별 일정.
+     *
+     * 학생 화면의 자료·연습문제는 "오늘 차시의 노드 → 그 노드의 개념"으로만
+     * 찾아온다. 반 공통 수업은 월·수·금에만 생기므로 실행 요일에 따라
+     * 학생 화면이 비었다 찼다 한다 — 저작→소비 왕복을 자동 검증할 수 없다.
+     * 개별 일정은 반 일정을 건드리지 않으면서(불변 조건 4) 오늘을 고정한다.
+     *
+     * 시드를 다시 돌리면 날짜가 오늘로 갱신되어야 한다. 그래서 여기만
+     * onConflictDoNothing이 아니라 갱신 upsert다.
+     * 09–10시로 두는 이유: 반 수업(16–18시)과 겹치면
+     * learner_schedule_items_no_overlap(학생 시간 배타)에 걸린다.
+     *
+     * jsonb를 `sql.json()`이 아니라 JSON.stringify + ::jsonb 로 넘기는 이유:
+     * 이 파일은 같은 postgres.js 클라이언트를 drizzle로도 감싸 쓰는데
+     * (`drizzle(sql)`), 그 순간 클라이언트의 json 직렬화기가 바뀌어
+     * `sql.json(배열)`이 배열을 그대로 흘려보낸다 — Bind 단계에서
+     * "Buffer.byteLength가 Array를 받았다"로 터진다. 같은 문장을 drizzle 없이
+     * 단독 실행하면 멀쩡해서 원인을 찾기 어렵다(실측으로 확인). 다른 파일에서
+     * `sql.json()`이 잘 도는 이유는 그쪽엔 drizzle이 없기 때문이다. */
+    const eliminationNodeId = "00000000-0000-7000-8000-000000000403"; // 가감법
+    await sql`
+      insert into learner_schedule_items (
+        id, organization_id, learner_id, learning_group_id, session_id,
+        item_date, timezone, starts_at, ends_at, planned_node_ids,
+        reason_codes, matches_group, is_rejoin
+      ) values (
+        ${"00000000-0000-7000-8000-000000000080"}, ${ORG_ID},
+        ${LEARNERS[0].id}, ${GROUP_ID}, null,
+        (now() at time zone 'Asia/Seoul')::date, 'Asia/Seoul',
+        ((now() at time zone 'Asia/Seoul')::date + time '09:00') at time zone 'Asia/Seoul',
+        ((now() at time zone 'Asia/Seoul')::date + time '10:00') at time zone 'Asia/Seoul',
+        ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
+        false, false
+      )
+      on conflict (id) do update set
+        item_date = excluded.item_date,
+        starts_at = excluded.starts_at,
+        ends_at = excluded.ends_at,
+        planned_node_ids = excluded.planned_node_ids,
+        updated_at = now()
+    `;
+  }
+
   console.log(
-    `[seed] 완료 — 조직 1, 개념 ${CONCEPTS.length}, 학습자 ${LEARNERS.length}, 문항 ${questionIds.length}, 루트 노드 ${routeNodes.length}`,
+    `[seed] 완료 — 조직 1, 개념 ${CONCEPTS.length}, 학습자 ${LEARNERS.length}, 문항 ${questionIds.length}, 루트 노드 ${routeNodes.length}, 학습 자료 3`,
   );
   await sql.end();
 }

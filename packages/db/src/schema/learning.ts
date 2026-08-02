@@ -292,6 +292,14 @@ export const learningMaterials = pgTable(
     videoSeconds: integer("video_seconds"),
     /** practice에서 낼 문항. 비우면 개념의 출제 가능 문항에서 자동 선정 */
     questionIds: jsonb("question_ids").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * AI 생성 고지 (0012a) — 학생 화면에 그대로 보여 준다.
+     * 자료와 함께 저장하는 이유: 유튜브 설명란에만 적으면 임베드로 보는
+     * 학생에게는 보이지 않고, 옮겨 적는 순간 빠질 수 있다.
+     */
+    disclosure: text("disclosure"),
+    /** 이 자료를 만든 파이프라인 잡 ID (0012a) — 재생성·추적의 연결 고리 */
+    sourceJobId: text("source_job_id"),
     /** 같은 개념 안의 표시 순서 (읽기 → 인강 → 연습 순서를 정하는 곳) */
     sortOrder: integer("sort_order").notNull().default(0),
     status: learningMaterialStatus("status").notNull().default("draft"),

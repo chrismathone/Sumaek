@@ -33,12 +33,21 @@ export function parseYouTubeId(raw: string): string | null {
   const host = url.hostname.replace(/^www\./, "").toLowerCase();
   if (!HOSTS.has(host)) return null;
 
+  /* 경로별로 ID가 어디 있는지가 다르다 — **경로를 먼저 보고** 그 자리에서만
+   * 읽는다. 예전에는 `v` 쿼리를 경로와 무관하게 먼저 읽어서
+   * `youtube.com/@아무채널?v=<11자>` 같은 주소가 통과했고, 그것이 정규
+   * watch 주소로 저장돼 학생 화면에는 엉뚱한 영상이 임베드됐다. */
+  const path = url.pathname.replace(/\/$/, "");
   const id =
     host === "youtu.be"
-      ? url.pathname.slice(1)
-      : (url.searchParams.get("v") ??
-        (url.pathname.startsWith("/embed/") ? url.pathname.slice(7) : null) ??
-        (url.pathname.startsWith("/shorts/") ? url.pathname.slice(8) : null));
+      ? path.slice(1)
+      : path === "/watch"
+        ? url.searchParams.get("v")
+        : path.startsWith("/embed/")
+          ? path.slice(7)
+          : path.startsWith("/shorts/")
+            ? path.slice(8)
+            : null;
   if (!id) return null;
   // 유튜브 영상 ID는 11자 [A-Za-z0-9_-]
   return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;

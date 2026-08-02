@@ -51,6 +51,8 @@ const ROW_LINK_PAGES: ReadonlyArray<[page: string, detailDir: string]> = [
   ["students/page.tsx", "students/[id]"],
   ["routes/page.tsx", "routes/[id]"],
   ["content/questions/page.tsx", "content/questions/[id]"],
+  // 자료 상세는 「고치는 곳」이다 — 행에서 갈 수 없으면 고칠 길이 없다
+  ["content/materials/page.tsx", "content/materials/[id]"],
 ];
 
 describe("목록 화면 표 규약", () => {

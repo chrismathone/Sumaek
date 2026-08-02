@@ -57,6 +57,26 @@ describe("유튜브 주소 판정", () => {
     expect(parseYouTubeId(`data:text/html,<script>1</script>`)).toBeNull();
   });
 
+  it("watch가 아닌 경로에 붙은 v 쿼리를 읽지 않는다", () => {
+    /* 실측 결함: `v` 쿼리를 경로와 무관하게 읽어서 채널·검색·재생목록 주소가
+     * 통과했고, 그것이 정규 watch 주소로 저장돼 학생 화면에는 전혀 다른
+     * 영상이 실렸다. 유튜브가 실제로 ID를 v에 싣는 경로는 /watch 뿐이다. */
+    for (const url of [
+      `https://www.youtube.com/@someone?v=${ID}`,
+      `https://www.youtube.com/results?search_query=x&v=${ID}`,
+      `https://www.youtube.com/playlist?list=PLxyz&v=${ID}`,
+      `https://www.youtube.com/?v=${ID}`,
+      `https://www.youtube.com/watch/extra?v=${ID}`,
+    ]) {
+      expect(parseYouTubeId(url), url).toBeNull();
+    }
+  });
+
+  it("경로 끝 슬래시는 붙어 있어도 같게 읽는다 (붙여넣기 현실)", () => {
+    expect(parseYouTubeId(`https://www.youtube.com/watch/?v=${ID}`)).toBe(ID);
+    expect(parseYouTubeId(`https://youtu.be/${ID}/`)).toBe(ID);
+  });
+
   it("영상 ID 형식이 아니면 거절한다", () => {
     expect(parseYouTubeId("https://www.youtube.com/watch?v=short")).toBeNull();
     expect(parseYouTubeId("https://www.youtube.com/watch?v=" + "x".repeat(12))).toBeNull();

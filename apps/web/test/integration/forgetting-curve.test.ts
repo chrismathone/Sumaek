@@ -21,6 +21,12 @@ const ORG_ID = "00000000-0000-7000-8000-000000000001";
 const TEACHER_ID = "00000000-0000-7000-8000-0000000000a1";
 const hasDb = Boolean(process.env.DATABASE_URL);
 const TZ = "Asia/Seoul";
+/* 개념은 **고정 id**로 재사용한다. 실행마다 새로 만들면 canonical_concepts에
+ * 영영 쌓인다 — 이 테스트가 남긴 증거(mastery_evidences)가 불변이라 정리
+ * 스크립트가 지울 수 없기 때문이다(실측: itest 개념 126건이 그렇게 쌓여
+ * 교사의 개념 선택 드롭다운을 덮었다). 학습자는 실행마다 새로 만든다 —
+ * 복습 항목 조회가 학습자로 좁혀지므로 재실행이 서로를 밟지 않는다. */
+const FIXTURE_CONCEPT_ID = "00000000-0000-7000-8000-0000000000fc";
 
 function isoAddDays(base: string, days: number): string {
   const d = new Date(`${base}T00:00:00Z`);
@@ -33,7 +39,7 @@ describe.skipIf(!hasDb)("망각곡선 복습 (라이브 DB)", () => {
   let sql: ReturnType<typeof getSharedSql>;
   const ids = {
     learner: uuidv7(),
-    concept: uuidv7(),
+    concept: FIXTURE_CONCEPT_ID,
     right: uuidv7(),
     question: uuidv7(),
     version: uuidv7(),
@@ -55,7 +61,8 @@ describe.skipIf(!hasDb)("망각곡선 복습 (라이브 DB)", () => {
     `;
     await sql`
       insert into canonical_concepts (id, slug, name, status, evidence)
-      values (${ids.concept}, ${`itest-fc-${ids.concept}`}, '통합테스트 개념', 'active', '[]'::jsonb)
+      values (${ids.concept}, 'itest-forgetting-curve', '통합테스트 개념 (망각곡선)', 'active', '[]'::jsonb)
+      on conflict (id) do nothing
     `;
     await sql`
       insert into content_rights (id, organization_id, rights_holder, status)

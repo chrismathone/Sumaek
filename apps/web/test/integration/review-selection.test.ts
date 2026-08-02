@@ -25,6 +25,14 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 /** 이 테스트 전용 조직·정책 — 실행마다 새로 만들지 않고 재사용한다 */
 const FIXTURE_ORG_ID = "00000000-0000-7000-8000-0000000000f1";
 const FIXTURE_POLICY_ID = "00000000-0000-7000-8000-0000000000f2";
+/* 개념도 고정한다. canonical_concepts는 조직 스코프가 없어서 실행마다 새로
+ * 만들면 데모 조직 교사의 개념 목록까지 오염된다. 문항 정렬이 걸려 있어
+ * 정리 스크립트도 지우지 못한다. */
+const FIXTURE_CONCEPT_IDS: Record<string, string> = {
+  forgotten: "00000000-0000-7000-8000-0000000000f3",
+  fading: "00000000-0000-7000-8000-0000000000f4",
+  fresh: "00000000-0000-7000-8000-0000000000f5",
+};
 const TZ = "Asia/Seoul";
 const TODAY = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 
@@ -60,7 +68,7 @@ describe.skipIf(!hasDb)("일일테스트 복습 버킷 (라이브 DB)", () => {
     ...i,
     question: uuidv7(),
     version: uuidv7(),
-    concept: uuidv7(),
+    concept: FIXTURE_CONCEPT_IDS[i.key]!,
   }));
 
   let generatedAssessmentId: string | null = null;
@@ -128,7 +136,9 @@ describe.skipIf(!hasDb)("일일테스트 복습 버킷 (라이브 DB)", () => {
     for (const [i, item] of items.entries()) {
       await sql`
         insert into canonical_concepts (id, slug, name, status, evidence)
-        values (${item.concept}, ${`itest-rs-${item.concept}`}, ${`복습출제 개념 ${item.key}`}, 'active', '[]'::jsonb)
+        values (${item.concept}, ${`itest-review-selection-${item.key}`},
+                ${`복습출제 개념 ${item.key}`}, 'active', '[]'::jsonb)
+        on conflict (id) do nothing
       `;
       await sql`
         insert into questions (id, organization_id, kind, review_status, content_right_id, is_auto_assignable, current_version_id)

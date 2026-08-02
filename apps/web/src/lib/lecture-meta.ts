@@ -17,6 +17,12 @@ export interface LectureMeta {
   title: string;
   /** 총 길이(초). fps·프레임 수에서 유도한다 — meta.json에 초 단위 필드가 없다 */
   seconds: number;
+  /**
+   * AI 고지 — 파이프라인이 「선생님이 검수한 AI 보충 강의입니다.」를 넣는다.
+   * 지금까지는 이 값이 meta.json에만 있고 수맥 안에는 저장할 자리도 표시할
+   * 자리도 없어서, 학생은 AI가 만든 강의를 사람이 만든 것과 구별할 수 없었다.
+   */
+  disclosure: string | null;
   jobId: string | null;
   pageId: string | null;
 }
@@ -70,6 +76,10 @@ export function parseLectureMeta(raw: string): ParseResult {
     meta: {
       title,
       seconds: Math.round(frames / fps),
+      disclosure:
+        typeof m.disclosure === "string" && m.disclosure.trim()
+          ? m.disclosure.trim()
+          : null,
       jobId: typeof m.jobId === "string" ? m.jobId : null,
       pageId: typeof m.pageId === "string" ? m.pageId : null,
     },

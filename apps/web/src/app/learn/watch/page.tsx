@@ -83,6 +83,15 @@ export default async function WatchPage() {
                     done={m.progress === "completed"}
                   />
                 </div>
+                {/* AI 고지 — 영상 **위에** 둔다. 다 보고 난 뒤에 알리는 것은
+                    알린 것이 아니다. 파이프라인은 이 문구를 유튜브 설명란에
+                    넣으라고 안내하지만, 임베드로 보는 학생에게 설명란은
+                    보이지 않는다. 그래서 자료에 저장해 여기서 말한다. */}
+                {m.disclosure && (
+                  <p className="mt-3 rounded-[var(--radius-control)] border border-highlight bg-highlight-soft px-3 py-2 text-sm">
+                    {m.disclosure}
+                  </p>
+                )}
                 {m.videoUrl &&
                   (embed ? (
                     <div className="mt-3 aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-control)] border border-rule">

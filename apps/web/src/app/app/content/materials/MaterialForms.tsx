@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { ActionToast } from "@/components/ActionToast";
-import { parseLectureMeta } from "@/lib/lecture-meta";
+import { DisclosureField, MetaPasteField, VideoFields } from "./MetaPasteField";
+import type { ConceptOption } from "./shared";
 import {
   createMaterialAction,
   setMaterialStatusAction,
@@ -19,7 +20,7 @@ export function CreateMaterialForm({
   concepts,
   conceptQuery,
 }: {
-  concepts: Array<{ id: string; name: string }>;
+  concepts: ConceptOption[];
   conceptQuery: string;
 }) {
   const [state, action, pending] = useActionState<MaterialResult | null, FormData>(
@@ -27,7 +28,12 @@ export function CreateMaterialForm({
     null,
   );
   const [kind, setKind] = useState<"reading" | "video" | "practice">("reading");
-  const [metaNote, setMetaNote] = useState<string | null>(null);
+  /* 고른 개념을 붙들고 있는 이유는 하나다: 연습문제인데 그 개념에 낼 문항이
+   * 0개면 **만들기 전에** 말해 주기 위해서다. 지금까지 교사는 만들고 게시한
+   * 뒤 학생이 「낼 수 있는 문항이 없습니다」를 보고 알려 줘야 알았다. */
+  const [conceptId, setConceptId] = useState("");
+  const usableQuestions =
+    concepts.find((c) => c.id === conceptId)?.usable_questions ?? null;
 
   return (
     <div className="mt-4 rounded-lg border border-rule bg-surface p-5">
@@ -67,12 +73,16 @@ export function CreateMaterialForm({
 
       <form action={action} className="mt-4 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label htmlFor="conceptId" className="text-sm">
-            <span className="block">개념</span>
+          <div>
+            <label htmlFor="conceptId" className="block text-sm">
+              개념
+            </label>
             <select
               id="conceptId"
               name="conceptId"
               required
+              value={conceptId}
+              onChange={(e) => setConceptId(e.target.value)}
               className="mt-1 w-64 rounded-[var(--radius-control)] border border-rule bg-surface px-3 py-2 text-sm"
             >
               <option value="">개념 선택</option>
@@ -82,10 +92,12 @@ export function CreateMaterialForm({
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <label htmlFor="kind" className="text-sm">
-            <span className="block">종류</span>
+          <div>
+            <label htmlFor="kind" className="block text-sm">
+              종류
+            </label>
             <select
               id="kind"
               name="kind"
@@ -97,10 +109,12 @@ export function CreateMaterialForm({
               <option value="video">개념 인강 (영상)</option>
               <option value="practice">연습문제</option>
             </select>
-          </label>
+          </div>
 
-          <label htmlFor="sortOrder" className="text-sm">
-            <span className="block">순서</span>
+          <div>
+            <label htmlFor="sortOrder" className="block text-sm">
+              순서
+            </label>
             <input
               id="sortOrder"
               name="sortOrder"
@@ -110,11 +124,13 @@ export function CreateMaterialForm({
               defaultValue={0}
               className="mt-1 w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm"
             />
-          </label>
+          </div>
         </div>
 
-        <label htmlFor="title" className="block text-sm">
-          <span className="block">제목</span>
+        <div>
+          <label htmlFor="title" className="block text-sm">
+            제목
+          </label>
           <input
             id="title"
             name="title"
@@ -123,11 +139,13 @@ export function CreateMaterialForm({
             placeholder="일차방정식 복습 — 핵심 정리"
             className="mt-1 block w-full max-w-xl rounded-[var(--radius-control)] border border-rule px-3 py-2 text-sm"
           />
-        </label>
+        </div>
 
         {kind === "reading" && (
-          <label htmlFor="body" className="block text-sm">
-            <span className="block">본문</span>
+          <div>
+            <label htmlFor="body" className="block text-sm">
+              본문
+            </label>
             <span className="block text-xs text-ink-soft">
               수식은 $3x - 4 = 5$ 처럼 달러 기호 사이에 씁니다. 빈 줄로 문단을
               나눕니다.
@@ -138,112 +156,50 @@ export function CreateMaterialForm({
               rows={6}
               className="mt-1 block w-full max-w-2xl rounded-[var(--radius-control)] border border-rule px-3 py-2 text-sm"
             />
-          </label>
-        )}
-
-        {kind === "video" && (
-          <div className="space-y-3">
-            {/* 파이프라인이 만든 meta.json을 붙이면 제목·길이가 채워진다.
-                옮겨 적다 틀리는 것이 실제 실수의 대부분이라 그 자리를 없앤다.
-                유튜브 주소는 meta.json에 없다 — 파이프라인이 업로드하지 않기
-                때문이다. 그래서 주소만 사람이 넣는다. */}
-            <details className="rounded-[var(--radius-control)] border border-rule bg-paper px-3 py-2">
-              <summary className="cursor-pointer text-sm">
-                자동 생성 강의라면 — meta.json 붙여넣기
-              </summary>
-              <p className="mt-2 text-xs text-ink-soft">
-                파이프라인 산출물 <code>out/meta.json</code> 내용을 그대로
-                붙이세요. 제목과 길이가 채워집니다. 유튜브 주소는 올린 뒤 직접
-                넣어야 합니다.
-              </p>
-              <textarea
-                rows={3}
-                placeholder='{ "lessonTitle": "...", "fps": 30, "totalFrames": 3877, ... }'
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v.trim()) {
-                    setMetaNote(null);
-                    return;
-                  }
-                  const result = parseLectureMeta(v);
-                  if (!result.ok) {
-                    setMetaNote(result.message);
-                    return;
-                  }
-                  const form = e.target.closest("form");
-                  if (!form) return;
-                  const set = (name: string, value: string) => {
-                    const el = form.elements.namedItem(name);
-                    if (el instanceof HTMLInputElement) el.value = value;
-                  };
-                  set("title", result.meta.title);
-                  set("videoMinutes", String(Math.floor(result.meta.seconds / 60)));
-                  set("videoSeconds", String(result.meta.seconds % 60));
-                  setMetaNote(
-                    `«${result.meta.title}» · ${Math.floor(result.meta.seconds / 60)}분 ${result.meta.seconds % 60}초를 채웠습니다. 유튜브 주소를 넣으세요.`,
-                  );
-                }}
-                className="mt-2 block w-full rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs"
-              />
-              {metaNote && (
-                <p role="status" className="mt-2 text-xs">
-                  {metaNote}
-                </p>
-              )}
-            </details>
-            <label htmlFor="videoUrl" className="block text-sm">
-              <span className="block">유튜브 주소</span>
-              <span className="block text-xs text-ink-soft">
-                비공개(일부 공개)로 올린 영상의 주소. 유튜브만 등록됩니다 —
-                영상을 이 제품이 보관하지 않기 때문입니다.
-              </span>
-              <input
-                id="videoUrl"
-                name="videoUrl"
-                type="url"
-                placeholder="https://www.youtube.com/watch?v=..."
-                className="mt-1 block w-full max-w-xl rounded-[var(--radius-control)] border border-rule px-3 py-2 text-sm"
-              />
-            </label>
-            <div className="flex items-end gap-2 text-sm">
-              <label htmlFor="videoMinutes">
-                <span className="block text-xs text-ink-soft">길이 (분)</span>
-                <input
-                  id="videoMinutes"
-                  name="videoMinutes"
-                  type="number"
-                  min={0}
-                  max={600}
-                  defaultValue={0}
-                  className="mt-1 w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm"
-                />
-              </label>
-              <label htmlFor="videoSeconds">
-                <span className="block text-xs text-ink-soft">초</span>
-                <input
-                  id="videoSeconds"
-                  name="videoSeconds"
-                  type="number"
-                  min={0}
-                  max={59}
-                  defaultValue={0}
-                  className="mt-1 w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm"
-                />
-              </label>
-              <span className="pb-2 text-xs text-ink-soft">
-                비워 두면 학생에게 길이를 알리지 않습니다
-              </span>
-            </div>
           </div>
         )}
 
-        {kind === "practice" && (
-          <p className="max-w-2xl rounded-[var(--radius-control)] bg-paper px-3 py-2 text-sm text-ink-soft">
-            문항을 따로 지정하지 않습니다. 이 개념에 연결된{" "}
-            <strong className="font-medium">검수 완료·사용 권한 유효</strong> 문항에서
-            자동으로 선정됩니다. 낼 문항이 없으면 학생 화면이 그렇다고 알립니다.
-          </p>
+        {/* 메타 붙여넣기·영상 칸은 고치기 폼과 **같은 컴포넌트**를 쓴다.
+            갈라 두면 「만들 땐 있던 칸이 고칠 땐 없다」가 생기고, 실제로
+            그랬다 — 만들기 폼에만 있던 붙여넣기 로직이 따로 살아 있었다. */}
+        {kind === "video" && (
+          <div className="space-y-3">
+            <MetaPasteField />
+            <VideoFields />
+          </div>
         )}
+
+        {kind === "practice" &&
+          (usableQuestions === 0 ? (
+            /* 만들기 전에 막지는 않는다 — 문항을 나중에 붙일 수도 있다.
+               다만 이대로 게시하면 학생이 빈 화면을 본다는 것은 말한다. */
+            <p
+              role="status"
+              className="max-w-2xl rounded-[var(--radius-control)] border border-grade bg-grade-soft px-3 py-2 text-sm text-grade"
+            >
+              이 개념에 낼 수 있는 문항이 0개입니다. 지금 만들어 게시하면 학생
+              화면에 「낼 수 있는 문항이 없습니다」가 뜹니다. 문제은행에서 이
+              개념의 문항을 검수·게시한 뒤 만드세요.
+            </p>
+          ) : (
+            <p className="max-w-2xl rounded-[var(--radius-control)] bg-paper px-3 py-2 text-sm text-ink-soft">
+              만들 때는 문항을 지정하지 않습니다. 만든 뒤 목록에서 열면 낼 문항을
+              골라 순서까지 정할 수 있고, 고르지 않으면 이 개념에 연결된{" "}
+              <strong className="font-medium">검수 완료·사용 권한 유효</strong>{" "}
+              문항에서 자동으로 선정됩니다.
+              {usableQuestions !== null &&
+                ` 지금 이 개념에는 낼 수 있는 문항이 ${usableQuestions}개 있습니다.`}
+            </p>
+          ))}
+
+        {/* AI 고지는 종류를 가리지 않는다 — 읽기 자료도 AI가 쓸 수 있고,
+            그때도 학생은 알아야 한다. 만들 때부터 적을 수 있어야 「나중에
+            상세에서 넣지」가 곧 「아무도 안 넣는다」가 되지 않는다. */}
+        <DisclosureField />
+
+        {/* 잡 ID는 사람이 옮겨 적을 값이 아니다 — 메타 붙여넣기가 채운다.
+            상세 화면에서는 눈으로 보고 고칠 수 있다. */}
+        <input type="hidden" name="sourceJobId" defaultValue="" />
 
         <button
           type="submit"
