@@ -4,15 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./profiles": "./src/profiles/index.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "extract": "tsx src/cli/extract.mts",
-    "score": "tsx src/cli/score.mts",
     "answers": "tsx src/cli/answers.mts",
     "load": "tsx src/cli/load.mts",
     "verify-templates": "tsx src/cli/verify-templates.mts",

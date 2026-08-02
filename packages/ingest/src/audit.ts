@@ -44,6 +44,8 @@ const LOST_SUPERSCRIPT = /(?<![\\a-zA-Z])(\d)([a-z])(?![a-zA-Z0-9])/;
 
 /** 구매자 식별 도장 — 학생 화면에 절대 나가면 안 된다 */
 const PURCHASER = /[\w.+-]+@[\w-]+\.[\w.]+/;
+/** 발견을 알릴 때 가리는 용도 — 전역이라 검사용과 나눠 둔다 */
+const PURCHASER_ALL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
 
 const mathOf = (runs: Run[]): { latex: string; raw: string }[] =>
   runs.flatMap((r) => (r.kind === "math" ? [{ latex: r.latex, raw: r.raw }] : []));
@@ -62,12 +64,16 @@ function inspect(
   if (whole.trim() === "") return;
 
   if (PURCHASER.test(whole)) {
+    /* **가린 채로 알린다.** 그대로 실으면 이 검사기가 워터마크를 옮기는
+     * 통로가 된다 — `--md`로 뽑은 파일에 구매자 이메일이 그대로 적히고,
+     * 그 파일은 저장소에 커밋될 수 있다. 어디에 남았는지만 알면 고칠 수
+     * 있고, 무엇이었는지는 알 필요가 없다. */
     push({
       printedNumber,
       where,
       kind: "구매자-도장",
       detail: "구매자 식별 문자열이 남았다",
-      excerpt: whole.slice(0, 120),
+      excerpt: whole.replace(PURCHASER_ALL, "‹구매자 식별 문자열›").slice(0, 120),
     });
   }
 
