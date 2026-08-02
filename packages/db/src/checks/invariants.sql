@@ -38,7 +38,10 @@ where n.nspname = 'public'
     'curriculum_releases', 'official_curriculum_nodes', 'achievement_standards',
     'competency_definitions', 'canonical_concepts', 'concept_edges',
     'learning_objectives', 'assessment_evidences', 'representations',
-    'misconceptions', 'instructional_profiles'
+    'misconceptions', 'instructional_profiles',
+    -- 워커 프로세스의 생존 신고(0011a). 워커는 전 조직을 대상으로 도는 한
+    -- 프로세스라 조직에 속하지 않는다 — inbox_events와 같은 층이다.
+    'worker_heartbeats'
   )
   and not exists (
     select 1 from pg_attribute a
@@ -770,8 +773,17 @@ where a.status = 'finalized'
 -- CHECK: R-04 이벤트 사슬 — 배달 완료 이벤트가 소비자 작업을 만들었는가
 -- 근거: ADR-0006, RB-04 V-8. dispatchOutbox가 delivered로 표시하기 전에
 --       소비자별 작업을 같은 트랜잭션에서 넣는다. 하나라도 없으면 사슬이 끊겼다.
--- 라우팅 표는 packages/db/src/queue.ts의 EVENT_CONSUMERS와 **동기화해야 한다**.
 -- 작업 멱등성 키 = '{topic}:{event_id}'.
+--
+-- 아래 두 표는 packages/db/src/queue.ts의 EVENT_CONSUMERS·EVENT_WITHOUT_CONSUMER를
+-- **그대로 옮긴 것**이다. 손으로 두 곳에 두는 구조라 어긋날 수 있어(실제로
+-- LearnerRouteOverrideChanged 한 줄이 빠져 있었고, 54건짜리 경로의 사슬 단절을
+-- 이 검사가 못 잡았다) packages/db/test/event-routing-sync.test.ts가 두 표를
+-- 코드와 대조한다. 어긋나면 DB 없이도 CI에서 실패한다.
+--
+-- 왜 SQL 쪽을 생성하지 않는가: 이 파일은 `psql -f`로 직접 돌린다(RB-04 V-10).
+-- 자리표시자를 두면 장애 때 그대로 붙여넣을 수 없게 된다. 그래서 표는 남기고
+-- 동기화를 테스트로 강제한다.
 with consumers(event_type, topic) as (
   values
     ('RoutePublished', 'schedule.materialize'),
@@ -779,6 +791,7 @@ with consumers(event_type, topic) as (
     ('SessionCompleted', 'schedule.recalculate'),
     ('SessionCompleted', 'readmodel.refresh'),
     ('LearningAvailabilityChanged', 'schedule.recalculate'),
+    ('LearnerRouteOverrideChanged', 'schedule.materialize-learner'),
     ('AssessmentPublished', 'notification.dispatch'),
     ('AttemptSubmitted', 'grading.auto'),
     ('GradeFinalized', 'mastery.update'),
@@ -787,12 +800,17 @@ with consumers(event_type, topic) as (
     ('ScheduleProposalCreated', 'notification.dispatch'),
     ('ScheduleProposalApplied', 'notification.dispatch'),
     ('ContentApproved', 'readmodel.refresh'),
-    ('CurriculumReleasePublished', 'curriculum.impact-analysis'),
     ('FormulaReviewRequired', 'notification.dispatch'),
-    ('QuestionQuarantined', 'assessment.exclude-question'),
     ('QuestionQuarantined', 'notification.dispatch'),
     ('ContentRightsRevoked', 'content.rights-impact'),
     ('ContentRightsRevoked', 'notification.dispatch')
+),
+-- 소비자를 두지 않기로 **선언한** 이벤트 (EVENT_WITHOUT_CONSUMER).
+-- 작업 0건으로 delivered가 되는 것이 정상인 유일한 경우다.
+no_consumer(event_type) as (
+  values
+    ('RenderArtifactValidated'),
+    ('CurriculumReleasePublished')
 )
 select
   e.id::text         as event_id,
@@ -806,7 +824,19 @@ where e.status = 'delivered'
   and not exists (
     select 1 from jobs j
     where j.topic = c.topic and j.idempotency_key = c.topic || ':' || e.id::text
-  );
+  )
+union all
+-- 라우팅표에도 무소비 선언에도 없는 이벤트가 delivered라면, 소비자 0건으로
+-- 조용히 폐기된 것이다. 「없다고 정한 것」과 「빠뜨린 것」을 여기서 가른다.
+select
+  e.id::text,
+  e.event_type,
+  '(라우팅표에 없음 — 소비자 0건으로 배달)'::text,
+  e.delivered_at
+from outbox_events e
+where e.status = 'delivered'
+  and e.event_type not in (select event_type from consumers)
+  and e.event_type not in (select event_type from no_consumer);
 
 
 -- CHECK: R-05 활성 포인터 정합 — 지금 유효한 버전이 하나뿐이고 게시본을 가리키는가

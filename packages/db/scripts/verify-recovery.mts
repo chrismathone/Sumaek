@@ -177,6 +177,41 @@ async function main(): Promise<void> {
         console.log(`  ${table.padEnd(22)} 조회 실패: ${message}`);
       }
     }
+
+    /* 행 수만으로는 "이벤트 사슬이 살아 있는가"를 알 수 없다. pending 1000건과
+     * delivered 1000건은 같은 1000건이지만 전자는 아무 일도 일어나지 않은
+     * 것이다. 상태별로 갈라서 보여 준다 (RB-04 4-4·6장 V-5). */
+    console.log("");
+    console.log("[V-8] Outbox·작업 상태 분해");
+    console.log("");
+    try {
+      const outbox = (await sql.unsafe(
+        `select status::text as status, count(*)::bigint as n,
+                max(now() - created_at)::text as oldest
+         from outbox_events group by 1 order by 2 desc`,
+      )) as unknown as { status: string; n: string; oldest: string | null }[];
+      for (const row of outbox) {
+        console.log(
+          `  outbox ${row.status.padEnd(12)} ${String(row.n).padStart(10)}   최고령 ${row.oldest ?? "-"}`,
+        );
+      }
+      const jobs = (await sql.unsafe(
+        `select status::text as status, count(*)::bigint as n
+         from jobs group by 1 order by 2 desc`,
+      )) as unknown as { status: string; n: string }[];
+      for (const row of jobs) {
+        console.log(`  jobs   ${row.status.padEnd(12)} ${String(row.n).padStart(10)}`);
+      }
+      console.log("");
+      console.log(
+        "  적체 자체는 위반이 아니다 — 워커가 안 떠 있으면 쌓인다. 상세는 `pnpm queue:status`.",
+      );
+    } catch (error) {
+      failedChecks += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`상태 분해 조회 실패: ${message}`);
+      console.log(`  조회 실패: ${message}`);
+    }
   } finally {
     await sql.end();
   }

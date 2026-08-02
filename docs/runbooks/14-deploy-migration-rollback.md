@@ -304,10 +304,15 @@ ORDER BY 3 DESC;
 `queued`가 계속 쌓이는데 `running`·`succeeded`로 넘어가지 않는 토픽이 범인이다.
 작업은 큐에 남아 있으므로 **해당 워커를 배포하면 그대로 처리된다.**
 
-> 현재 `EVENT_CONSUMERS`(`queue.ts:263-281`)는 `curriculum.impact-analysis`와
-> `assessment.exclude-question`을 소비자로 지정하지만 **워커에는 두 핸들러가 등록되어
-> 있지 않다**(`apps/worker/src/main.ts:42-50`은 8개만 등록). 배포와 무관하게 이 두 토픽은
-> 상시 `queued`로 쌓인다 — (b)에서 이것을 보고 배포 회귀로 오판하지 말 것.
+> 라우팅표(`EVENT_CONSUMERS`, packages/db/src/queue.ts)의 모든 토픽에 핸들러가
+> 등록되어 있는지는 `apps/worker/test/wiring/event-wiring.test.ts`가 CI에서
+> 검사한다. 그러므로 (b)에서 아무도 집어가지 않는 토픽이 보이면 **그건 진짜
+> 배포 결손이다** — 해당 워커가 안 떠 있거나 구버전이다. `pnpm worker:status`로
+> 워커 생존부터 확인한다.
+>
+> (예전에는 `curriculum.impact-analysis`·`assessment.exclude-question`이 핸들러
+> 없이 라우팅표에만 있어 상시 적체의 정상 원인이었다. 지금은 라우팅표에서
+> 뺐다 — 근거는 queue.ts 주석.)
 
 ```sql
 -- (c) 소비 진행 확인 — Inbox는 "봤다"만 기록한다

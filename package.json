@@ -16,6 +16,8 @@
   "scripts": {
     "dev": "pnpm --filter @su-maek/web dev",
     "dev:worker": "pnpm --filter @su-maek/worker dev",
+    "dev:all": "node scripts/dev-all.mjs",
+    "worker:status": "pnpm --filter @su-maek/worker status",
     "build": "node scripts/boundary-check.mjs && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
@@ -30,6 +32,8 @@
     "kill-switch": "pnpm --filter @su-maek/db exec tsx scripts/kill-switch.mts",
     "ai-canary": "pnpm --filter @su-maek/db exec tsx scripts/ai-canary.mts",
     "requeue-dlq": "pnpm --filter @su-maek/db exec tsx scripts/requeue-dead-letters.mts",
+    "queue:status": "pnpm --filter @su-maek/db exec tsx scripts/queue-status.mts",
+    "requeue-outbox": "pnpm --filter @su-maek/db exec tsx scripts/requeue-outbox.mts",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "rebuild:readmodels": "node scripts/rebuild-read-models.mjs"
   },

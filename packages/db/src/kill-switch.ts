@@ -23,6 +23,13 @@ export const KILL_SWITCH_TOPICS: Readonly<Record<string, readonly string[]>> = {
     "schedule.materialize-learner",
   ],
   auto_grading: ["grading.auto"],
+  /* 주의: 이 두 토픽에는 **핸들러도 발행부도 없다.** 렌더러
+   * (apps/worker/src/export/pdf-renderer.ts)는 구현돼 있지만 어떤 토픽에도
+   * 배선되지 않았고, 그래서 이 스위치를 꺼도 지금은 아무것도 멈추지 않는다.
+   * 이름만 남겨 두면 "끄면 CPU가 회수된다"는 거짓 기대를 만들지만, 지우면
+   * 구현이 붙을 자리마저 사라진다. 그래서 남기고 결손을 드러낸다 —
+   * 단일 정의처는 apps/worker/src/registry.ts의 TOPICS_WITHOUT_HANDLER이고
+   * test/wiring/event-wiring.test.ts가 그 목록과 실제를 대조한다. */
   document_export: ["export.pdf", "export.hwpx"],
   // external_notifications는 외부 공급자 어댑터 도입 시 연결한다.
   // 앱 내 알림(notification.dispatch)은 대상이 아니다 — 업무함은 항상 동작 (22장).

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { v7 as uuidv7 } from "uuid";
 import {
@@ -11,6 +9,7 @@ import {
 } from "@su-maek/db";
 import { materializeGroupSchedule } from "@su-maek/db/domain";
 import { handleLearnerScheduleMaterialize } from "../../src/handlers/schedule";
+import { createHandlerRegistry } from "../../src/registry";
 
 /* ─────────────────────────────────────────────────────────────
  * 학습자 스코프 자동 재계산 (인수 4) — 라이브 DB 통합 테스트.
@@ -27,9 +26,9 @@ import { handleLearnerScheduleMaterialize } from "../../src/handlers/schedule";
  *   6) 취소 이벤트는 학생을 반 공통 경로로 되돌린다
  *
  * 덮지 못하는 것 — 정직하게 적는다:
- *  - Outbox 디스패처 실행(dispatchOutbox)은 부르지 않는다. 전역으로 pending
- *    이벤트를 전부 소비하는 함수라 공유 DB에서 남의 이벤트까지 delivered로
- *    바꾼다. 대신 라우팅 테이블과 등록을 직접 단언한다(테스트 1).
+ *  - Outbox 디스패처 실행(dispatchOutbox)은 여기서 부르지 않는다. 라우팅
+ *    테이블과 등록을 직접 단언한다(테스트 1). outbox→작업→핸들러 왕복 자체는
+ *    조직 스코프 디스패처로 test/wiring/outbox-roundtrip.test.ts가 덮는다.
  *
  * 픽스처 규약: 조직만 고정 ID(감사 행은 지울 수 없다), 이벤트 ID도 고정
  * (inbox_events에는 organization_id가 없어 실행마다 새 ID면 정리할 수 없다).
@@ -172,11 +171,6 @@ async function cleanupFixtures(): Promise<void> {
 /* ── 1) 배선의 짝 — DB 없이도 도는 회귀 검사 ────────────────── */
 
 describe("오버라이드 → 학습자 재계산 배선 (인수 4)", () => {
-  const MAIN = readFileSync(
-    fileURLToPath(new URL("../../src/main.ts", import.meta.url)),
-    "utf8",
-  );
-
   it("오버라이드 변경 이벤트가 학습자 실체화 토픽으로 라우팅된다", () => {
     expect(EVENT_CONSUMERS.LearnerRouteOverrideChanged).toEqual([
       "schedule.materialize-learner",
@@ -188,28 +182,14 @@ describe("오버라이드 → 학습자 재계산 배선 (인수 4)", () => {
   });
 
   it("학습자 실체화 토픽에 워커 핸들러가 등록되어 있다", () => {
-    /* EVENT_CONSUMERS 등록의 짝. 이 register가 빠지면 작업이 큐에 쌓이기만
+    /* EVENT_CONSUMERS 등록의 짝. 이 등록이 빠지면 작업이 큐에 쌓이기만
      * 하고 아무도 처리하지 않는다 — 화면은 "자동 재계산됨"이라 믿는데
-     * 학생 일정은 영원히 옛것이다. */
-    expect(MAIN).toContain('register("schedule.materialize-learner"');
-  });
-
-  it("소비자 없는 토픽은 알려진 결손 목록과 정확히 일치한다", () => {
-    /* 라우팅에는 있는데 핸들러가 없는 토픽 — 작업은 queued로 남으므로
-     * (클레임 대상 토픽이 handlers.keys()라서) 유실은 아니지만 **아무도
-     * 하지 않는다**. 새 결손이 늘면 여기서 걸린다.
+     * 학생 일정은 영원히 옛것이다.
      *
-     * 아래 둘은 이 검사를 도입하며 드러난 **기존** 결손이다. 인수 4 범위
-     * 밖이라 이번에 고치지 않고 정직하게 적어 둔다. */
-    const KNOWN_UNREGISTERED = [
-      "assessment.exclude-question", // QuestionQuarantined — 문항 격리 영향 반영
-      "curriculum.impact-analysis", // CurriculumReleasePublished — 개정 영향 분석
-    ];
-    const topics = [...new Set(Object.values(EVENT_CONSUMERS).flat())];
-    const unregistered = topics
-      .filter((topic) => !MAIN.includes(`register("${topic}"`))
-      .sort();
-    expect(unregistered).toEqual(KNOWN_UNREGISTERED);
+     * 레지스트리 전반의 짝 검사는 test/wiring/event-wiring.test.ts가 한다. */
+    expect(createHandlerRegistry().has("schedule.materialize-learner")).toBe(
+      true,
+    );
   });
 });
 

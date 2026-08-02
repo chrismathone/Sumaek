@@ -127,6 +127,38 @@ export const jobs = pgTable(
 );
 
 /**
+ * 워커 박동 — "지금 워커가 살아 있는가"를 관측 가능하게 만드는 유일한 행.
+ *
+ * 접속이 Supavisor 풀러를 거쳐 pg_stat_activity로는 워커를 식별할 수 없고,
+ * 큐 지표는 일이 있을 때만 죽음을 드러낸다. 유휴 상태의 죽음까지 보려면
+ * 워커가 직접 남기는 수밖에 없다 (RB-04 `worker_heartbeat_lost`).
+ *
+ * 조직 스코프가 없는 플랫폼 테이블이다 — jobs·outbox_events와 같이 RLS를
+ * 켜되 정책을 두지 않아 서비스 롤만 접근한다.
+ */
+export const workerHeartbeats = pgTable("worker_heartbeats", {
+  /** 프로세스 단위 식별자 — 재시작하면 새 값이다 */
+  workerId: text("worker_id").primaryKey(),
+  hostname: text("hostname"),
+  pid: integer("pid"),
+  /** 이 워커가 처리하는 토픽 — 어느 소비자가 죽었는지 바로 보인다 */
+  topics: text("topics").array().notNull().default(sql`'{}'::text[]`),
+  /** 박동 주기(초). "얼마나 늦으면 죽은 것인가"를 관측자가 여기서 읽는다 */
+  beatIntervalSeconds: integer("beat_interval_seconds").notNull().default(15),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastBeatAt: timestamp("last_beat_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  /** 정상 종료 표시 — 내려간 것과 죽은 것을 가른다 */
+  stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+  stopReason: text("stop_reason"),
+  /** 마지막 루프 요약 — 살아 있지만 아무것도 못 하는 상태를 구분한다 */
+  lastResult: jsonb("last_result"),
+});
+
+/**
  * 쓰기 API 멱등성 저장소 (2G).
  * 같은 키 + 같은 요청 해시 → 저장된 결과 반환. 같은 키 + 다른 payload → 409 거부.
  */
