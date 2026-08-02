@@ -58,6 +58,12 @@ export const bookEditions = pgTable(
     isbn: text("isbn"),
     editionLabel: text("edition_label").notNull(), // 예: 2026년 개정판 3쇄
     publishedYear: integer("published_year"),
+    /**
+     * 이 판을 **어떤 규칙으로 뽑았는지** — 프로파일 id·버전·실측 특징.
+     * 문제집마다 조판이 다르다. 나중에 "이 문항 왜 이렇게 뽑혔지"를 물을 때
+     * 그때 쓴 규칙이 남아 있어야 답할 수 있다.
+     */
+    extractionProfile: jsonb("extraction_profile"),
     ...timestamps(),
   },
   (t) => [index("book_editions_book_idx").on(t.bookId)],
@@ -199,6 +205,17 @@ export const questions = pgTable(
     contentRightId: uuid("content_right_id"),
     /** 원본 페이지 내 좌표 (crop bbox) */
     sourceCoords: jsonb("source_coords"),
+    /**
+     * 출처 메타데이터 (**비공개**) — 교재·판·출판사·단원·소단원·유형·
+     * 교과서 쪽 참조·인쇄 문항 번호·난이도 뱃지·추출 프로파일.
+     *
+     * 정규화된 FK만으로는 교재 고유의 계층(단원·유형)을 담을 자리가 없고,
+     * 그 계층은 교재마다 달라 컬럼으로 못 박을 수도 없다.
+     *
+     * 학생 화면 질의는 body·choices만 읽는다 — 출처를 보여 주면 "몇 번
+     * 문제인지" 검색해서 답을 찾는다.
+     */
+    sourceRef: jsonb("source_ref"),
     /** 자동 출제 가능 여부 — 검수·권한·수식 게이트의 종합 (강한 일관성 전환) */
     isAutoAssignable: boolean("is_auto_assignable").notNull().default(false),
     /** 오류 신고로 격리된 경우의 사유 */
