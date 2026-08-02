@@ -220,6 +220,39 @@ export function cleanBodyText(raw: string): string {
   return raw.replace(DROPPABLE, "").replace(/[ \t]+/g, " ");
 }
 
+/**
+ * 두 LaTeX 조각을 잇는다 — 필요한 자리에만 공백을 넣는다.
+ *
+ * `\times`는 글자가 아닌 것에서 끝나는 제어 낱말이라 뒤에 공백을 둔다.
+ * 그런데 `decodeHwpMath`가 조각을 다듬으며 `trim()`을 하고, 그 뒤에 다음
+ * 조각을 그냥 붙이면 `8\times` + `a` = `8\timesa`가 된다. 없는 명령이므로
+ * KaTeX가 파싱에 실패하고 **화면에 빨간 글자로 그대로** 나온다 —
+ * 실제로 해설 6건이 그랬다(문항 0206·0207 등).
+ *
+ * 조각을 이어 붙이는 자리에서는 반드시 이 함수를 쓴다.
+ */
+export function joinLatex(left: string, right: string): string {
+  if (left === "") return right;
+  const needsSpace = /\\[a-zA-Z]+$/.test(left) && /^[a-zA-Z]/.test(right);
+  return left + (needsSpace ? " " : "") + right;
+}
+
+/**
+ * 한글 조각 잇기 — 문장이 끝난 자리에 공백을 넣는다.
+ *
+ * 조판기는 줄바꿈으로 문장을 나누므로 span에는 공백이 없다. 그대로 이으면
+ * 「이 문장을 이용한다.최대공약수가 8이고」 「말하시오.2⁵」처럼 붙어 버린다.
+ * 화면에서 바로 보이는 종류의 흠이다.
+ *
+ * 마침표 **뒤에만** 넣는다. 아무 데나 넣으면 「최대」+「공약수」가
+ * 「최대 공약수」가 되어 오히려 나빠진다.
+ */
+export function joinKorean(left: string, right: string): string {
+  if (left === "" || right === "") return left + right;
+  const needsSpace = /[.!?]$/.test(left) && /^[^\s.,)\]}]/.test(right);
+  return left + (needsSpace ? " " : "") + right;
+}
+
 /** 표가 다룰 수 있는 글리프인지 — 프로파일 자가진단용 */
 export function isKnownGlyph(ch: string): boolean {
   return (

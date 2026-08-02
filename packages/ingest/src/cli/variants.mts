@@ -16,7 +16,7 @@ import {
   evaluateNumericLatex,
   makeRng,
   renderMultipleChoice,
-  RPM_M1_CH1_TEMPLATES,
+  RPM_M1_CH1_ALL_TEMPLATES,
   type GcdParams,
   type VariantTemplate,
 } from "@su-maek/core/variants";
@@ -92,7 +92,7 @@ for (const row of rows) {
   const printed = printedAnswerOf(row);
   if (printed === null) continue;
 
-  for (const template of RPM_M1_CH1_TEMPLATES as readonly VariantTemplate<unknown>[]) {
+  for (const template of RPM_M1_CH1_ALL_TEMPLATES as readonly VariantTemplate<unknown>[]) {
     const params = template.parse(stem, choices);
     if (params === null) continue;
 

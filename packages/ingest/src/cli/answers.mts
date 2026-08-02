@@ -41,7 +41,7 @@ if (args.includes("--verbose")) {
   for (const n of found) {
     const a = parsed.get(n)!;
     console.log(`[${n}] 답: ${renderRuns(a.answer)}`);
-    const explanation = renderRuns(a.explanation);
+    const explanation = a.explanation.map(renderRuns).filter(Boolean).join(" / ");
     if (explanation) console.log(`      풀이: ${explanation.slice(0, 150)}`);
     const rubric = renderRuns(a.rubric);
     if (rubric) console.log(`      채점기준: ${rubric.slice(0, 160)}`);

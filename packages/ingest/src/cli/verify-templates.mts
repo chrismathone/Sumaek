@@ -16,7 +16,7 @@ config({ path: [".env", "../../.env"] });
 import postgres from "postgres";
 import {
   evaluateNumericLatex,
-  RPM_M1_CH1_TEMPLATES,
+  RPM_M1_CH1_ALL_TEMPLATES,
   type VariantTemplate,
 } from "@su-maek/core/variants";
 
@@ -82,6 +82,13 @@ function sameAnswer(computed: string, printed: string): boolean {
   const a = evaluateNumericLatex(computed);
   const b = evaluateNumericLatex(printed);
   if (a !== null && b !== null) return a === b;
+  /* ◯·× 판정 문항 — 교재의 ×는 수식 폰트에서 와 `\times`로 해독된다.
+   * 같은 기호인데 표기가 달라 재현 실패로 잡혔다(0108·0110). */
+  const mark = (s: string): string =>
+    normalize(s).replace(/\\times/g, "×").replace(/[Xx✕✖]/g, "×");
+  if (/^[◯○×]$/.test(mark(computed)) || /^[◯○×]$/.test(mark(printed))) {
+    return mark(computed) === mark(printed);
+  }
   /* 「12개」와 「12」처럼 단위만 다른 경우 — 숫자만 남겨 다시 본다 */
   const digitsOnly = (s: string): string => normalize(s).replace(/[^\d]/g, "");
   if (/^\d+$/.test(digitsOnly(computed)) && digitsOnly(computed) === digitsOnly(printed)) {
@@ -108,7 +115,7 @@ for (const row of rows) {
   const printed = printedAnswerOf(row);
 
   let matched = false;
-  for (const template of RPM_M1_CH1_TEMPLATES as readonly VariantTemplate<unknown>[]) {
+  for (const template of RPM_M1_CH1_ALL_TEMPLATES as readonly VariantTemplate<unknown>[]) {
     const params = template.parse(stem, choices);
     if (params === null) continue;
     matched = true;

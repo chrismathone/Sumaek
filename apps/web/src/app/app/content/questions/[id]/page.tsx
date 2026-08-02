@@ -431,7 +431,18 @@ export default async function QuestionDetailPage({
       <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
         <h2 className="text-sm font-semibold text-ink-soft">정답·배점</h2>
         <dl className="mt-2 grid gap-3 sm:grid-cols-2">
-          <Field label="정답">{formatAnswerKey(answer, choices)}</Field>
+          {/* 정답도 본문과 **같은 렌더 함수**를 지난다. 여기만 평문으로
+              그렸더니 `$3$`·`\times`가 글자 그대로 나왔다 — 단답 132건 중
+              122건이 그랬다. 표시 경로는 하나로 모은다. */}
+          <Field label="정답">
+            <span
+              className="math-content"
+              dangerouslySetInnerHTML={{
+                __html: renderMixedText(formatAnswerKey(answer, choices), "authoring")
+                  .html,
+              }}
+            />
+          </Field>
           <Field label="배점">
             {question.points ? `${Number(question.points)}점` : "미지정"}
           </Field>
@@ -675,7 +686,12 @@ function formatAnswerKey(answer: AnswerKeyLike, choices: ChoiceRow[]): string {
       .map((a) => {
         const unit = a.unit ? ` ${a.unit}` : "";
         const eq = a.allowEquivalence ? " · 동치 허용" : "";
-        return `${a.value ?? ""}${unit}${eq}`;
+        /* form이 expression이면 값 자체가 LaTeX다 — 표시할 때 `$…$`로
+         * 감싸 준다. 값에 구분자를 저장해 두면 채점이 학생의 「3」과
+         * 저장된 「$3$」를 다르다고 본다(계약 2N). */
+        const value =
+          a.form === "expression" ? `$${a.value ?? ""}$` : (a.value ?? "");
+        return `${value}${unit}${eq}`;
       })
       .join(" 또는 ");
   }

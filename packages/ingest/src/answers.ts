@@ -1,4 +1,4 @@
-import { cleanBodyText, decodeHwpMath } from "./hwp-encoding";
+import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex } from "./hwp-encoding";
 import type { PageDump, Run, SourceDump } from "./types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -20,8 +20,14 @@ export interface ParsedAnswer {
   page: number;
   /** 「답」 뒤의 내용 — 이것이 정답이다 */
   answer: Run[];
-  /** 「답」 앞의 내용 — 풀이 */
-  explanation: Run[];
+  /**
+   * 「답」 앞의 내용 — 풀이. **줄 단위**로 담는다.
+   *
+   * 한 덩어리로 뭉치면 화면에서 「…관계를 이용한다.최대공약수가 8이고
+   * A<B이므로A=8×a, B=8×b…」처럼 끝없이 이어져 읽을 수가 없다.
+   * 별책에는 줄 구조가 있고, 그것이 풀이의 단계 구분이다.
+   */
+  explanation: Run[][];
   /**
    * 서술형 문항의 채점 기준표 (「단계 · 채점 요소 · 비율」).
    * 답 뒤에 붙어 있어서 그냥 두면 정답이 「8단계채점 요소비율1504를…60%」가
@@ -97,6 +103,33 @@ export function parseAnswerPage(
   for (const line of lines) line.spans.sort((a, b) => a.x0 - b.x0);
   lines.sort((a, b) => a.column - b.column || a.y - b.y);
 
+  /* ── 어디가 진짜 줄바꿈인가 ────────────────────────────────
+   *
+   * 조판의 줄바꿈은 두 종류다. 대부분은 **폭이 차서** 넘어간 것이고
+   * (「…관계를 이 / 용한다」처럼 낱말 중간에서도 끊긴다), 일부는 글쓴이가
+   * 의도한 **단계 구분**이다. 앞엣것을 줄바꿈으로 살리면 낱말이 쪼개지고,
+   * 뒤엣것을 뭉개면 풀이가 한 줄로 이어져 읽을 수가 없다.
+   *
+   * 구분하는 단서는 **줄이 어디서 끝났는가**다. 오른쪽 끝까지 찼으면
+   * 넘어간 것이고, 한참 못 미치면 거기서 끊은 것이다. 단의 오른쪽 끝은
+   * 그 단에서 가장 멀리 간 줄로 잰다 — 쪽마다 여백이 조금씩 다르다. */
+  const columnRight = new Map<number, number>();
+  for (const line of lines) {
+    const right = Math.max(...line.spans.map((s) => s.x1));
+    columnRight.set(line.column, Math.max(columnRight.get(line.column) ?? 0, right));
+  }
+  /** 이 줄에서 끊긴 것인가 (다음 줄과 이어지지 않는가) */
+  const endsHere = (line: Line): boolean => {
+    const right = Math.max(...line.spans.map((s) => s.x1));
+    const edge = columnRight.get(line.column) ?? right;
+    return edge - right > 12;
+  };
+  /** 줄이 새 단계로 시작하는가 — ∴·따라서·즉은 언제나 새 줄이다 */
+  const startsNew = (line: Line): boolean =>
+    /^\s*(∴|따라서|즉|그러므로)/.test(
+      cleanBodyText(line.spans.map((s) => s.text).join("")).trim(),
+    );
+
   const out: ParsedAnswer[] = [];
   let current: ParsedAnswer | null = null;
   let inAnswer = false;
@@ -142,7 +175,7 @@ export function parseAnswerPage(
       const last = runs[runs.length - 1];
       if (last?.kind === "math" && adjacent) {
         last.raw += raw;
-        last.latex += decoded.latex;
+        last.latex = joinLatex(last.latex, decoded.latex);
         last.unknown.push(...decoded.unknown);
         return;
       }
@@ -151,11 +184,25 @@ export function parseAnswerPage(
     }
     if (text.trim() === "") return;
     const last = runs[runs.length - 1];
-    if (last?.kind === "text") last.text += text;
+    if (last?.kind === "text") last.text = joinKorean(last.text, text);
     else runs.push({ kind: "text", text });
   };
 
+  /** 지금 풀이를 담고 있는 줄. 새 줄을 시작할 때마다 갈아 끼운다. */
+  let explanationLine: Run[] | null = null;
+  const explanationTarget = (): Run[] => {
+    if (!explanationLine) {
+      explanationLine = [];
+      current!.explanation.push(explanationLine);
+    }
+    return explanationLine;
+  };
+
   for (const line of lines) {
+    /* 앞 줄이 오른쪽 끝을 못 채웠거나 이 줄이 ∴·따라서로 시작하면
+     * 거기서 끊긴 것이다 — 다음 조각은 새 줄에 담는다. */
+    if (startsNew(line)) explanationLine = null;
+
     for (const span of line.spans) {
       const cleaned = cleanBodyText(span.text);
 
@@ -175,6 +222,7 @@ export function parseAnswerPage(
             inAnswer = false;
             answerClosed = false;
             inRubric = false;
+            explanationLine = null;
             lastX1 = Number.NEGATIVE_INFINITY;
             out.push(current);
           }
@@ -208,7 +256,7 @@ export function parseAnswerPage(
         ? current.rubric
         : inAnswer
           ? current.answer
-          : current.explanation;
+          : explanationTarget();
       push(
         target,
         cleaned,
@@ -218,6 +266,8 @@ export function parseAnswerPage(
         span.x1,
       );
     }
+    /* 이 줄이 오른쪽 끝을 못 채웠다면 여기서 끊긴 것이다 */
+    if (!inAnswer && !inRubric && endsHere(line)) explanationLine = null;
   }
 
   /* 번호가 네 자리로 완성되지 않은 것은 버린다 — 쪽 번호·각주가 섞인 것이다 */

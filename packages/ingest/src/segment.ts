@@ -1,4 +1,4 @@
-import { cleanBodyText, decodeHwpMath } from "./hwp-encoding";
+import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex } from "./hwp-encoding";
 import type { ExtractionProfile } from "./profiles/types";
 import type {
   ChoiceItem,
@@ -313,7 +313,7 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
           const bottom = decodeHwpMath(span.stacked.denominator.text);
           raw += span.text;
           unknown.push(...top.unknown, ...bottom.unknown);
-          latex += `\\frac{${top.latex}}{${bottom.latex}}`;
+          latex = joinLatex(latex, `\\frac{${top.latex}}{${bottom.latex}}`);
           continue;
         }
         const decoded = decodeHwpMath(span.text);
@@ -322,7 +322,7 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         if (decoded.latex === "") continue;
         const raised =
           span.size < baseSize * 0.8 && span.y1 < baseY1 - baseSize * 0.1;
-        latex += raised ? `^{${decoded.latex}}` : decoded.latex;
+        latex = joinLatex(latex, raised ? `^{${decoded.latex}}` : decoded.latex);
       }
       if (latex !== "") runs.push({ kind: "math", raw, latex, unknown });
       i = j;
@@ -333,7 +333,7 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
     i += 1;
     if (text.trim() === "") continue;
     const last = runs[runs.length - 1];
-    if (last?.kind === "text") last.text += text;
+    if (last?.kind === "text") last.text = joinKorean(last.text, text);
     else runs.push({ kind: "text", text });
   }
   return runs;
@@ -457,7 +457,14 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     }
     /* 지시문이 다음 줄로 넘어가는 일이 잦다 (「… ( ) / 안에 써넣으시오.」).
      * 문항 번호로 시작하지 않는 바로 다음 줄까지만 이어 받는다. */
-    const next = fullWidthLines[i + 1];
+    /* 이미 문장이 끝났으면 이어받지 않는다.
+     *
+     * 「다음 수의 약수를 모두 구하시오.」는 그 자체로 완결이다. 그런데도 다음
+     * 줄을 붙이다가 **첫 문항의 수를 지시문에 삼켰고**, 그 지시문이 0032~0035
+     * 넷 모두에 붙어 네 문항이 전부 같은 수를 묻는 꼴이 됐다. 결과만 보면
+     * 멀쩡해 보이고, 재현 검사에서 네 문항의 답이 똑같이 나와서야 드러났다. */
+    const ended = /[.?!]$/.test(cleanBodyText(own.map((s) => s.text).join("")).trim());
+    const next = ended ? undefined : fullWidthLines[i + 1];
     if (next) {
       // 이어지는 줄도 지시문이 시작한 x 언저리에서부터 읽는다
       const nextOwn = takeContiguous(
@@ -525,7 +532,17 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     );
     const n = Number(built.printedNumber);
     const shared = sharedInstructions.find((i) => n >= i.from && n <= i.to);
-    if (shared) built.stem = [...shared.runs, ...built.stem];
+    if (shared) {
+      /* 지시문과 문항 본문 사이를 띄운다 — 안 띄우면 「말하시오.2⁵」가 된다.
+       * **마지막 조각에만** 붙인다. 모든 조각에 붙였더니 줄바꿈으로 쪼개진
+       * 낱말 사이가 벌어져 「구하 시오」 「아니 면」이 됐다. */
+      const head = shared.runs.map((r, i) =>
+        r.kind === "text" && i === shared.runs.length - 1
+          ? { ...r, text: `${r.text.trimEnd()} ` }
+          : r,
+      );
+      built.stem = [...head, ...built.stem];
+    }
     questions.push(built);
     current = null;
   };

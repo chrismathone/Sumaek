@@ -157,14 +157,45 @@ function buildAnswerKey(
     return { kind: "multiple_choice", key: { kind: "multiple_choice", correctChoiceIds: ids } };
   }
 
-  /* 단답 — 「3개」 「47」 「1, 2, 4, 5」처럼 온다. 원문을 그대로 기준값으로
-   * 두고 정규화·동치 판정은 채점 파이프라인에 맡긴다. 여기서 숫자만
-   * 뽑아내면 「3개」가 「3」이 되어 단위가 사라진다. */
+  /* 단답 — 「3개」 「47」 「1, 2, 4, 5」처럼 온다.
+   *
+   * **`$…$`를 값에 넣지 않는다.** 그건 표시용 구분자이지 답의 일부가 아니다.
+   * 넣어 두면 두 가지가 한꺼번에 망가진다: 채점은 학생이 친 「3」과
+   * 저장된 「$3$」를 다르다고 보고, 화면은 `$3$`을 글자 그대로 보여 준다
+   * (실측: 단답 132건 중 122건이 그렇게 나오고 있었다).
+   *
+   * 조각이 수식 하나뿐이면 그 자체가 표현식이다 — form을 expression으로
+   * 두고 LaTeX만 담는다. 한글이 섞이면 혼합 텍스트이므로 그때만 `$…$`를
+   * 남기고, 화면은 renderMixedText로 그린다. */
+  const mathOnly =
+    parsed.answer.length === 1 && parsed.answer[0]!.kind === "math"
+      ? (parsed.answer[0] as Extract<Run, { kind: "math" }>).latex
+      : null;
+
+  /* ◯·× 판정 문항의 답은 **기호**이지 수식이 아니다. 별책의 ×가 수식
+   * 폰트로 찍혀 있어 `\times`로 해독되는데, 그대로 두면 채점이 학생이 고른
+   * 「×」와 저장된 「\times」를 다르다고 본다. 기호로 되돌린다. */
+  const MARK: Record<string, string> = { "\\times": "×", "\\bigcirc": "◯", "\\circ": "◯" };
+  const asMark = mathOnly === null ? undefined : MARK[mathOnly.trim()];
+  if (asMark !== undefined) {
+    return {
+      kind: "short_answer",
+      key: {
+        kind: "short_answer",
+        accepted: [{ value: asMark, form: "text", allowEquivalence: false }],
+      },
+    };
+  }
+
   return {
     kind: "short_answer",
     key: {
       kind: "short_answer",
-      accepted: [{ value: text, form: "text", allowEquivalence: false }],
+      accepted: [
+        mathOnly !== null
+          ? { value: mathOnly, form: "expression", allowEquivalence: false }
+          : { value: text, form: "text", allowEquivalence: false },
+      ],
     },
   };
 }
@@ -333,11 +364,16 @@ export async function loadQuestions(
 
     const expressions: { id: string; raw: string; latex: string }[] = [];
     const body = buildBody(question, expressions);
+    const bodyBlocks = body as { type?: string; choices?: unknown }[];
     const parsedAnswer = input.answers.get(printedNumber);
     const answerKey = buildAnswerKey(question, parsedAnswer);
     const explanation =
       parsedAnswer && parsedAnswer.explanation.length > 0
-        ? [{ type: "paragraph", runs: toContractRuns(parsedAnswer.explanation, expressions) }]
+        ? /* 줄마다 문단 하나. 한 문단에 몰아넣으면 화면에서 풀이가 끝없이
+           * 이어져 읽을 수가 없다 — 별책의 줄 구조가 곧 단계 구분이다. */
+          parsedAnswer.explanation
+            .filter((line) => line.length > 0)
+            .map((line) => ({ type: "paragraph", runs: toContractRuns(line, expressions) }))
         : null;
 
     /* 서술형 채점 기준표. 계약(essayKey)이 요구하는 rubricKey·points 구조로
@@ -430,7 +466,24 @@ export async function loadQuestions(
         ) values (
           ${versionId}, ${org}, ${questionId}, 1,
           ${tx.json(body as never)},
-          ${question.choices ? tx.json(question.choices.map((c, i) => ({ choiceId: `c${i + 1}`, order: i + 1, marker: c.marker })) as never) : null},
+          ${
+            question.choices
+              ? /* **내용까지 담는다.** 화면은 body가 아니라 이 컬럼을 읽는다.
+                 * id·순서만 넣었더니 선택지가 「1 2 3 4 5」로, 그것도 수식을
+                 * 거치지 않은 평문으로 나와 발문과 글꼴이 달랐다. */
+                tx.json(
+                  question.choices.map((c, i) => ({
+                    choiceId: `c${i + 1}`,
+                    order: i + 1,
+                    marker: c.marker,
+                    content: bodyBlocks
+                      .filter((b) => b.type === "choice_group")
+                      .flatMap((b) => (b.choices as { choiceId: string; content: unknown }[]) ?? [])
+                      .find((x) => x.choiceId === `c${i + 1}`)?.content,
+                  })) as never,
+                )
+              : null
+          },
           ${answerKey ? tx.json(answerKey.key as never) : null},
           ${explanation ? tx.json(explanation as never) : null},
           ${rubric ? tx.json(rubric as never) : null},

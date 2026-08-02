@@ -10,3 +10,23 @@
 export * from "./arithmetic";
 export * from "./types";
 export * from "./templates";
+export * from "./templates-drill";
+
+import { RPM_M1_CH1_TEMPLATES } from "./templates";
+import { RPM_M1_CH1_DRILL_TEMPLATES } from "./templates-drill";
+import type { VariantTemplate } from "./types";
+
+/**
+ * RPM 중1-1 1단원 템플릿 전체.
+ *
+ * **순서가 규칙이다** — 앞엣것이 먼저 문항을 문다. 좁은 템플릿을 앞에 둔다.
+ * 「소인수분해 하고 소인수를 모두 구하시오」는 「소인수분해하시오」이기도
+ * 하므로, 뒤에 두면 넓은 쪽이 먼저 물어 답이 모자라게 나온다.
+ */
+/* 템플릿마다 파라미터 타입이 다르고, 목록을 훑는 쪽은 그것을 **열어 보지
+ * 않는다** — parse가 낸 것을 그대로 solve에 넘길 뿐이다. 그래서 목록에서는
+ * 파라미터를 불투명하게 둔다. */
+export const RPM_M1_CH1_ALL_TEMPLATES = [
+  ...RPM_M1_CH1_DRILL_TEMPLATES,
+  ...RPM_M1_CH1_TEMPLATES,
+] as unknown as readonly VariantTemplate<unknown>[];
