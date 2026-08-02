@@ -53,6 +53,19 @@ const SUPERSCRIPT_LETTER: ReadonlyMap<string, string> = new Map([
   ["¶", "d"],
 ]);
 
+/**
+ * **위첨자 자리에서만** 뜻이 달라지는 글리프.
+ *
+ * 폭 0으로 앞 글자 위에 겹쳐 찍는 글리프인데, 부분집합 글꼴이라 코드가
+ * 본문 글자와 겹친다. `b`가 그렇다 — 본문에서는 변수 b지만 겹쳐 찍히면
+ * 위첨자 **a**다. 네 곳을 그려서 모두 확인했다:
+ *   본책 0160 「2^a×3²×5」 · 별책 12쪽 「2^a×3²×5」 「=2³×3^a×5」 · 별책 0199 「3^a×5」
+ *
+ * 그래서 좌표가 「이 글자는 위첨자다」라고 말해 준 자리에서만 이 표를 본다.
+ * 본문의 b까지 a로 바꾸면 문항이 통째로 망가진다.
+ */
+const OVERSTRUCK_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([["b", "a"]]);
+
 /** 진짜 유니코드 위첨자로 들어온 경우 (개념 정리 쪽에서 나온다) */
 const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
   ["¹", "1"],
@@ -85,13 +98,44 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
  * (숫자가 뒤에 올 때는 우연히 통과해서 더 나쁘다 — 변수 문항에서만 깨진다).
  */
 const OPERATOR: ReadonlyMap<string, string> = new Map([
-  /* EHyak 글꼴의 y는 가운뎃점 말줄임(…)이다.
-   * 지면 대조: 별책 0083 「a×a×…×a=aⁿ임을 이용한다」 */
-  ["y", "\\cdots "],
   ["_", "\\times "], // p.20 「2_3Û`」 = 2×3²
   ["Ö", "\\div "], // Ö — p.75 「4Öa」 = 4÷a
   ["×", "\\times "], // × (진짜 유니코드로 들어온 경우)
 ]);
+
+/**
+ * **같은 코드가 글꼴마다 다른 글자다.**
+ *
+ * 이 교재는 수식 글꼴을 여럿 섞어 쓰는데, 부분집합 글꼴이라 코드가 글꼴
+ * 안에서만 뜻을 갖는다. 글꼴을 안 보고 옮겼더니 이렇게 됐다:
+ *
+ * - `y` — EHyak에서는 말줄임(⋯)이지만 EHsang에서는 **변수 y**다.
+ *   「어떤 자연수 y의 제곱이 되도록」이 「어떤 자연수 ⋯의 제곱이」가 됐다
+ *   (문항 0074·0090·0100). 학생이 읽는 발문이 뜻을 잃는다.
+ * - `¾` — EHyak에서는 ≥지만 EHsang에서는 **℃**다. 0255의 답은 `x≥-4`,
+ *   0214의 답은 `+7℃`인데 한 표로는 둘 중 하나가 반드시 틀린다.
+ *
+ * 그래서 글꼴별 표를 먼저 보고, 없으면 공통 표로 간다. 여기 있는 값은
+ * 전부 해당 쪽을 그려서 눈으로 대조한 것이다.
+ */
+const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
+  {
+    font: /^EHyak/,
+    map: new Map([
+      ["y", "\\cdots "], // 별책 0083 「a×a×…×a=aⁿ」
+      ["¾", "\\ge "], // 별책 0255 「x≥-4」
+      ["É", "\\le "], // 별책 0256 「x≤11」
+    ]),
+  },
+  {
+    font: /^EHsang/,
+    map: new Map([
+      ["¾", "\\degree\\mathrm{C}"], // 별책 0214 「+7 ℃, -10 ℃」
+      ["Ç", "^{n}"], // 별책 0071 「2²×3×5ⁿ의 약수의 개수는」
+      ["¡", "^{8}"], // 별책 0090 「256=2⁸이므로」
+    ]),
+  },
+];
 
 /**
  * 의미 없는 조판 부호 — 지우는 것이 맞다고 확인한 것만.
@@ -110,6 +154,56 @@ const FRACTION = /;([^;:\s]{2,8});|:([^;:\s]{2,8}):/g;
 /** 분수 자리표시자 — 사설 사용 영역이라 본문·수식과 충돌하지 않는다 */
 const PH_OPEN = "\uE000";
 const PH_CLOSE = "\uE001";
+
+
+/** 위첨자 표식 — 좌표로 알아낸 사실을 해독기까지 나르는 통로 */
+const SUP_OPEN = "\uE002";
+const SUP_CLOSE = "\uE003";
+
+/**
+ * 좌표를 보고 **위첨자 글자에 표를 해 둔다.**
+ *
+ * 이 교재의 위첨자는 세 가지 꼴로 온다:
+ *  1. 전용 글리프 — `Û`(²), `º`(ᵇ). 해독표가 안다.
+ *  2. 작게 떠 있는 별도 span — 크기가 8할 아래다. 파서가 이미 본다.
+ *     (별책 0199의 위첨자 c·d가 5.3pt로 이렇게 온다)
+ *  3. **폭 0인 글자** — 앞 글자 위에 겹쳐 찍는다. 본문 글자와 코드가 같아
+ *     (위첨자 `a`가 `b`로 온다) 글자만 봐서는 영영 알 수 없다.
+ *
+ * 3번 때문에 발문 `2^a×3^b×5`가 `2b×3^b×5`가 됐다(0160·0162·0163·0199).
+ * KaTeX는 아무 오류 없이 그려 내므로 **렌더 검사로는 잡히지 않는다.**
+ *
+ * 원문은 건드리지 않는다(원칙 2O) — 표식을 단 **사본**을 해독기에 준다.
+ */
+export function markSuperscripts(
+  text: string,
+  chars: readonly [number, number, number, number][] | undefined,
+): string {
+  const glyphs = [...text];
+  if (!chars || chars.length !== glyphs.length) return text;
+
+  let out = "";
+  let open = false;
+  glyphs.forEach((ch, i) => {
+    const box = chars[i]!;
+    /* 가르는 것은 **폭**이다. 높이로는 못 가른다 — PyMuPDF의 글자 상자는
+     * 글리프의 잉크가 아니라 **줄 높이**를 준다(0160의 여덟 글자가 전부
+     * y 216.27~228.73이다). 겹쳐 찍는 위첨자는 다음 글자를 밀지 않으므로
+     * 폭이 0이고, 그것이 지면에서 위에 떠 있다는 유일한 증거다.
+     *
+     * 아스키 글자·숫자로 한정하는 이유: 폭 0인 것 중에는 전용 위첨자
+     * 글리프(U+00DB 등)와 세로셈 표를 그리는 조각(U+00B3 등)도 있는데,
+     * 그것들은 해독표가 이미 알고 있다. 여기서 또 감싸면 지수가 두 겹이
+     * 된다. */
+    const isSup = box[2] - box[0] < 0.01 && /[A-Za-z0-9]/.test(ch);
+    if (isSup !== open) {
+      out += isSup ? SUP_OPEN : SUP_CLOSE;
+      open = isSup;
+    }
+    out += ch;
+  });
+  return open ? out + SUP_CLOSE : out;
+}
 
 /**
  * 분수 한 덩어리를 푼다.
@@ -149,9 +243,11 @@ const PASSTHROUGH = /[0-9A-Za-z+\-=<>(),.:\s/|[\]{}]/;
  *
  * 결정론적이다 — 같은 입력은 언제나 같은 출력. 시각·난수를 읽지 않는다.
  */
-export function decodeHwpMath(raw: string): DecodeResult {
+export function decodeHwpMath(raw: string, font?: string): DecodeResult {
   const unknown: string[] = [];
   const fractions: string[] = [];
+  /* 글꼴을 모르면 글꼴별 표는 건너뛴다 — 짐작해서 고르면 반은 틀린다 */
+  const byFont = font ? BY_FONT.find((f) => f.font.test(font))?.map : undefined;
 
   /* 1) 분수를 먼저 걷어내 자리표시자로 바꾼다. 분수 안에 지수·곱셈이
    *    섞이는 경우가 없음을 지면에서 확인했으므로 순서상 안전하다. */
@@ -171,6 +267,7 @@ export function decodeHwpMath(raw: string): DecodeResult {
   // 3) 남은 글자를 하나씩 옮긴다
   let out = "";
   let inPlaceholder = false;
+  let inSuperscript = false;
   for (const ch of work) {
     if (ch === PH_OPEN) {
       inPlaceholder = true;
@@ -186,10 +283,32 @@ export function decodeHwpMath(raw: string): DecodeResult {
       out += ch;
       continue;
     }
+    /* 좌표가 알려 준 위첨자 — 글리프표보다 확실한 근거다 */
+    if (ch === SUP_OPEN) {
+      inSuperscript = true;
+      out += "^{";
+      continue;
+    }
+    if (ch === SUP_CLOSE) {
+      inSuperscript = false;
+      out += "}";
+      continue;
+    }
     const sup =
       SUPERSCRIPT.get(ch) ??
       SUPERSCRIPT_LETTER.get(ch) ??
       UNICODE_SUPERSCRIPT.get(ch);
+    if (inSuperscript) {
+      /* 이미 위첨자 안이다 — `^{}`를 또 씌우지 않는다 */
+      out += sup ?? OVERSTRUCK_SUPERSCRIPT.get(ch) ?? ch;
+      continue;
+    }
+    /* 글꼴별 표가 공통 표보다 앞선다 — 같은 코드의 뜻을 가르는 것이 글꼴이다 */
+    const scoped = byFont?.get(ch);
+    if (scoped !== undefined) {
+      out += scoped;
+      continue;
+    }
     if (sup !== undefined) {
       out += `^{${sup}}`;
       continue;
@@ -283,6 +402,7 @@ export function isKnownGlyph(ch: string): boolean {
     SUPERSCRIPT_LETTER.has(ch) ||
     UNICODE_SUPERSCRIPT.has(ch) ||
     OPERATOR.has(ch) ||
+    BY_FONT.some((f) => f.map.has(ch)) ||
     SHIFT_ROW.has(ch) ||
     PASSTHROUGH.test(ch) ||
     DROPPABLE_ONE.test(ch)

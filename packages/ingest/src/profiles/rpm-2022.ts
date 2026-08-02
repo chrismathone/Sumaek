@@ -54,6 +54,7 @@ export const RPM_2022: ExtractionProfile = {
      * 중단원을 알려 준다 — 「중단원 마무리」 쪽에는 유형 머리글이 아예
      * 없어서 이것이 유일한 계층 단서다. */
     unitNumber: /DINPro-Medium/,
+    inlineFraction: /EHboNA/,
   },
 
   patterns: {

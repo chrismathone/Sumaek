@@ -1,9 +1,19 @@
-import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex, tidyBodyText } from "./hwp-encoding";
+import {
+  cleanBodyText,
+  decodeHwpMath,
+  joinKorean,
+  joinLatex,
+  markSuperscripts,
+  tidyBodyText,
+} from "./hwp-encoding";
+import { visibleSpans } from "./ink";
 import type { PageDump, Run, SourceDump } from "./types";
 
-/** 2행 분수로 합쳐진 span — 분자·분모를 구조로 들고 간다 */
+/** 2행 분수·세로셈 표로 합쳐진 span — 구조를 구조로 들고 간다 */
 type MaybeStacked = PageDump["spans"][number] & {
   stacked?: { numerator: string; denominator: string };
+  /** 세로셈 나눗셈 표를 옮긴 LaTeX 배열 */
+  tableLatex?: string;
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -88,6 +98,16 @@ export interface AnswerProfile {
    * 수식 글꼴 전체에 적용하면 세로셈 표의 행까지 한 줄로 뭉친다.
    */
   inlineFractionFont: RegExp;
+  /**
+   * 구매자 식별 워터마크 (이메일 등).
+   *
+   * 본책 파서는 이미 걸러 내고 있었는데 **별책 파서에는 없었다.** 그래서
+   * 해설 두 곳과 문항 0189의 **정답**에 구매자 이메일이 그대로 들어갔다 —
+   * 정답 칸은 학생 채점 화면에 바로 나가는 자리다.
+   *
+   * 문항이 아니고, 저장해서도 안 되고, 화면에 나가서는 더욱 안 된다.
+   */
+  purchaserStamp: RegExp;
 }
 
 /** 개념원리 RPM (2022 개정) 『정답 및 해설』 — 실측값 */
@@ -103,6 +123,7 @@ export const RPM_2022_ANSWERS: AnswerProfile = {
   strategyBodyFont: /YDVYGOStd12/, // 풀이는 YDVYMjOStd12 (명조)
   decorationFont: /EHSunm/,
   inlineFractionFont: /EHboNA/,
+  purchaserStamp: /[\w.+-]+@[\w-]+\.[\w.-]+/,
 };
 
 /**
@@ -146,6 +167,15 @@ function mergeStackedFractions(
     const numerator = above[0];
     const denominator = below[0];
     if (!numerator || !denominator) continue;
+    /* 가로줄이라고 다 분수 막대가 아니다. 별책 0199는 최대공약수를 뽑기
+     * 전에 **구분선**을 긋는데, 그 선이 단 폭을 가로질러 위아래 아무 수나
+     * 짝지어 `\frac{2}{}`를 만들고 본문의 2를 가져가 버렸다.
+     * 분수 막대는 분자·분모보다 조금 넓을 뿐이다. */
+    const spanWidth = Math.max(
+      numerator.x1 - numerator.x0,
+      denominator.x1 - denominator.x0,
+    );
+    if (bar.x1 - bar.x0 > spanWidth + 8) continue;
     used.add(numerator);
     used.add(denominator);
     merged.push({
@@ -158,6 +188,276 @@ function mergeStackedFractions(
       x1: Math.max(numerator.x1, denominator.x1),
       y0: numerator.y0,
       y1: (numerator.y1 + denominator.y1) / 2,
+    } as PageDump["spans"][number]);
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s)), ...merged];
+}
+
+/**
+ * 약수 구하기 **격자표**를 KaTeX 배열로 바꾼다.
+ *
+ * 소인수분해로 약수를 세는 해설은 지면에 이런 표를 그린다:
+ *
+ *     ×  │  1   3   3²
+ *     ───┼─────────────
+ *     1  │  1   3   9
+ *     2  │  2   6   18
+ *
+ * 표라는 사실을 버리면 칸의 수가 읽는 순서대로 이어 붙어
+ * `×1 3 3² 1 1 3 9 2 2 6 18`이 된다 — 무엇을 곱한 것인지 알 수가 없고,
+ * 0031에서는 그 덩어리가 통째로 **정답 칸**에 들어갔다.
+ *
+ * 표를 알아보는 근거는 **칠한 사각형**이다. 머리 행과 첫 열에 색을 깔아
+ * 두었고, 그 사각형 하나가 표의 경계와 정확히 같다. 격자선으로 찾으려면
+ * 선이 몇 개인지·어디가 바깥인지를 다시 정해야 하는데, 사각형은 한 번에
+ * 답을 준다.
+ */
+function mergeGridTables(
+  spans: PageDump["spans"],
+  page: PageDump,
+  profile: AnswerProfile,
+): PageDump["spans"] {
+  /* 배지(「답」 표식)도 칠한 사각형이다 — 8×8pt다. 표만한 크기를 요구한다. */
+  const boxes = page.drawings.filter(
+    (d) => d.fill && d.x1 - d.x0 >= 40 && d.y1 - d.y0 >= 20,
+  );
+  if (boxes.length === 0) return spans;
+
+  const used = new Set<PageDump["spans"][number]>();
+  const merged: PageDump["spans"] = [];
+
+  for (const box of boxes) {
+    const cells = spans.filter((s) => {
+      if (used.has(s)) return false;
+      if (!profile.mathFont.test(s.font)) return false;
+      if (profile.decorationFont.test(s.font)) return false;
+      const cx = (s.x0 + s.x1) / 2;
+      const cy = (s.y0 + s.y1) / 2;
+      return cx > box.x0 && cx < box.x1 && cy > box.y0 && cy < box.y1;
+    });
+    if (cells.length < 4) continue;
+
+    /* 행은 기준선, 열은 가운데 x로 모은다. 칸이 비어 있을 수 있으므로
+     * 둘을 따로 세운 뒤 격자에 채워 넣는다. */
+    const rows: number[] = [];
+    const cols: number[] = [];
+    for (const c of [...cells].sort((a, b) => a.y1 - b.y1)) {
+      if (!rows.some((y) => Math.abs(y - c.y1) <= 5)) rows.push(c.y1);
+    }
+    for (const c of [...cells].sort((a, b) => a.x0 - b.x0)) {
+      const cx = (c.x0 + c.x1) / 2;
+      if (!cols.some((x) => Math.abs(x - cx) <= 12)) cols.push(cx);
+    }
+    if (rows.length < 2 || cols.length < 2) continue;
+
+    const grid = rows.map((y) =>
+      cols.map((x) =>
+        cells
+          .filter(
+            (c) =>
+              Math.abs(c.y1 - y) <= 5 && Math.abs((c.x0 + c.x1) / 2 - x) <= 12,
+          )
+          .sort((a, b) => a.x0 - b.x0)
+          .map((c) => decodeHwpMath(markSuperscripts(c.text, c.chars), c.font).latex)
+          .join("")
+          .trim(),
+      ),
+    );
+
+    for (const c of cells) used.add(c);
+    /* 첫 열과 머리 행에만 선을 긋는다 — 지면이 그렇게 생겼다 */
+    const shape = `c|${"c".repeat(cols.length - 1)}`;
+    const body = grid
+      .map((r) => r.map((cell) => cell || "{}").join(" & "))
+      .join(" \\\\ ")
+      .replace(/ \\\\ /, " \\\\ \\hline ");
+    const latex = `\\begin{array}{${shape}}${body}\\end{array}`;
+
+    const anchor = cells.reduce((a, b) => (a.y1 <= b.y1 ? a : b));
+    merged.push({
+      ...anchor,
+      text: grid.map((r) => r.join(" ")).join(" / "),
+      tableLatex: latex,
+      x0: Math.min(...cells.map((c) => c.x0)),
+      x1: Math.max(...cells.map((c) => c.x1)),
+    } as PageDump["spans"][number]);
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s)), ...merged];
+}
+
+/**
+ * 세로셈 나눗셈 표를 **KaTeX 배열**로 바꾼다.
+ *
+ * 소인수분해 해설은 지면에서 이렇게 생겼다:
+ *
+ *     3 ) 117
+ *     3 )  39
+ *          13
+ *
+ * 「)」와 그 위의 가로줄은 글자가 아니라 표를 그리는 조각(EHboNA)이다.
+ * 그대로 두면 `3>^{3}^{3}117`처럼 뜻 없는 LaTeX이 되어 KaTeX가 실패하고,
+ * 조각만 버리면 숫자가 이어 붙어 무슨 계산인지 알 수 없다.
+ *
+ * **행은 「)」 하나가 하나씩 만든다.** 조각의 세로 띠(약 21pt)가 자기 행의
+ * 숫자를 품는다 — 숫자의 y로 행을 세우려 했더니 표 밖 본문 줄까지 끌려
+ * 들어왔고(「따라서 117을」의 117이 사라졌다), 조각의 띠로 줄을 나누려
+ * 했더니 두 행이 하나로 뭉쳤다. 띠는 **행을 가르는 선**이 아니라
+ * **행에 속한 것을 고르는 그물**이다.
+ *
+ * 표가 어디서 끝나는지는 「)」가 알려 준다. 마지막 「)」 아래 한 행이 최종
+ * 몫이고, 그 아래는 본문이다.
+ */
+function mergeDivisionTables(
+  spans: PageDump["spans"],
+  profile: AnswerProfile,
+): PageDump["spans"] {
+  const brackets = spans
+    .filter((s) => profile.inlineFractionFont.test(s.font) && s.text.includes(">"))
+    .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  if (brackets.length === 0) return spans;
+
+  /* 한 표의 「)」는 한 행(약 14pt) 간격으로, 거의 같은 x에 이어진다. x가
+   * **조금씩 오른쪽으로 밀리는** 것까지 봐 줘야 한다 — 나뉘는 수의 자릿수가
+   * 줄면 오른끝을 맞추느라 표가 움직인다(200 → 50에서 한 자리, 약 4.7pt).
+   *
+   * 표는 **나란히 서기도 한다**(0053은 48과 64를 한 줄에 놓는다). 그래서
+   * 바로 앞 조각에만 이으면 안 된다 — y로 훑으면 두 표의 조각이 번갈아
+   * 나와 서로를 끊는다. 각 조각은 **자기 열의** 사슬을 찾아 붙는다. */
+  const tables: PageDump["spans"][] = [];
+  for (const bracket of brackets) {
+    const chain = tables.find((t) => {
+      const prev = t[t.length - 1]!;
+      const gap = bracket.y0 - prev.y0;
+      return gap > 5 && gap < 25 && Math.abs(bracket.x0 - prev.x0) < 12;
+    });
+    if (chain) chain.push(bracket);
+    else tables.push([bracket]);
+  }
+
+  const used = new Set<PageDump["spans"][number]>();
+  const merged: PageDump["spans"] = [];
+
+  /** 이 「)」의 칸에 들어갈 숫자들 — 아직 다른 표가 가져가지 않은 것만 */
+  const cellsIn = (
+    x: number,
+    top: number,
+    bottom: number,
+  ): PageDump["spans"] =>
+    spans.filter((s) => {
+      if (used.has(s)) return false;
+      if (!profile.mathFont.test(s.font)) return false;
+      if (profile.inlineFractionFont.test(s.font)) return false;
+      const cy = (s.y0 + s.y1) / 2;
+      /* 창을 넓게 잡으면 **옆에 나란히 선 표**의 수를 집어 온다 —
+       * 0053의 48 표가 64 표의 자리를 먹어 「6」이 「46」이 됐다. */
+      return cy > top && cy < bottom && s.x0 > x - 38 && s.x0 < x + 42;
+    });
+
+  for (const table of tables) {
+    /* 행 간격 — 「)」가 하나뿐이면 지면의 기본 행높이를 쓴다 */
+    const pitch =
+      table.length > 1 ? table[1]!.y0 - table[0]!.y0 : (table[0]!.y1 - table[0]!.y0) * 0.66;
+
+    const rows: { x: number; spans: PageDump["spans"] }[] = [];
+    for (const bracket of table) {
+      const cells = cellsIn(bracket.x0, bracket.y0, bracket.y1);
+      if (cells.length === 0) continue;
+      for (const s of cells) used.add(s);
+      rows.push({ x: bracket.x0, spans: cells });
+    }
+    if (rows.length === 0) continue;
+
+    /* 마지막 「)」 **아래 한 행**이 최종 몫이다. 그 아래 본문 줄과는 몇 pt
+     * 차이라, 고정 여유가 아니라 행 간격으로 끊어야 갈린다. */
+    const tail = table[table.length - 1]!;
+    const quotient = cellsIn(tail.x0, tail.y1, tail.y1 + pitch).filter(
+      /* 몫은 나뉘는 수 아래에 선다. 왼쪽에 있으면 표가 아니라 본문이다. */
+      (s) => (s.x0 + s.x1) / 2 > tail.x0,
+    );
+    if (quotient.length > 0) {
+      for (const s of quotient) used.add(s);
+      rows.push({ x: tail.x0, spans: quotient });
+    }
+
+    const cell = (list: PageDump["spans"]): string =>
+      decodeHwpMath(
+        [...list].sort((a, b) => a.x0 - b.x0).map((s) => s.text).join(""),
+        list[0]?.font,
+      ).latex.trim();
+    /* 나누는 수와 나뉘는 수는 **가운데로** 가른다. 「3 」처럼 뒤에 공백이
+     * 붙은 span은 오른끝이 「)」를 넘어서, 끝점으로 가르면 어느 칸에도
+     * 들지 못하고 통째로 사라진다. */
+    const isLeft = (s: PageDump["spans"][number], x: number): boolean =>
+      (s.x0 + s.x1) / 2 < x;
+
+    /* 나뉘는 수는 **하나가 아닐 수 있다.** 세 수의 최소공배수를 구할 때는
+     * `x ) 4×x  5×x  6×x`처럼 나란히 선다. 오른쪽을 통째로 이으면
+     * `4×x5×x`가 되어 어느 수를 나눈 것인지 사라진다(0164·0165).
+     * 그래서 오른쪽의 x를 모아 열을 세우고, 행마다 그 열에 채워 넣는다. */
+    const rightCols: number[] = [];
+    for (const row of rows) {
+      for (const s of row.spans) {
+        if (isLeft(s, row.x)) continue;
+        const cx = (s.x0 + s.x1) / 2;
+        if (!rightCols.some((x) => Math.abs(x - cx) <= 14)) rightCols.push(cx);
+      }
+    }
+    rightCols.sort((a, b) => a - b);
+
+    const body = rows.map((row) => [
+      cell(row.spans.filter((s) => isLeft(s, row.x))),
+      ...rightCols.map((x) =>
+        cell(
+          row.spans.filter(
+            (s) => !isLeft(s, row.x) && Math.abs((s.x0 + s.x1) / 2 - x) <= 14,
+          ),
+        ),
+      ),
+    ]);
+    /* 세로셈의 한 행은 「나누는 수 ) 나뉘는 수」다 — **등식이 들어올 자리가
+     * 없다.** 0164·0165는 같은 x에 `4×x=2²` 같은 정렬 블록을 쌓아 두는데,
+     * 그것이 표로 잡혀 정답 칸에 엉뚱한 배열이 들어갔다. */
+    if (body.some((row) => row.some((c) => c.includes("=")))) continue;
+
+    for (const bracket of table) used.add(bracket);
+    /* 「)」와 짝을 이루는 가로줄 조각(같은 글꼴, 바로 오른쪽)도 함께 버린다 */
+    const bottom = Math.max(...rows.flatMap((r) => r.spans.map((s) => s.y1)));
+    for (const s of spans) {
+      if (
+        profile.inlineFractionFont.test(s.font) &&
+        s.x0 > table[0]!.x0 - 2 &&
+        s.x0 < tail.x0 + 40 &&
+        s.y0 >= table[0]!.y0 - 3 &&
+        s.y1 <= bottom + 3
+      ) {
+        used.add(s);
+      }
+    }
+
+    /* `{r|l}`의 세로줄이 나눗셈 기호 자리를 대신하고, `\hline`이 각 행 아래
+     * 가로줄을 대신한다. 지면과 획이 같지는 않지만 읽는 사람은 같은 것을
+     * 본다 — 나누는 수 · 나뉘는 수 · 몫이 제자리에 선다. */
+    /* 빈 칸(마지막 몫 줄의 나누는 수 자리)은 `{}`로 적는다. 비워 두면
+     * `\hline  & 13`처럼 공백이 겹쳐, 조판 정렬이 남은 것과 구별되지 않는다. */
+    const latex = `\\begin{array}{r|${"l".repeat(rightCols.length)}}${body
+      .map((row) => row.map((c) => c || "{}").join(" & "))
+      .join(" \\\\ \\hline ")}\\end{array}`;
+
+    /* 표는 **첫 행의 기준선**에 세운다. 표 전체 높이로 세우면 나란히 선 두
+     * 표가 행 수가 다를 때(0053의 48은 다섯 줄, 64는 여섯 줄) 서로 다른
+     * 줄로 갈라져, 지면에서는 나란한 것이 풀이에서는 위아래가 된다. */
+    const cells = rows.flatMap((r) => r.spans);
+    const anchor = cells.reduce((a, b) => (a.y1 <= b.y1 ? a : b));
+    merged.push({
+      ...anchor,
+      text: body.map((row) => row.join(")")).join(" "),
+      tableLatex: latex,
+      x0: Math.min(...cells.map((s) => s.x0)),
+      x1: Math.max(...cells.map((s) => s.x1)),
     } as PageDump["spans"][number]);
   }
 
@@ -188,7 +488,14 @@ export function parseAnswerPage(
   const bodyRight = page.width - profile.rightMarginPt;
   /* 큰 글자부터 넣어 줄의 세로 띠를 먼저 세운다 — 본책 파서와 같은 이유다.
    * 작은 위첨자가 먼저 들어와 자기만의 줄을 만들면 흡수할 대상이 없다. */
-  const prepared = mergeStackedFractions(page.spans, page, profile);
+  const prepared = mergeGridTables(
+    mergeDivisionTables(
+      mergeStackedFractions(visibleSpans(page), page, profile),
+      profile,
+    ),
+    page,
+    profile,
+  );
   const ordered = [...prepared].sort(
     (a, b) => b.size - a.size || a.y1 - b.y1 || a.x0 - b.x0,
   );
@@ -197,6 +504,9 @@ export function parseAnswerPage(
     if (span.x0 >= bodyRight) continue; // 세로 단원명 — 본문이 아니다
     if (span.y0 > page.height * profile.bottomMarginRatio) continue; // 러닝헤드
     if (profile.decorationFont.test(span.font)) continue; // 괄호 그림 조각
+    /* 구매자 워터마크는 여백이 아니라 **풀이 한가운데**에도 찍힌다.
+     * 문항 0189에서는 정답 칸에 들어갔다 — 채점 화면에 바로 나가는 자리다. */
+    if (profile.purchaserStamp.test(span.text)) continue;
     const column = columnOf((span.x0 + span.x1) / 2);
     const center = (span.y0 + span.y1) / 2;
     const line = lines.find((l) => {
@@ -318,8 +628,15 @@ export function parseAnswerPage(
    * 「단계」가 답에 남아 정답이 「8단계」가 된다.
    */
   const RUBRIC_HEAD = /^(단계|채점\s*요소|비율|단계별\s*배점)$/;
+  /** 곁다리 상자 라벨의 자리 — 이 아래는 정답이 아니다 */
+  const asideMarks = prepared
+    .filter((s) => ASIDE.test(cleanBodyText(s.text).trim()))
+    .map((s) => ({ column: columnOf((s.x0 + s.x1) / 2), y: s.y1 }));
+
   /** 마지막으로 담은 span의 오른쪽 끝 — 수식 조각을 붙일지 판단한다 */
   let lastX1 = Number.NEGATIVE_INFINITY;
+  /** 마지막으로 담은 **본문 크기의** 조각. 위첨자 판정의 기준이 된다. */
+  let lastSize = 0;
 
   /**
    * 조각 하나를 담는다.
@@ -336,30 +653,53 @@ export function parseAnswerPage(
     raw: string,
     x0: number,
     x1: number,
+    /** 글꼴 — 같은 코드도 글꼴이 다르면 다른 글자다 (EHyak의 `y`는 ⋯) */
+    font: string,
+    /** 글자별 상자 — 겹쳐 찍은 위첨자를 가리는 유일한 근거 */
+    chars: PageDump["spans"][number]["chars"],
+    /** 글자 크기 — 앞 조각보다 뚜렷이 작으면 위첨자다 */
+    size: number,
     stacked?: { numerator: string; denominator: string },
+    table?: string,
   ): void => {
     const adjacent = x0 - lastX1 < 1.5;
     lastX1 = x1;
+    /* 위첨자는 **바로 앞 조각과 견줘서** 작은 것이다. 줄의 최대 크기와
+     * 견주면 12pt 문항 번호가 기준이 되어 같은 줄의 9.3pt 본문 수가 몽땅
+     * 위첨자가 된다 — 0048의 「27은 일의 자리」가 「^{27}은」이 됐다. */
+    const raised = adjacent && size < lastSize * 0.8;
+    if (!raised) lastSize = size;
+    /* 표는 앞 조각에 붙이지 않는다 — 한 덩어리로 서야 모양이 산다 */
+    if (table) {
+      runs.push({ kind: "math", raw, latex: table, unknown: [] });
+      return;
+    }
     if (isMath) {
       const decoded = stacked
         ? (() => {
-            const top = decodeHwpMath(stacked.numerator);
-            const bottom = decodeHwpMath(stacked.denominator);
+            const top = decodeHwpMath(stacked.numerator, font);
+            const bottom = decodeHwpMath(stacked.denominator, font);
             return {
-              latex: `\frac{${top.latex}}{${bottom.latex}}`,
+              /* `\f`는 폼피드다. 백슬래시를 하나만 쓰면 `\frac`이 아니라
+               * 「폼피드 + rac」이 되어 화면에 `rac{7}{2}`가 나간다. */
+              latex: `\\frac{${top.latex}}{${bottom.latex}}`,
               unknown: [...top.unknown, ...bottom.unknown],
             };
           })()
-        : decodeHwpMath(raw);
+        : decodeHwpMath(markSuperscripts(raw, chars), font);
       if (decoded.latex === "") return;
+      /* 지면에서 작게 떠 있는 조각은 위첨자다. 본책 파서는 이미 이렇게
+       * 하는데 별책 파서에는 없어서, 0199 해설의 `5^c×7^d`가 `5c×7d`로
+       * 내려앉았다. */
+      const latex = raised ? `^{${decoded.latex}}` : decoded.latex;
       const last = runs[runs.length - 1];
       if (last?.kind === "math" && adjacent) {
         last.raw += raw;
-        last.latex = joinLatex(last.latex, decoded.latex);
+        last.latex = joinLatex(last.latex, latex);
         last.unknown.push(...decoded.unknown);
         return;
       }
-      runs.push({ kind: "math", raw, latex: decoded.latex, unknown: decoded.unknown });
+      runs.push({ kind: "math", raw, latex, unknown: decoded.unknown });
       return;
     }
     if (text.trim() === "") return;
@@ -410,6 +750,22 @@ export function parseAnswerPage(
      * 거기서 끊긴 것이다 — 다음 조각은 새 줄에 담는다. */
     if (startsNew(line)) explanationLine = null;
 
+    /* 곁다리 상자(「다른 풀이」·「참고」)는 **라벨 아래 전부**를 덮는다.
+     *
+     * 라벨을 만나는 순서로만 보면 늦다. 0164의 「다른 풀이」 라벨은 7pt라
+     * 옆의 두 줄짜리 괄호 조각(10pt) 줄에 위첨자로 흡수되고, 그 줄은 표보다
+     * **뒤에** 처리된다 — 그 사이에 세로셈이 통째로 **정답 칸**으로 들어갔다.
+     * 정답 칸은 학생 채점에 바로 쓰이는 자리다.
+     *
+     * 그래서 순서가 아니라 **자리**로 끊는다. 라벨이 어디 있는지는 줄을
+     * 세우기 전에 이미 알 수 있다. */
+    if (
+      inAnswer &&
+      asideMarks.some((m) => m.column === line.column && line.y >= m.y - 2)
+    ) {
+      answerClosed = true;
+    }
+
     for (const span of line.spans) {
       const cleaned = cleanBodyText(span.text);
 
@@ -446,7 +802,7 @@ export function parseAnswerPage(
        * 무엇을 뺐는지 볼 수 있게 한다 (번호는 위에서 이미 처리됐다). */
       if (inStrategy) {
         if (cleanBodyText(span.text).trim() !== "전략") {
-          push(strategyTarget(), cleanBodyText(span.text), profile.mathFont.test(span.font), span.text, span.x0, span.x1);
+          push(strategyTarget(), cleanBodyText(span.text), profile.mathFont.test(span.font), span.text, span.x0, span.x1, span.font, span.chars, span.size);
         }
         continue;
       }
@@ -483,7 +839,11 @@ export function parseAnswerPage(
         span.text,
         span.x0,
         span.x1,
+        span.font,
+        span.chars,
+        span.size,
         (span as MaybeStacked).stacked,
+        (span as MaybeStacked).tableLatex,
       );
     }
     /* 이 줄이 오른쪽 끝을 못 채웠다면 여기서 끊긴 것이다 */
