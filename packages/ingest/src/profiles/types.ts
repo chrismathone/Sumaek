@@ -48,6 +48,8 @@ export interface ExtractionProfile {
     conditionLabel: RegExp;
     /** 쪽 번호 — 이 폰트가 든 줄은 러닝헤드다 */
     pageNumber: RegExp;
+    /** 러닝헤드의 중단원 번호 — 「02 최대공약수와 최소공배수」 */
+    unitNumber: RegExp;
   };
 
   patterns: {

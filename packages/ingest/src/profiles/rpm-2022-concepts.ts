@@ -149,4 +149,41 @@ export const RPM_M1_CH1_TITLE_TO_CONCEPT: ReadonlyMap<string, ConceptWeight[]> =
         { slug: "m1-lcm", weight: 0.5 },
       ],
     ],
+
+    /* ── 중단원 — 유형·소단원 머리글이 **아예 없는** 문항용 ──────────
+     *
+     * 「중단원 마무리」와 「실력 UP」 쪽에는 유형 머리글이 없다. 그 51문항이
+     * 아무 개념에도 걸리지 않은 채 남아 있었다. 교재의 계층은 러닝헤드가
+     * 알려 주므로(「02 최대공약수와 최소공배수」) 중단원까지는 확실하다.
+     *
+     * 중단원 안에서 어느 개념인지는 문항마다 다르다. 한쪽으로 몰지 않고
+     * 그 중단원이 다루는 개념에 **고르게 나눈다** — 마무리 문항은 실제로
+     * 그 중단원 전체를 묻는다. 더 좁히려면 검수자가 지정한다. */
+    [
+      "소인수분해",
+      [
+        { slug: "m1-prime-composite", weight: 0.34 },
+        { slug: "m1-prime-factorization", weight: 0.33 },
+        { slug: "m1-divisors", weight: 0.33 },
+      ],
+    ],
+    [
+      "최대공약수와 최소공배수",
+      [
+        { slug: "m1-gcd", weight: 0.5 },
+        { slug: "m1-lcm", weight: 0.5 },
+      ],
+    ],
   ]);
+
+/**
+ * 표를 찾을 때 쓰는 제목 정규화.
+ *
+ * 지면의 □·▢ 기호는 벡터라 텍스트로 안 나오고 **공백만 남는다** —
+ * 「약수의 개수가 주어질 때  안에 들어 갈 수 있는 자연수 구하기」처럼
+ * 가운데가 두 칸 벌어진다. 표의 문자열과 정확히 일치하지 않아 4문항이
+ * 개념에 못 걸렸다. 공백은 하나로 눌러 비교한다.
+ */
+export function normalizeConceptKey(title: string): string {
+  return title.replace(/\s+/g, " ").trim();
+}

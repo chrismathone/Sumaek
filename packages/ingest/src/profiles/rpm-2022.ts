@@ -50,6 +50,10 @@ export const RPM_2022: ExtractionProfile = {
      * 달라 놓친다(홀수 쪽은 위, 짝수 쪽은 아래). 이 폰트가 든 줄은
      * 통째로 문항이 아니다. */
     pageNumber: /DINMittelschrift/,
+    /* 중단원 번호. 홀수 쪽 러닝헤드가 「02 최대공약수와 최소공배수」로
+     * 중단원을 알려 준다 — 「중단원 마무리」 쪽에는 유형 머리글이 아예
+     * 없어서 이것이 유일한 계층 단서다. */
+    unitNumber: /DINPro-Medium/,
   },
 
   patterns: {

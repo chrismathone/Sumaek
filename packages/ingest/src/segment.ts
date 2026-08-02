@@ -2,6 +2,7 @@ import { cleanBodyText, decodeHwpMath, joinKorean, joinLatex } from "./hwp-encod
 import type { ExtractionProfile } from "./profiles/types";
 import type {
   ChoiceItem,
+  RunningHead,
   ConditionItem,
   ExtractedQuestion,
   PageDump,
@@ -490,6 +491,41 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     });
   }
 
+  /** 이 쪽 러닝헤드에서 읽은 계층 */
+  const runningHead: RunningHead = {};
+
+  /* 러닝헤드는 **여백에 있다.** 아래쪽 러닝헤드(짝수 쪽의 대단원, 홀수 쪽
+   * 아래의 중단원)는 여백으로 먼저 걸러져 줄 루프에 닿지 않는다 —
+   * 그래서 p.3의 「01 소인수분해」 하나가 단원 끝까지 끌려가 0207까지
+   * 중단원 01로 만들었다. 여백에서 직접 읽는다. */
+  const readRunningHead = (spans: IndexedSpan[]): void => {
+    /* 여백 span을 기준선으로 묶는다 — 러닝헤드는 한 줄이다 */
+    const rows = new Map<number, IndexedSpan[]>();
+    for (const span of spans) {
+      const key = [...rows.keys()].find((y) => Math.abs(y - span.y1) <= 4);
+      if (key === undefined) rows.set(span.y1, [span]);
+      else rows.get(key)!.push(span);
+    }
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.x0 - b.x0);
+      const text = cleanBodyText(row.map((s) => s.text).join("")).trim();
+      const chapter = /([IVX]+\s*[.·]\s*[가-힣][가-힣\s]*)/.exec(text);
+      if (chapter && !runningHead.chapter) {
+        runningHead.chapter = chapter[1]!.replace(/\s+/g, " ").trim();
+      }
+      const unitNo = row.find(
+        (s) => profile.fonts.unitNumber.test(s.font) && /^\d{1,2}$/.test(s.text.trim()),
+      );
+      if (!unitNo || runningHead.unit) continue;
+      const title = row
+        .filter((s) => s.x0 > unitNo.x0 && /[가-힣]/.test(s.text))
+        .map((s) => cleanBodyText(s.text))
+        .join("")
+        .trim();
+      if (title !== "") runningHead.unit = { number: unitNo.text.trim(), title };
+    }
+  };
+  readRunningHead(margin);
   const questions: ExtractedQuestion[] = [];
   /** 문항이 아닌 것으로 **분류에 성공한** span — 미분류와 구별해야 한다 */
   const nonQuestion = new Set<number>();
@@ -560,6 +596,26 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
       line.spans.some((s) => profile.fonts.pageNumber.test(s.font)) ||
       profile.patterns.runningHead.test(lineText)
     ) {
+      /* 버리기 전에 **계층을 읽는다.** 짝수 쪽은 대단원(「20 I. 소인수분해」),
+       * 홀수 쪽은 중단원(「02 최대공약수와 최소공배수 21」)을 싣는다.
+       * 「중단원 마무리」 쪽에는 유형 머리글이 아예 없어서, 이 줄이 그
+       * 문항들의 유일한 계층 단서다 — 그냥 버렸더니 51문항이 아무 개념에도
+       * 걸리지 않았다. */
+      const chapter = /([IVX]+\s*[.·]\s*[가-힣][가-힣\s]*)/.exec(lineText);
+      if (chapter) runningHead.chapter = chapter[1]!.replace(/\s+/g, " ").trim();
+      const unitNo = line.spans.find(
+        (s) => profile.fonts.unitNumber.test(s.font) && /^\d{1,2}$/.test(s.text.trim()),
+      );
+      if (unitNo) {
+        const title = line.spans
+          .filter((s) => s.x0 > unitNo.x0 && /[가-힣]/.test(s.text))
+          .map((s) => cleanBodyText(s.text))
+          .join("")
+          .trim();
+        if (title !== "") {
+          runningHead.unit = { number: unitNo.text.trim(), title };
+        }
+      }
       for (const s of line.spans) markNonQuestion(s);
       continue;
     }
@@ -674,6 +730,7 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
 
   return {
     page: page.page,
+    runningHead,
     questions,
     unaccounted,
     accountedNonQuestion: nonQuestion.size,

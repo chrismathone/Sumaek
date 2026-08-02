@@ -92,12 +92,31 @@ export interface ExtractedQuestion {
   /** 그림 안에 찍힌 글자 (치수·꼭짓점 라벨). 발문이 아니라 그림의 일부다. */
   figureLabels: string[];
   typeContext: TypeContext | null;
+  /** 러닝헤드에서 읽은 중단원 — 유형 머리글이 없는 쪽에서 유일한 계층 */
+  unit?: { number: string; title: string };
   /** 커버리지 계산용 — 이 문항이 소비한 span의 페이지 내 인덱스 */
   consumedSpanIndexes: number[];
 }
 
+/**
+ * 쪽 아래 러닝헤드가 알려 주는 것 — **교재의 계층**.
+ *
+ * 짝수 쪽은 대단원(「20 I. 소인수분해」), 홀수 쪽은 중단원
+ * (「02 최대공약수와 최소공배수 21」)을 싣는다. 러닝헤드라고 버렸더니
+ * 「중단원 마무리」 51문항이 아무 계층에도 걸리지 않았다 — 그 쪽에는
+ * 유형 머리글이 **아예 없어서** 러닝헤드가 유일한 단서다.
+ */
+export interface RunningHead {
+  /** 「I. 소인수분해」 */
+  chapter?: string;
+  /** 「02 최대공약수와 최소공배수」 */
+  unit?: { number: string; title: string };
+}
+
 export interface PageExtraction {
   page: number;
+  /** 이 쪽의 러닝헤드에서 읽은 계층 (없을 수 있다) */
+  runningHead: RunningHead;
   questions: ExtractedQuestion[];
   /** 문항에도, 알려진 비문항 영역에도 속하지 않은 span (= 누락 후보) */
   unaccounted: Span[];

@@ -45,8 +45,18 @@ const dryRun = args.includes("--dry-run");
 const bookDump = JSON.parse(readFileSync(bookDumpPath, "utf8")) as SourceDump;
 const answersDump = JSON.parse(readFileSync(answersDumpPath, "utf8")) as SourceDump;
 
+/* 중단원은 쪽마다 러닝헤드에 실리는데 짝수·홀수 쪽이 번갈아 대단원과
+ * 중단원을 싣는다. 한 번 읽으면 다음 중단원이 나올 때까지 이어진다. */
+let carriedUnit: { number: string; title: string } | undefined;
 const questions = bookDump.pages
-  .flatMap((page) => extractPage(page, RPM_2022).questions)
+  .flatMap((page) => {
+    const extracted = extractPage(page, RPM_2022);
+    if (extracted.runningHead.unit) carriedUnit = extracted.runningHead.unit;
+    for (const q of extracted.questions) {
+      if (carriedUnit) q.unit = carriedUnit;
+    }
+    return extracted.questions;
+  })
   .filter((q) => {
     const n = Number(q.printedNumber);
     return n >= from && n <= to;

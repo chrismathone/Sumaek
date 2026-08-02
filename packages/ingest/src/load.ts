@@ -6,6 +6,7 @@ import type { ParsedAnswer } from "./answers";
 import { renderRuns } from "./answers";
 import type { ExtractionProfile } from "./profiles/types";
 import type { ConceptDefinition, ConceptWeight } from "./profiles/rpm-2022-concepts";
+import { normalizeConceptKey } from "./profiles/rpm-2022-concepts";
 import type { ExtractedQuestion, Run } from "./types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -420,6 +421,8 @@ export async function loadQuestions(
       book: input.book.title,
       edition: input.book.editionLabel,
       chapter: input.chapter,
+      /* 러닝헤드가 알려 준 중단원 — 유형 머리글이 없는 쪽의 유일한 계층 */
+      unit: question.unit ?? null,
       section:
         question.typeContext?.kind === "section" ? question.typeContext.title : null,
       type:
@@ -517,8 +520,20 @@ export async function loadQuestions(
         `;
       }
 
-      const title = question.typeContext?.title ?? "";
-      const weights = input.titleToConcept.get(title) ?? [];
+      /* 개념은 **교재의 계층**을 따라 찾는다: 유형 → 소단원 → 중단원.
+       * 「중단원 마무리」에는 유형 머리글이 아예 없어서, 중단원까지
+       * 내려가지 않으면 51문항이 개념 없이 남는다. */
+      const candidates = [
+        question.typeContext?.title,
+        question.unit?.title,
+      ].filter((t): t is string => typeof t === "string" && t !== "");
+      const lookup = new Map(
+        [...input.titleToConcept].map(([k, v]) => [normalizeConceptKey(k), v]),
+      );
+      const weights =
+        candidates
+          .map((t) => lookup.get(normalizeConceptKey(t)))
+          .find((w) => w !== undefined) ?? [];
       for (const weight of weights) {
         const conceptId = conceptIdBySlug.get(weight.slug);
         if (!conceptId) continue;
