@@ -585,6 +585,34 @@ async function main(): Promise<void> {
         planned_node_ids = excluded.planned_node_ids,
         updated_at = now()
     `;
+
+    /* 이도윤에게도 같은 오늘 일정. 사람이 손으로 확인하는 학생 계정
+     * (st2000424)이 이 학습자에 붙어 있어서, 여기 일정이 없으면 로그인해도
+     * 「오늘은 수업이 없습니다」만 보인다. 박서윤 것과 갈라 두는 이유는
+     * E2E가 박서윤 일정을 지웠다 만들었다 하기 때문이다 — 사람이 보는 화면이
+     * 테스트 진행 상황에 따라 달라지면 안 된다.
+     * 시간 배타 제약은 학습자별이라 같은 09–10시를 써도 겹치지 않는다. */
+    await sql`
+      insert into learner_schedule_items (
+        id, organization_id, learner_id, learning_group_id, session_id,
+        item_date, timezone, starts_at, ends_at, planned_node_ids,
+        reason_codes, matches_group, is_rejoin
+      ) values (
+        ${"00000000-0000-7000-8000-000000000081"}, ${ORG_ID},
+        ${LEARNERS[1].id}, ${GROUP_ID}, null,
+        (now() at time zone 'Asia/Seoul')::date, 'Asia/Seoul',
+        ((now() at time zone 'Asia/Seoul')::date + time '09:00') at time zone 'Asia/Seoul',
+        ((now() at time zone 'Asia/Seoul')::date + time '10:00') at time zone 'Asia/Seoul',
+        ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
+        false, false
+      )
+      on conflict (id) do update set
+        item_date = excluded.item_date,
+        starts_at = excluded.starts_at,
+        ends_at = excluded.ends_at,
+        planned_node_ids = excluded.planned_node_ids,
+        updated_at = now()
+    `;
   }
 
   console.log(

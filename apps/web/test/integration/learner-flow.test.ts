@@ -33,14 +33,16 @@ function isoAddDays(days: number): string {
   return new Date(base.getTime() + days * 86_400_000).toISOString().slice(0, 10);
 }
 const TODAY = isoAddDays(0);
+/** 계정 연결 검증용 이메일 — 실행마다 달라 다른 스펙과 겹치지 않는다 */
+const LINK_EMAIL = `itest-link-${uuidv7()}@su-maek.test`;
 
 describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
   let sql: ReturnType<typeof getSharedSql>;
-  /** 계정 연결 테스트가 잠시 빌려 쓰는 데모 계정 — afterAll에서 무조건 돌려준다 */
-  let borrowedDemo: { userId: string; originalLearnerId: string } | null = null;
   const ids = {
     learner: uuidv7(),
     other: uuidv7(),
+    /** 계정 연결 검증 전용 users 행 — 데모 계정을 건드리지 않기 위해 */
+    linkUser: uuidv7(),
     concept: uuidv7(),
     right: uuidv7(),
     question: uuidv7(),
@@ -117,23 +119,12 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
     /* 증거 계열은 불변이라 지우지 않는다 (grading-exception.test.ts와 같은 이유).
      * 매 실행 무작위 ID라 다른 스펙과 간섭하지 않는다.
      *
-     * **데모 계정 원복은 여기서 무조건 한다.** 테스트 본문 끝에 두었더니,
-     * 본문이 중간에 실패한 실행이 데모 학생 계정을 떼어 낸 채로 끝났고
-     * 그 뒤로는 복구 조건 자체가 성립하지 않아 E2E(full-loop)가 로그인부터
-     * 깨졌다 — 실제로 한 번 겪었다. 빌린 것은 성공·실패와 무관하게 돌려준다. */
-    if (!sql || !borrowedDemo) return;
-    await sql`
-      update learners set user_id = null, updated_at = now()
-      where organization_id = ${ORG_ID} and user_id = ${borrowedDemo.userId}
-    `;
-    await sql`
-      update learners set user_id = ${borrowedDemo.userId}, updated_at = now()
-      where id = ${borrowedDemo.originalLearnerId} and organization_id = ${ORG_ID}
-    `;
-    await sql`
-      update memberships set status = 'active', updated_at = now()
-      where organization_id = ${ORG_ID} and user_id = ${borrowedDemo.userId}
-    `;
+     * 전용 연결계정만 치운다. 예전에는 여기서 **데모 학생 계정을 돌려주는**
+     * 일까지 했는데, 이제 빌리지 않으므로 돌려줄 것도 없다. */
+    if (!sql) return;
+    await sql`update learners set user_id = null where user_id = ${ids.linkUser}`;
+    await sql`delete from memberships where user_id = ${ids.linkUser}`;
+    await sql`delete from users where id = ${ids.linkUser}`;
   });
 
   /* ── 1) 답안 저장의 학습자 스코프 ── */
@@ -353,30 +344,27 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
   });
 
   it("기존 계정을 학습자에 연결하고 해제할 수 있다", async () => {
-    // 데모 학생 계정을 빌려 쓴다 — 이 테스트는 인증 계정을 만들지 않는다
+    /* **데모 계정을 빌리지 않는다.** 예전에는 데모 학생 계정을 떼어 와서
+     * 썼는데, 그러면 이 스위트가 도는 동안 데모 학생이 로그인해도
+     * 「학습자 정보가 연결되지 않았습니다」가 뜬다 — 사람이 그 사이에 화면을
+     * 보면 제품이 고장 난 것처럼 보인다(실제로 겪었다). 프로세스가 중간에
+     * 죽으면 아예 그 상태로 남는다.
+     *
+     * linkLearnerAccount가 필요로 하는 것은 **public.users 행 하나**뿐이다
+     * (인증 계정이 아니라 이메일로 조회한다). 그러니 전용 행을 만들어 쓴다 —
+     * 빌리지 않으면 돌려줄 것도 없다. */
     const [demo] = await sql<{ id: string; email: string }[]>`
-      select id::text, email from users where lower(email) = 'demo-student@su-maek.app'
+      insert into users (id, email, display_name, default_organization_id)
+      values (${ids.linkUser}, ${LINK_EMAIL}, '통합테스트 연결계정', ${ORG_ID})
+      on conflict (id) do update set email = excluded.email
+      returning id::text, email
     `;
-    if (!demo) return; // 시드가 없는 환경에서는 판정하지 않는다
-
-    // 데모 계정은 박서윤에 붙어 있으므로 먼저 떼어 낸 상태를 만든다.
-    // **빌린 사실을 먼저 기록**한다 — 아래에서 실패해도 afterAll이 돌려준다.
-    const [holder] = await sql<{ id: string }[]>`
-      select id::text from learners
-      where organization_id = ${ORG_ID} and user_id = ${demo.id}
-    `;
-    if (!holder) return; // 이미 누가 떼어 놓은 상태면 판정하지 않는다
-    borrowedDemo = { userId: demo.id, originalLearnerId: holder.id };
-    await unlinkLearnerAccount({
-      organizationId: ORG_ID,
-      learnerId: holder.id,
-      actorUserId: TEACHER_ID,
-    });
+    expect(demo).toBeDefined();
 
     const linked = await linkLearnerAccount({
       organizationId: ORG_ID,
       learnerId: ids.learner,
-      email: demo.email,
+      email: demo!.email,
       actorUserId: TEACHER_ID,
     });
     expect(linked.ok).toBe(true);
@@ -386,12 +374,12 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
     const [after] = await sql<{ user_id: string | null }[]>`
       select user_id::text as user_id from learners where id = ${ids.learner}
     `;
-    expect(after!.user_id).toBe(demo.id);
+    expect(after!.user_id).toBe(demo!.id);
 
     // 학생 멤버십이 활성으로 보장된다 — 없으면 로그인해도 역할이 없다
     const [m] = await sql<{ role: string; status: string }[]>`
       select role::text, status::text from memberships
-      where organization_id = ${ORG_ID} and user_id = ${demo.id}
+      where organization_id = ${ORG_ID} and user_id = ${demo!.id}
     `;
     expect(m!.role).toBe("student");
     expect(m!.status).toBe("active");
@@ -400,7 +388,7 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
     const twice = await linkLearnerAccount({
       organizationId: ORG_ID,
       learnerId: ids.learner,
-      email: demo.email,
+      email: demo!.email,
       actorUserId: TEACHER_ID,
     });
     expect(twice.ok).toBe(false);
@@ -409,7 +397,7 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
     const steal = await linkLearnerAccount({
       organizationId: ORG_ID,
       learnerId: ids.other,
-      email: demo.email,
+      email: demo!.email,
       actorUserId: TEACHER_ID,
     });
     expect(steal.ok).toBe(false);
@@ -427,7 +415,7 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
     `;
     expect(cleared!.user_id).toBeNull();
     const [stillThere] = await sql<{ cnt: number }[]>`
-      select count(*)::int as cnt from users where id = ${demo.id}
+      select count(*)::int as cnt from users where id = ${demo!.id}
     `;
     expect(stillThere!.cnt).toBe(1);
     // 원복은 afterAll이 무조건 한다 — 여기서 하면 위 단언이 실패했을 때 안 돈다
