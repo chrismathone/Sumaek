@@ -340,6 +340,21 @@ export async function loadQuestions(
         ? [{ type: "paragraph", runs: toContractRuns(parsedAnswer.explanation, expressions) }]
         : null;
 
+    /* 서술형 채점 기준표. 계약(essayKey)이 요구하는 rubricKey·points 구조로
+     * 쪼개려면 표의 행을 읽어야 하는데, 별책의 표는 칸 경계가 벡터라
+     * 텍스트만으로는 어느 비율이 어느 요소의 것인지 확정할 수 없다.
+     * **추측해서 점수를 배분하지 않는다** — 원문을 그대로 두고 검수자가
+     * 쪼개게 한다. 버리는 것보다 낫고, 지어내는 것보다 훨씬 낫다. */
+    const rubric =
+      parsedAnswer && parsedAnswer.rubric.length > 0
+        ? {
+            source: "별책 채점 기준표",
+            raw: renderRuns(parsedAnswer.rubric),
+            structured: false,
+            note: "표의 칸 경계가 벡터라 요소·비율 대응을 확정할 수 없다 — 검수자가 쪼갠다",
+          }
+        : null;
+
     /* 수식 게이트 — core의 파이프라인을 그대로 쓴다 (별도 처리기 금지) */
     const processed = expressions.map((expression) => ({
       ...expression,
@@ -410,7 +425,7 @@ export async function loadQuestions(
       await tx`
         insert into question_versions (
           id, organization_id, question_id, version_number, body, choices, answer,
-          explanation, points, difficulty, question_type_tags, content_checksum,
+          explanation, rubric, points, difficulty, question_type_tags, content_checksum,
           extraction, created_by
         ) values (
           ${versionId}, ${org}, ${questionId}, 1,
@@ -418,6 +433,7 @@ export async function loadQuestions(
           ${question.choices ? tx.json(question.choices.map((c, i) => ({ choiceId: `c${i + 1}`, order: i + 1, marker: c.marker })) as never) : null},
           ${answerKey ? tx.json(answerKey.key as never) : null},
           ${explanation ? tx.json(explanation as never) : null},
+          ${rubric ? tx.json(rubric as never) : null},
           '10',
           /* 난이도 뱃지(중하·중·상)는 지면에서 벡터 그림이라 뽑을 수 없다.
            * 추측하지 않고 비워 둔다 — 검수자가 지정한다. */

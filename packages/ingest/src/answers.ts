@@ -22,6 +22,12 @@ export interface ParsedAnswer {
   answer: Run[];
   /** 「답」 앞의 내용 — 풀이 */
   explanation: Run[];
+  /**
+   * 서술형 문항의 채점 기준표 (「단계 · 채점 요소 · 비율」).
+   * 답 뒤에 붙어 있어서 그냥 두면 정답이 「8단계채점 요소비율1504를…60%」가
+   * 된다. 버릴 자료가 아니라 **다른 칸에 들어가야 할** 자료다.
+   */
+  rubric: Run[];
 }
 
 export interface AnswerProfile {
@@ -96,14 +102,48 @@ export function parseAnswerPage(
   let inAnswer = false;
   /** 답 뒤에 붙는 곁다리 상자 — 여기서부터는 정답이 아니다 */
   let answerClosed = false;
-  const ASIDE = /^(참고|다른 풀이|전략|주의|보충)/;
+  let inRubric = false;
+  /* 답 뒤에 붙는 곁다리 상자의 머리글. 「RPM 비법 노트」는 「RPM」과
+   * 「비법 노트」가 별개 span으로 와서 앞쪽만 잡으면 정답이 「122RPM」이 된다. */
+  const ASIDE = /^(참고|다른 풀이|전략|주의|보충|RPM|.*비법\s*노트)$/;
+  /**
+   * 서술형 채점 기준표의 머리글. 표는 「단계 | 채점 요소 | 비율」 순으로
+   * 오므로 첫 칸인 「단계」부터 잡아야 한다 — 「채점 요소」만 보면 그 앞의
+   * 「단계」가 답에 남아 정답이 「8단계」가 된다.
+   */
+  const RUBRIC_HEAD = /^(단계|채점\s*요소|비율|단계별\s*배점)$/;
+  /** 마지막으로 담은 span의 오른쪽 끝 — 수식 조각을 붙일지 판단한다 */
+  let lastX1 = Number.NEGATIVE_INFINITY;
 
-  const push = (runs: Run[], text: string, isMath: boolean, raw: string): void => {
+  /**
+   * 조각 하나를 담는다.
+   *
+   * 수식은 **좌표가 이어지면 앞 조각에 붙인다.** 조판기는 한 수식을 여러
+   * span으로 쪼개 놓는데(`5` + `Ü`` = 5³), 따로 담으면 정답이
+   * `$5$$^{3}$`처럼 두 조각으로 저장된다. 본책 파서가 이미 같은 이유로
+   * 같은 처리를 한다.
+   */
+  const push = (
+    runs: Run[],
+    text: string,
+    isMath: boolean,
+    raw: string,
+    x0: number,
+    x1: number,
+  ): void => {
+    const adjacent = x0 - lastX1 < 1.5;
+    lastX1 = x1;
     if (isMath) {
       const decoded = decodeHwpMath(raw);
-      if (decoded.latex !== "") {
-        runs.push({ kind: "math", raw, latex: decoded.latex, unknown: decoded.unknown });
+      if (decoded.latex === "") return;
+      const last = runs[runs.length - 1];
+      if (last?.kind === "math" && adjacent) {
+        last.raw += raw;
+        last.latex += decoded.latex;
+        last.unknown.push(...decoded.unknown);
+        return;
       }
+      runs.push({ kind: "math", raw, latex: decoded.latex, unknown: decoded.unknown });
       return;
     }
     if (text.trim() === "") return;
@@ -128,9 +168,11 @@ export function parseAnswerPage(
               current.printedNumber.length + digits.length <= 4) {
             current.printedNumber += digits;
           } else {
-            current = { printedNumber: digits, page: page.page, answer: [], explanation: [] };
+            current = { printedNumber: digits, page: page.page, answer: [], explanation: [], rubric: [] };
             inAnswer = false;
             answerClosed = false;
+            inRubric = false;
+            lastX1 = Number.NEGATIVE_INFINITY;
             out.push(current);
           }
           continue;
@@ -149,10 +191,27 @@ export function parseAnswerPage(
        * 정답이 「①참고2=2^{1}이다.」가 된다 — 객관식은 기호만 뽑아 살아남지만
        * 단답형은 그대로 오답 판정으로 이어진다. */
       if (inAnswer && ASIDE.test(cleaned.trim())) answerClosed = true;
-      if (inAnswer && answerClosed) continue;
 
-      const target = inAnswer ? current.answer : current.explanation;
-      push(target, cleaned, profile.mathFont.test(span.font), span.text);
+      /* 서술형 채점 기준표 — 답 뒤에 이어 붙는다. 답에 섞이면 정답이
+       * 「8단계채점 요소비율1504를 소인수분해 하기60 %」가 된다.
+       * 버리지 않고 rubric으로 돌린다. */
+      if (inAnswer && RUBRIC_HEAD.test(cleaned.trim())) inRubric = true;
+
+      if (inAnswer && answerClosed && !inRubric) continue;
+
+      const target = inRubric
+        ? current.rubric
+        : inAnswer
+          ? current.answer
+          : current.explanation;
+      push(
+        target,
+        cleaned,
+        profile.mathFont.test(span.font),
+        span.text,
+        span.x0,
+        span.x1,
+      );
     }
   }
 
