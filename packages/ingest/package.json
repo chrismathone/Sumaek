@@ -14,7 +14,9 @@
     "extract": "tsx src/cli/extract.mts",
     "score": "tsx src/cli/score.mts",
     "answers": "tsx src/cli/answers.mts",
-    "load": "tsx src/cli/load.mts"
+    "load": "tsx src/cli/load.mts",
+    "verify-templates": "tsx src/cli/verify-templates.mts",
+    "variants": "tsx src/cli/variants.mts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",

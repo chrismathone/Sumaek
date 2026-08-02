@@ -106,6 +106,9 @@ export function parseAnswerPage(
   /* 답 뒤에 붙는 곁다리 상자의 머리글. 「RPM 비법 노트」는 「RPM」과
    * 「비법 노트」가 별개 span으로 와서 앞쪽만 잡으면 정답이 「122RPM」이 된다. */
   const ASIDE = /^(참고|다른 풀이|전략|주의|보충|RPM|.*비법\s*노트)$/;
+  /* 쪽 참조 머리글(「본책 9~11쪽」 「본문 10~14쪽」)이 마지막 문항의 답 뒤에
+   * 붙는다. 정답이 「$6$본책9~11쪽본문 10~14쪽」이 됐다. */
+  const PAGE_REF = /^(본책|본문)/;
   /**
    * 서술형 채점 기준표의 머리글. 표는 「단계 | 채점 요소 | 비율」 순으로
    * 오므로 첫 칸인 「단계」부터 잡아야 한다 — 「채점 요소」만 보면 그 앞의
@@ -190,7 +193,9 @@ export function parseAnswerPage(
       /* 「답 ①」 뒤에 「참고 2=2¹이다.」 같은 상자가 이어진다. 그대로 두면
        * 정답이 「①참고2=2^{1}이다.」가 된다 — 객관식은 기호만 뽑아 살아남지만
        * 단답형은 그대로 오답 판정으로 이어진다. */
-      if (inAnswer && ASIDE.test(cleaned.trim())) answerClosed = true;
+      if (inAnswer && (ASIDE.test(cleaned.trim()) || PAGE_REF.test(cleaned.trim()))) {
+        answerClosed = true;
+      }
 
       /* 서술형 채점 기준표 — 답 뒤에 이어 붙는다. 답에 섞이면 정답이
        * 「8단계채점 요소비율1504를 소인수분해 하기60 %」가 된다.
