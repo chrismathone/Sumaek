@@ -223,6 +223,14 @@ export default async function LearnRecordsPage({
      * WHERE는 반대 방향으로 쓴다(날짜 → timestamptz 반열린 구간) — 컬럼에
      * 함수를 씌우면 결과는 같아도 인덱스에 얹힐 여지가 영영 사라진다.
      *
+     * **`::timestamp`를 지우지 말 것.** `at time zone`은 timezone(zone, ts)
+     * 함수이고, 좌변이 date면 date→timestamp와 date→timestamptz가 둘 다
+     * implicit이라 후보가 갈린다. Postgres는 datetime 카테고리의 preferred
+     * type인 timestamptz 쪽을 골라서, 세션 시간대로 한 번 KST로 한 번 —
+     * 두 번 변환한다. 세션이 UTC인 우리 Supabase에서 **18시간**이 밀려
+     * 매달 1일 18:00 KST 이전 기록이 통째로 사라졌다(실측 후 수리).
+     * 로컬 세션이 KST면 두 변환이 상쇄되어 영영 드러나지 않는다.
+     *
      * 앞날은 span이 잘라 낸다: 미래 달을 보면 d0 > d1이라 활동 행이 하나도
      * 들어오지 않는다. 경계를 화면이 아니라 쿼리에서 못 박는다. */
     sql<ActivityRow[]>`
@@ -243,8 +251,8 @@ export default async function LearnRecordsPage({
         /* 버킷 기준은 submitted_at이다 — 교사가 채점을 확정한 날이 아니라
          * 학생이 낸 날이다. 끝나지 않은 응시는 null이라 저절로 빠진다.
          * invalidated도 빼지 않는다: 과거를 조용히 지우지 않는다. */
-        and t.submitted_at >= span.d0 at time zone ${KST}
-        and t.submitted_at <  span.d1 at time zone ${KST}
+        and t.submitted_at >= span.d0::timestamp at time zone ${KST}
+        and t.submitted_at <  span.d1::timestamp at time zone ${KST}
       union all
       select 'material',
              (p.completed_at at time zone ${KST})::date::text,
@@ -257,8 +265,8 @@ export default async function LearnRecordsPage({
       cross join span
       where p.organization_id = ${org} and p.learner_id = ${lid}
         and p.status = 'completed'
-        and p.completed_at >= span.d0 at time zone ${KST}
-        and p.completed_at <  span.d1 at time zone ${KST}
+        and p.completed_at >= span.d0::timestamp at time zone ${KST}
+        and p.completed_at <  span.d1::timestamp at time zone ${KST}
       union all
       /* 복습은 completed_at이 아니라 last_reviewed_on으로 버킷한다 —
        * 졸업하지 않은 복습은 completed_at이 null로 되돌아가므로, 그걸로

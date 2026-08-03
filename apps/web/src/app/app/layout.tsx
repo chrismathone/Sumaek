@@ -112,7 +112,10 @@ export default async function AppLayout({
                 sizes="72px"
               />
             </Link>
-            <p className="hidden truncate font-mono text-xs text-ink-soft sm:block">
+            {/* 폭에 상관없이 남긴다 — 좌측 사이드바는 lg 미만에서 숨으므로
+              * 이걸 sm:block으로 감추면 폰에서 「지금 어느 학원인가」가 화면
+              * 어디에도 없게 된다. auth.spec.ts가 이 불변식을 단언한다. */}
+            <p className="min-w-0 truncate font-mono text-xs text-ink-soft">
               2026학년도 2학기 · {user.organizationName}
             </p>
           </div>

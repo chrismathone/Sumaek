@@ -170,8 +170,9 @@ pnpm --filter @su-maek/db seed-unit1-demo   # 1단원 데모 세팅 (멱등) —
 - SQL도 `at time zone ${KST}` 바인딩으로 쓴다. 리터럴 `'Asia/Seoul'`를 SQL에 박지 않는다.
 - DB의 `timezone` 컬럼들은 **그때 무엇이 쓰였는지 남기는 감사 스냅샷**으로만 남는다 —
   읽어서 분기하지 않는다.
-- `packages/core/test/kst-pin.test.ts` **6건이 소스를 훑어 이 규칙을 강제**한다.
+- `packages/core/test/kst-pin.test.ts` **7건이 소스를 훑어 이 규칙을 강제**한다.
   다른 시간대 리터럴이나 `timeZone:` 다른 값이 들어오면 테스트가 깨진다.
+  좌변 규칙(3.5절)도 여기 있다.
 
 ### 3.2 `drizzle-kit push` 금지
 
@@ -193,7 +194,35 @@ pnpm --filter @su-maek/db seed-unit1-demo   # 1단원 데모 세팅 (멱등) —
 지우고 다시 넣어야 한다 — 삭제 SQL과 순서는 [handoff.md](handoff.md) 3.1절
 (`begin;`으로 감쌀 것. 안 감싸면 안전망이 사라진다).
 
-### 3.5 postgres.js 바인딩 두 가지
+### 3.5 `at time zone`의 좌변은 반드시 timestamptz다
+
+`AT TIME ZONE`은 문법이 아니라 **`timezone(zone, ts)` 함수 호출**이다. 좌변이
+`date`면 `date→timestamp`와 `date→timestamptz`가 **둘 다 implicit cast**라
+후보가 갈리고, Postgres는 datetime 카테고리의 preferred type인 timestamptz
+쪽을 고른다. 그러면 세션 시간대로 한 번, KST로 한 번 — **두 번** 변환된다.
+
+```sql
+-- 틀렸다: 세션이 UTC인 우리 Supabase에서 18시간 밀린다
+where t.submitted_at >= span.d0 at time zone 'Asia/Seoul'
+-- 옳다
+where t.submitted_at >= span.d0::timestamp at time zone 'Asia/Seoul'
+```
+
+**로컬 세션이 KST면 두 변환이 상쇄되어 영영 드러나지 않는다.** 타입 검사·
+린트·빌드·E2E 어디에도 안 걸린다. `/learn/records`의 월 경계가 실제로 이렇게
+틀려서 매달 1일 18:00 KST 이전 기록이 통째로 사라졌다(2026-08-03 실측·수리).
+한 줄로 확인할 수 있다:
+
+```sql
+select pg_typeof(current_date at time zone 'Asia/Seoul');
+-- timestamp without time zone  ← 이게 나오면 밀린 것이다
+```
+
+`kst-pin.test.ts`의 「at time zone 의 좌변이 date면 안 된다」가 이제 이것을
+막는다 — 좌변은 `)`로 끝나는 함수·괄호식, `_at` 규약의 컬럼, 명시적
+`::timestamp` 캐스트 셋만 허용된다.
+
+### 3.6 postgres.js 바인딩 두 가지
 
 - **jsonb**: `sql.json()`/`tx.json()`을 쓴다. `JSON.stringify(x)::jsonb`는
   **이중 인코딩되는데 에러가 안 난다** — 읽을 때 필드가 `undefined`로만 드러난다.
@@ -202,7 +231,7 @@ pnpm --filter @su-maek/db seed-unit1-demo   # 1단원 데모 세팅 (멱등) —
   (실측: `UPDATE 0건`). 텍스트 왕복 토큰은 `컬럼::text = ${토큰}`으로 비교하고
   읽을 때도 `::text`로 받는다.
 
-### 3.6 렌더 성공은 정확성이 아니다
+### 3.7 렌더 성공은 정확성이 아니다
 
 `A=2b\times 3^{b}\times 5c`는 KaTeX가 오류 없이 예쁘게 그린다. 지면은
 `A=2^a×3^b×5^c`다. **「렌더 실패 0건」이라고 보고한 직후에 사용자가 화면을 보고
@@ -213,7 +242,7 @@ pnpm --filter @su-maek/db seed-unit1-demo   # 1단원 데모 세팅 (멱등) —
 있다"는 다르다.** 이 저장소의 승격 관례가 **변이 검증**인 이유다 — 검증 대상 코드를
 일부러 망가뜨려 테스트가 실제로 실패하는지 확인하고 원복한다.
 
-### 3.7 제품 경계
+### 3.8 제품 경계
 
 학원 ERP·CRM·전자출결·상담 관리는 **범위 밖**이다. `pnpm build`가
 `boundary-check.mjs`를 먼저 돌려 비범위 모듈과 금지 카피 7종을 막는다.
@@ -298,9 +327,20 @@ select id, item_date, starts_at, ends_at, reason_codes
 -- 019fc6c0-4781-70b9-a94e-3979cb7c2622 | 2026-08-03 | 09:00 | 22:00 KST
 ```
 
-`materials.spec.ts`를 돌리려면 이 행을 지워야 한다. 어느 쪽이 양보해야 하는지
-정하지 않았다 — **고치지 않고 알려진 결손으로 남긴다.** 데모 세팅이 22시까지
-잡는 것이 과한 것인지, 스펙이 다른 학습자를 써야 하는지가 판단할 지점이다.
+**`pnpm db:seed`도 여기서 죽었다** — 시드가 같은 학습자에게 09–10시를 넣으려
+하기 때문이다. `on conflict (id)`는 중재가 id 하나에만 걸려서 **배타 제약
+위반(23P01)을 막지 못한다.** 즉 이 결손은 E2E 하나가 아니라 인수인계 1절의
+네 번째 줄을 막고 있었다.
+
+시드 쪽은 고쳤다(2026-08-03) — **겹치는 칸이 이미 있으면 조용히 비켜선다.**
+남의 행을 지우지 않는 쪽을 골랐다: 09–22시를 잡은 것은 사람이 일부러 만든
+검증 세팅이고, 시드가 그걸 말없이 되돌리면 「분명히 세팅했는데 사라졌다」가
+된다. 자기 행(같은 id)은 제외하므로 날이 바뀌면 `do update`가 정상적으로
+오늘로 옮긴다.
+
+**`materials.spec.ts`는 여전히 이 행에 걸린다.** 스펙이 양보해야 하는지
+데모 세팅이 22시까지 잡는 것이 과한지는 판단이 필요해 손대지 않았다 —
+돌리려면 지금은 위 행을 지워야 한다.
 
 ---
 
@@ -315,9 +355,12 @@ select id, item_date, starts_at, ends_at, reason_codes
 | `pnpm typecheck` | **0 오류** (전 패키지) |
 | `pnpm lint` | **0 오류 / 2 경고** — 둘 다 기존 것(`TestRunner.tsx`의 effect 내 setState, `settings/page.tsx`) |
 | `pnpm boundary:check` | 통과 — 비범위 모듈·문구 0건 |
-| KST 가드 | 6/6 |
-| `apps/web` 단위 | 157/157 (24 파일, 단독 실행) |
+| KST 가드 | 7/7 (좌변 규칙은 변이 검증 통과 — `::timestamp`를 지우면 실패한다) |
+| `packages/core` | 537/537 |
+| `apps/web` 단위 | 157/157 (24 파일, **단독 실행**) |
 | E2E `a11y`+`full-loop` (desktop·mobile) | 18/18 |
+| E2E `auth` (mobile 412px) | 3/3 |
+| `pnpm db:seed` | 완주 · 연속 2회 멱등 |
 
 > **E2E 배치 실행의 실패를 곧이곧대로 믿지 말 것.** 모든 패키지가 **라이브 DB
 > 하나를 공유**한다(`fullyParallel: false, workers: 1`이어도 패키지 간에는

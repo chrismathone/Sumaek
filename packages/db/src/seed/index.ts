@@ -565,19 +565,43 @@ async function main(): Promise<void> {
      * 단독 실행하면 멀쩡해서 원인을 찾기 어렵다(실측으로 확인). 다른 파일에서
      * `sql.json()`이 잘 도는 이유는 그쪽엔 drizzle이 없기 때문이다. */
     const eliminationNodeId = "00000000-0000-7000-8000-000000000403"; // 가감법
-    await sql`
+
+    /* `on conflict (id)`는 **배타 제약을 막지 못한다** — 중재는 id 하나에만
+     * 걸리고, learner_schedule_items_no_overlap 위반(23P01)은 그대로 던져진다.
+     * 다른 도구가 같은 학습자의 오늘에 더 넓은 칸을 잡아 두면(예:
+     * `seed-unit1-demo`가 09–22시를 쓴다) 시드가 통째로 죽고, 그 뒤의
+     * 어떤 시드도 실행되지 않는다 — 실측으로 확인했다.
+     *
+     * 그래서 **겹치는 칸이 이미 있으면 조용히 비켜선다.** 남의 행을 지우지
+     * 않는 쪽을 고른 이유: 이 일정은 데모 편의용이고, 09–22시를 잡은 쪽은
+     * 사람이 일부러 만든 검증 세팅이다. 시드가 그걸 말없이 되돌리면
+     * 「분명히 세팅했는데 사라졌다」가 된다. 자기 행(같은 id)은 제외하므로
+     * 날이 바뀌면 아래 do update가 정상적으로 오늘로 옮긴다. */
+    const upsertDemoItem = (id: string, learnerId: string) => sql`
+      with want as (
+        select ${id}::uuid as id,
+               (now() at time zone ${KST})::date as d,
+               ((now() at time zone ${KST})::date + time '09:00')
+                 at time zone ${KST} as s,
+               ((now() at time zone ${KST})::date + time '10:00')
+                 at time zone ${KST} as e
+      )
       insert into learner_schedule_items (
         id, organization_id, learner_id, learning_group_id, session_id,
         item_date, timezone, starts_at, ends_at, planned_node_ids,
         reason_codes, matches_group, is_rejoin
-      ) values (
-        ${"00000000-0000-7000-8000-000000000080"}, ${ORG_ID},
-        ${LEARNERS[0].id}, ${GROUP_ID}, null,
-        (now() at time zone ${KST})::date, ,
-        ((now() at time zone ${KST})::date + time '09:00') at time zone ${KST},
-        ((now() at time zone ${KST})::date + time '10:00') at time zone ${KST},
-        ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
-        false, false
+      )
+      select w.id, ${ORG_ID}, ${learnerId}, ${GROUP_ID}, null,
+             w.d, ${KST}, w.s, w.e,
+             ${JSON.stringify([eliminationNodeId])}::jsonb,
+             ${JSON.stringify(["seed_demo"])}::jsonb,
+             false, false
+      from want w
+      where not exists (
+        select 1 from learner_schedule_items x
+         where x.organization_id = ${ORG_ID} and x.learner_id = ${learnerId}
+           and x.id <> w.id
+           and tstzrange(x.starts_at, x.ends_at) && tstzrange(w.s, w.e)
       )
       on conflict (id) do update set
         item_date = excluded.item_date,
@@ -587,33 +611,21 @@ async function main(): Promise<void> {
         updated_at = now()
     `;
 
+    await upsertDemoItem(
+      "00000000-0000-7000-8000-000000000080",
+      LEARNERS[0].id,
+    );
+
     /* 이도윤에게도 같은 오늘 일정. 사람이 손으로 확인하는 학생 계정
      * (st2000424)이 이 학습자에 붙어 있어서, 여기 일정이 없으면 로그인해도
      * 「오늘은 수업이 없습니다」만 보인다. 박서윤 것과 갈라 두는 이유는
      * E2E가 박서윤 일정을 지웠다 만들었다 하기 때문이다 — 사람이 보는 화면이
      * 테스트 진행 상황에 따라 달라지면 안 된다.
      * 시간 배타 제약은 학습자별이라 같은 09–10시를 써도 겹치지 않는다. */
-    await sql`
-      insert into learner_schedule_items (
-        id, organization_id, learner_id, learning_group_id, session_id,
-        item_date, timezone, starts_at, ends_at, planned_node_ids,
-        reason_codes, matches_group, is_rejoin
-      ) values (
-        ${"00000000-0000-7000-8000-000000000081"}, ${ORG_ID},
-        ${LEARNERS[1].id}, ${GROUP_ID}, null,
-        (now() at time zone ${KST})::date, ,
-        ((now() at time zone ${KST})::date + time '09:00') at time zone ${KST},
-        ((now() at time zone ${KST})::date + time '10:00') at time zone ${KST},
-        ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
-        false, false
-      )
-      on conflict (id) do update set
-        item_date = excluded.item_date,
-        starts_at = excluded.starts_at,
-        ends_at = excluded.ends_at,
-        planned_node_ids = excluded.planned_node_ids,
-        updated_at = now()
-    `;
+    await upsertDemoItem(
+      "00000000-0000-7000-8000-000000000081",
+      LEARNERS[1].id,
+    );
   }
 
   console.log(

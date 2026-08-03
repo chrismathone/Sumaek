@@ -114,6 +114,41 @@ describe("시간대 못 — KST 하나로 고정한다", () => {
     ).toEqual([]);
   });
 
+  it("at time zone 의 좌변이 date면 안 된다 — 조용히 18시간이 밀린다", () => {
+    /* `AT TIME ZONE`은 timezone(zone, ts) 함수 호출이다. 좌변이 **date**면
+     * date→timestamp와 date→timestamptz가 둘 다 implicit cast라 후보가
+     * 갈리고, Postgres는 datetime 카테고리의 preferred type인 timestamptz
+     * 쪽을 고른다. 그러면 세션 시간대로 한 번, KST로 한 번 두 번 변환되어
+     * 세션이 UTC인 곳에서 18시간이 밀린다.
+     *
+     * 이 못이 없어서 /learn/records의 월 경계가 실제로 그렇게 틀렸다
+     * (`span.d0 at time zone ${KST}`). 로컬 세션이 KST면 두 변환이 상쇄돼
+     * 영영 안 보이고, 타입 검사·린트·빌드 어디에도 안 걸린다.
+     *
+     * 안전한 좌변 셋만 허용한다: 함수 호출·괄호식(`)`로 끝남),
+     * `_at` 규약의 timestamptz 컬럼, 명시적 `::timestamp` 캐스트.
+     * 줄 단위가 아니라 파일 전체를 훑는다 — 실제로 ai-usage.ts의 중첩
+     * date_trunc는 `at time zone`이 다음 줄로 넘어가 있다. */
+    const offenders: string[] = [];
+    for (const p of sourceFiles()) {
+      const text = read(p);
+      for (const m of text.matchAll(/(\S+)\s+at time zone/g)) {
+        const lhs = m[1] ?? "";
+        const safe =
+          lhs.endsWith(")") ||
+          lhs.endsWith("_at") ||
+          lhs.endsWith("::timestamp");
+        if (safe) continue;
+        const line = text.slice(0, m.index).split("\n").length;
+        offenders.push(`${p}:${line} — 좌변 ${lhs}`);
+      }
+    }
+    expect(
+      offenders,
+      "at time zone 의 좌변을 ::timestamp 로 못 박으세요 (date면 18시간 밀립니다)",
+    ).toEqual([]);
+  });
+
   it("동작 코드가 organizations.timezone 을 읽지 않는다", () => {
     /* 컬럼 자체는 남는다 — "그때 무엇이 참이었나"를 남기는 감사 스냅샷이다.
      * 다만 그것을 **읽어서 동작을 가르는** 순간 시간대가 다시 설정이 된다. */
