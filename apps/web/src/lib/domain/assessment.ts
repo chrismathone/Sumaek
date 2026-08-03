@@ -34,6 +34,40 @@ export interface GenerateResult {
   deduplicated: boolean;
 }
 
+interface ObjectiveSnapshotRow {
+  id: string;
+  concept_id: string;
+  statement: string;
+  dimensions: unknown;
+  evidences: Array<{ id: string; description: string }>;
+}
+
+/**
+ * 블루프린트에 스냅샷할 학습 목표·기대 증거 (정렬 사슬 2N의 가운데 고리).
+ * 전역 참조 데이터라 없을 수 있다 — 호출부는 공백(objectiveGaps)을 스펙에
+ * 기록한다. 조용히 있는 척하지 않는다.
+ */
+async function loadObjectiveSnapshot(
+  sql: ReturnType<typeof getSharedSql>,
+  conceptIds: string[],
+): Promise<ObjectiveSnapshotRow[]> {
+  if (conceptIds.length === 0) return [];
+  return sql<ObjectiveSnapshotRow[]>`
+    select o.id::text as id, o.concept_id::text as concept_id, o.statement,
+           o.dimensions,
+           coalesce(
+             jsonb_agg(jsonb_build_object('id', e.id, 'description', e.description)
+                       order by e.id) filter (where e.id is not null),
+             '[]'::jsonb
+           ) as evidences
+    from learning_objectives o
+    left join assessment_evidences e on e.objective_id = o.id
+    where o.concept_id = any(${conceptIds}::uuid[]) and o.status = 'active'
+    group by o.id, o.concept_id, o.statement, o.dimensions
+    order by o.concept_id, o.id
+  `;
+}
+
 export async function generateDailyTest(options: {
   organizationId: string;
   learningGroupId: string;
@@ -308,17 +342,66 @@ export async function generateDailyTest(options: {
       and learning_group_id = ${learningGroupId} and status = 'active'
   `;
 
+  /* 블루프린트 재료 — 오늘 개념의 학습 목표·기대 증거 (정렬 사슬 2N:
+   * 성취기준 → 개념 → 학습 목표 → 기대 증거 → 블루프린트 → 문항) */
+  const objectiveRows = await loadObjectiveSnapshot(sql, todayConceptIds);
+  const conceptsWithObjectives = new Set(objectiveRows.map((o) => o.concept_id));
+  const selectedIds = selection.selected.map((s) => s.questionId);
+  const kindRows = await sql<{ id: string; kind: string }[]>`
+    select id::text as id, kind::text as kind from questions
+    where id = any(${selectedIds}::uuid[])
+  `;
+  const humanGradedKinds = new Set(["essay"]);
+  const humanGraded = kindRows.filter((k) => humanGradedKinds.has(k.kind)).length;
+
   /* 게시 — 스냅샷 고정 (원자적) */
   const assessmentId = uuidv7();
+  const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
+    /* 블루프린트 — 무엇을 왜 재려 했는지의 기록. 인스턴스보다 먼저 쓴다 */
+    await tx`
+      insert into assessment_blueprints (
+        id, organization_id, policy_id, purpose, version, spec, grading_split, created_by
+      ) values (
+        ${blueprintId}, ${organizationId}, ${policy.id}, 'formative', ${policy.version},
+        ${tx.json({
+          targetDate,
+          buckets: [
+            { reason: "today_concept", count: nToday },
+            { reason: "weakness", count: nWeak },
+            { reason: "review", count: nReview },
+          ],
+          difficultyDistribution:
+            policy.constraints.difficultyDistribution ?? null,
+          conceptIds: todayConceptIds,
+          objectives: objectiveRows.map((o) => ({
+            id: o.id,
+            conceptId: o.concept_id,
+            statement: o.statement,
+            dimensions: o.dimensions,
+            evidences: o.evidences,
+          })),
+          /* 목표가 정의되지 않은 오늘 개념 — 사슬 공백의 정직한 기록 */
+          objectiveGaps: todayConceptIds.filter(
+            (c) => !conceptsWithObjectives.has(c),
+          ),
+        } as never)},
+        ${tx.json({
+          autoGradable: kindRows.length - humanGraded,
+          humanGraded,
+          humanGradedKinds: [...humanGradedKinds],
+        } as never)},
+        ${options.actorUserId}
+      )
+    `;
     await tx`
       insert into assessment_instances (
-        id, organization_id, policy_id, policy_version, purpose, title,
+        id, organization_id, blueprint_id, policy_id, policy_version, purpose, title,
         learning_group_id, scheduled_date, status, generation_seed,
         generation_context, time_limit_minutes, total_points,
         published_at, published_by
       ) values (
-        ${assessmentId}, ${organizationId}, ${policy.id}, ${policy.version},
+        ${assessmentId}, ${organizationId}, ${blueprintId}, ${policy.id}, ${policy.version},
         'formative', ${`일일테스트 · ${targetDate}`},
         ${learningGroupId}, ${targetDate}, 'published', ${seed},
         ${tx.json({
@@ -542,16 +625,56 @@ export async function generateConfirmationTest(options: {
       and learning_group_id = ${learningGroupId} and status = 'active'
   `;
 
+  /* 블루프린트 — 단원 개념 전체가 앵커 커버 대상 (2N 공통 앵커) */
+  const unitConceptIds = unitConcepts.map((c) => c.concept_id);
+  const objectiveRows = await loadObjectiveSnapshot(sql, unitConceptIds);
+  const conceptsWithObjectives = new Set(objectiveRows.map((o) => o.concept_id));
+  const coveredConcepts = new Set(
+    selection.selected.flatMap(
+      (s) => unitPool.find((p) => p.questionId === s.questionId)?.conceptIds ?? [],
+    ),
+  );
+
   const assessmentId = uuidv7();
+  const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
     await tx`
+      insert into assessment_blueprints (
+        id, organization_id, policy_id, purpose, version, spec, anchor_spec, created_by
+      ) values (
+        ${blueprintId}, ${organizationId}, ${policy.id}, 'confirmation', ${policy.version},
+        ${tx.json({
+          targetDate,
+          conceptIds: unitConceptIds,
+          objectives: objectiveRows.map((o) => ({
+            id: o.id,
+            conceptId: o.concept_id,
+            statement: o.statement,
+            dimensions: o.dimensions,
+            evidences: o.evidences,
+          })),
+          objectiveGaps: unitConceptIds.filter(
+            (c) => !conceptsWithObjectives.has(c),
+          ),
+          passingRules: policy.passing_rules,
+        } as never)},
+        ${tx.json({
+          anchorCount: policy.question_count,
+          /* 앵커가 실제로 덮은/못 덮은 단원 개념 — 커버 공백의 정직한 기록 */
+          coveredConceptIds: unitConceptIds.filter((c) => coveredConcepts.has(c)),
+          uncoveredConceptIds: unitConceptIds.filter((c) => !coveredConcepts.has(c)),
+        } as never)},
+        ${options.actorUserId}
+      )
+    `;
+    await tx`
       insert into assessment_instances (
-        id, organization_id, policy_id, policy_version, purpose, title,
+        id, organization_id, blueprint_id, policy_id, policy_version, purpose, title,
         learning_group_id, scheduled_date, status, generation_seed,
         generation_context, time_limit_minutes, total_points,
         published_at, published_by
       ) values (
-        ${assessmentId}, ${organizationId}, ${policy.id}, ${policy.version},
+        ${assessmentId}, ${organizationId}, ${blueprintId}, ${policy.id}, ${policy.version},
         'confirmation', ${`확인테스트 · ${targetDate}`},
         ${learningGroupId}, ${targetDate}, 'published', ${seed},
         ${tx.json({

@@ -36,6 +36,7 @@ import {
   CATALOG_CONCEPTS,
   CATALOG_MAPPINGS,
 } from "./data/middle-math-concept-catalog.mts";
+import { CATALOG_OBJECTIVES } from "./data/middle-math-objective-catalog.mts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -70,14 +71,18 @@ const DOMAIN_NAMES: Record<string, string> = {
  * 카탈로그에 고정 ID가 없는 매핑은 code+slug에서 결정론적으로 만들어
  * 재실행이 같은 행을 갱신하게 한다.
  */
-function stableMappingId(code: string, slug: string): string {
+function stableId(namespace: string, key: string): string {
   const digest = createHash("sha256")
-    .update(`su-maek:curriculum-mapping:${code}:${slug}`)
+    .update(`su-maek:${namespace}:${key}`)
     .digest("hex");
   return (
     `${digest.slice(0, 8)}-${digest.slice(8, 12)}-` +
     `7${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`
   );
+}
+
+function stableMappingId(code: string, slug: string): string {
+  return stableId("curriculum-mapping", `${code}:${slug}`);
 }
 
 interface Args {
@@ -391,6 +396,59 @@ async function main(): Promise<void> {
               evidence = excluded.evidence, updated_at = now()
         `;
       }
+      /* 7. 학습 목표·평가 증거 (사슬 뒤 고리, 2M) — 문항까지 잇긴 개념부터.
+       * stable ID 멱등 — 문구 수정은 같은 행 갱신, key 변경은 새 행. */
+      let objectiveCount = 0;
+      let evidenceCount = 0;
+      for (const objective of CATALOG_OBJECTIVES) {
+        const [concept] = await tx<{ id: string }[]>`
+          select id from canonical_concepts where slug = ${objective.conceptSlug}
+        `;
+        if (!concept) {
+          console.log(`  ! 목표 건너뜀: 개념 없음 ${objective.conceptSlug}`);
+          continue;
+        }
+        const objectiveId = stableId(
+          "learning-objective",
+          `${objective.conceptSlug}:${objective.key}`,
+        );
+        await tx`
+          insert into learning_objectives (
+            id, concept_id, statement, dimensions, success_evidence,
+            expected_minutes, status
+          ) values (
+            ${objectiveId}, ${concept.id}, ${objective.statement},
+            ${tx.json(objective.dimensions as never)},
+            ${tx.json(objective.successEvidence as never)},
+            ${objective.expectedMinutes}, 'active'
+          )
+          on conflict (id) do update
+          set statement = excluded.statement, dimensions = excluded.dimensions,
+              success_evidence = excluded.success_evidence,
+              expected_minutes = excluded.expected_minutes, updated_at = now()
+        `;
+        objectiveCount += 1;
+        for (const evidence of objective.evidences) {
+          await tx`
+            insert into assessment_evidences (id, objective_id, description, observable_via)
+            values (
+              ${stableId(
+                "assessment-evidence",
+                `${objective.conceptSlug}:${objective.key}:${evidence.key}`,
+              )},
+              ${objectiveId}, ${evidence.description},
+              ${tx.json(evidence.observableVia as never)}
+            )
+            on conflict (id) do update
+            set description = excluded.description,
+                observable_via = excluded.observable_via, updated_at = now()
+          `;
+          evidenceCount += 1;
+        }
+      }
+      console.log(
+        `학습 목표 ${objectiveCount}개 · 평가 증거 ${evidenceCount}개 적재 (문항 잇긴 개념 우선)`,
+      );
     });
 
     /* ── 검증 출력 — 적재 결과와 사슬을 실측으로 보여준다 ── */

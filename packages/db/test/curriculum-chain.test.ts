@@ -110,6 +110,60 @@ describe.skipIf(!hasDb)("교육과정 권위 사슬 (인수 41·48)", () => {
     }
   });
 
+  it("사슬 뒤 고리: 문항 잇긴 개념에 학습 목표·기대 증거가 있다 (인수 48 · 2M)", async () => {
+    /* 5고리 왕복: 성취기준 → 매핑 → 개념 → 학습 목표 → 기대 증거,
+     * 그리고 같은 개념이 문항까지 닿는다. [9수01-01]은 소인수분해 표준 —
+     * 연결 개념 전부가 목표·증거·문항을 갖는 첫 완결 사례다. */
+    const rows = await sql<
+      { slug: string; objectives: number; evidences: number; questions: number }[]
+    >`
+      select c.slug,
+             count(distinct o.id)::int as objectives,
+             count(distinct e.id)::int as evidences,
+             count(distinct qa.question_id)::int as questions
+      from achievement_standards s
+      join curriculum_mappings m
+        on m.official_type = 'achievement_standard' and m.official_id = s.id
+       and m.status = 'active' and m.provenance = 'human'
+      join canonical_concepts c on c.id = m.internal_id
+      join learning_objectives o on o.concept_id = c.id and o.status = 'active'
+      join assessment_evidences e on e.objective_id = o.id
+      join question_alignments qa on qa.concept_id = c.id
+      where s.release_id = ${RELEASE_ID} and s.code = '9수01-01'
+      group by c.slug order by c.slug
+    `;
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    for (const row of rows) {
+      expect(row.objectives).toBeGreaterThanOrEqual(1);
+      expect(row.evidences).toBeGreaterThanOrEqual(1);
+      expect(row.questions).toBeGreaterThanOrEqual(50);
+    }
+  });
+
+  it("학습 목표는 관찰 가능한 수행 서술 + 차원·성공 증거·허용 오류를 갖는다 (2M)", async () => {
+    const [objective] = await sql<
+      {
+        statement: string;
+        dimensions: string[];
+        success_evidence: { success?: string; allowedErrors?: string } | null;
+      }[]
+    >`
+      select o.statement, o.dimensions, o.success_evidence
+      from learning_objectives o
+      join canonical_concepts c on c.id = o.concept_id
+      where c.slug = 'm1-prime-factorization' and o.status = 'active'
+      order by o.id limit 1
+    `;
+    expect(objective).toBeDefined();
+    // 수행 서술 — "~수 있다" 꼴, 페이지 범위 아님
+    expect(objective!.statement).toMatch(/수 있다\.$/);
+    expect(objective!.statement).not.toMatch(/p\.|쪽|페이지/);
+    expect(objective!.dimensions.length).toBeGreaterThanOrEqual(1);
+    // 성공 증거와 허용 가능한 오류가 함께 있다 — 실수와 미이해를 가른다
+    expect(objective!.success_evidence?.success).toBeTruthy();
+    expect(objective!.success_evidence?.allowedErrors).toBeTruthy();
+  });
+
   it("적용 규칙: 2026 중1·중2만 2022 개정 — 중3(2015)은 데이터가 없어 비워 둔다", async () => {
     const rows = await sql<{ grade_band: string; code: string }[]>`
       select a.grade_band, v.code
