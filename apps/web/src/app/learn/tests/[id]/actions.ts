@@ -35,7 +35,6 @@ export async function submitAttemptAction(
     organizationId: learner.user.organizationId,
     attemptId,
     learnerId: learner.learnerId,
-    timezone: learner.user.timezone,
   });
   if (!result.ok) return { ok: false, message: result.message };
   redirect(`/learn/results/${attemptId}`);

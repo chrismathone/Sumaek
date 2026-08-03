@@ -276,7 +276,6 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
       organizationId: ORG_ID,
       attemptId: first.attemptId,
       learnerId: ids.other,
-      timezone: "Asia/Seoul",
     });
 
     const scheduled = await sql<{ id: string; due_on: string }[]>`
@@ -317,7 +316,6 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
       organizationId: ORG_ID,
       attemptId: adhocAttemptId,
       learnerId: ids.other,
-      timezone: "Asia/Seoul",
     });
 
     const stillOpen = await sql<{ cnt: number }[]>`

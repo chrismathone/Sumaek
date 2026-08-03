@@ -191,7 +191,7 @@ export default async function BooksPage({
       mono: true,
       secondary: true,
       render: (cr) =>
-        cr.expires_on ? formatDate(cr.expires_on, user.timezone) : "—",
+        cr.expires_on ? formatDate(cr.expires_on) : "—",
     },
     {
       key: "status",

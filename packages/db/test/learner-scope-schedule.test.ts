@@ -194,7 +194,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
       organizationId: ORG,
       learningGroupId: GROUP,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
     expect(groupRun.ok).toBe(true);
@@ -223,7 +222,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learnerId: LEARNER_B,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
     });
@@ -283,7 +281,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learnerId: LEARNER_A,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
     });
@@ -365,7 +362,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learnerId: LEARNER_A,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
       expect(second.ok).toBe(true);
@@ -397,7 +393,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learnerId: LEARNER_A,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
       expect(run.ok).toBe(true);
@@ -440,7 +435,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learnerId: LEARNER_A,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
       expect(run.ok).toBe(true);
@@ -479,7 +473,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learningGroupId: GROUP,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
       expect(rerun.ok).toBe(true);
@@ -499,8 +492,8 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
           starts_at, ends_at, status, planned_node_ids
         ) values (
           ${PAST_SESSION}, ${ORG}, ${GROUP}, ${PAST_DATE}, ${TZ},
-          ${zonedTimeToUtc(PAST_DATE, "16:00", TZ)},
-          ${zonedTimeToUtc(PAST_DATE, "18:00", TZ)},
+          ${zonedTimeToUtc(PAST_DATE, "16:00")},
+          ${zonedTimeToUtc(PAST_DATE, "18:00")},
           'planned', ${sql.json([NODES[0], NODES[1]] as never)}
         )
       `;
@@ -511,7 +504,6 @@ describe.skipIf(!hasDb)("학습자 스코프 실체화 (인수 4)", () => {
         organizationId: ORG,
         learningGroupId: GROUP,
         actorUserId: null,
-        timezone: TZ,
         today,
       });
       expect(rerun.ok).toBe(true);

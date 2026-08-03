@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { youTubeEmbedUrl } from "@/lib/youtube";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import { listMaterials } from "@/lib/domain/learning-material";
 import { getTodayScope } from "@/lib/learn/today-context";
 import { CompleteMaterialButton } from "@/components/learn/MaterialCard";
@@ -32,7 +32,7 @@ function formatDuration(seconds: number | null): string | null {
 
 export default async function WatchPage() {
   const learner = (await getCurrentLearner())!;
-  const today = todayInTimeZone(learner.user.timezone);
+  const today = todayInKst();
   const scope = await getTodayScope(learner, today);
   const materials = await listMaterials({
     organizationId: learner.user.organizationId,

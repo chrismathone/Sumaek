@@ -129,7 +129,6 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
       organizationId: ORG_ID,
       attemptId: started.attemptId,
       learnerId: ids.learner,
-      timezone: "Asia/Seoul",
     });
     expect(result.ok).toBe(true);
     expect(result.attemptStatus).toBe("finalized");
@@ -168,7 +167,6 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
       organizationId: ORG_ID,
       attemptId: started.attemptId,
       learnerId: ids.learner,
-      timezone: "Asia/Seoul",
     });
     const [planCount] = await sql<{ cnt: number }[]>`
       select count(*)::int as cnt from retry_plans

@@ -6,6 +6,7 @@ import { TableFilters } from "@/components/TableFilters";
 import { formatDateTime } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { ResolveForm } from "./ResolveForm";
+import { KST } from "@su-maek/core/shared";
 
 export const metadata: Metadata = { title: "채점·예외" };
 
@@ -98,7 +99,7 @@ export default async function GradingPage({
       select count(*)::int as cnt from grading_exceptions
       where organization_id = ${user.organizationId}
         and status = 'resolved'
-        and resolved_at >= date_trunc('day', now() at time zone ${user.timezone})
+        and resolved_at >= date_trunc('day', now() at time zone ${KST})
     `,
   ]);
 
@@ -173,7 +174,7 @@ export default async function GradingPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (e) => formatDateTime(e.created_at, user.timezone),
+      render: (e) => formatDateTime(e.created_at),
     },
     {
       key: "action",

@@ -18,7 +18,7 @@ import {
 import type { GraphEdge } from "@su-maek/core/curriculum";
 import type { IsoDate } from "@su-maek/core/shared";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import {
   materializeGroupSchedule,
   type MaterializeResult,
@@ -67,14 +67,12 @@ export async function materializeSchedule(
     };
   }
 
-  const today = new Date()
-    .toLocaleDateString("en-CA", { timeZone: user.timezone }) as IsoDate;
+  const today = todayInKst() as IsoDate;
 
   const result = await materializeGroupSchedule({
     organizationId: user.organizationId,
     learningGroupId,
     actorUserId: user.userId,
-    timezone: user.timezone,
     today,
   });
 
@@ -549,7 +547,7 @@ export async function validateDraft(
     capacityGroupId = membership?.learning_group_id ?? null;
   }
 
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
   let horizonEnd = plan.target_end_date;
   if (capacityGroupId && !horizonEnd) {
     const [period] = await sql<{ ends_on: string }[]>`

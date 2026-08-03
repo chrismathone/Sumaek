@@ -4,7 +4,7 @@ import { getSharedSql } from "@su-maek/db";
 import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
-import { formatDateTime, todayInTimeZone } from "@/lib/format";
+import { formatDateTime, todayInKst } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 
 export const metadata: Metadata = { title: "반·학습 그룹" };
@@ -50,7 +50,7 @@ export default async function ClassesPage({
 }) {
   const user = await requireAccess("groups");
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
 
   const query = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SORT_COLUMN),
@@ -159,7 +159,7 @@ export default async function ClassesPage({
       mono: true,
       secondary: true,
       render: (g) =>
-        g.next_session_at ? formatDateTime(g.next_session_at, user.timezone) : "—",
+        g.next_session_at ? formatDateTime(g.next_session_at) : "—",
     },
     {
       key: "open_exceptions",

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { getSharedSql } from "@su-maek/db";
 import { requireAccess } from "@/lib/auth/require-access";
+import { todayInKst } from "@/lib/format";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { GenerateForm } from "./GenerateForm";
+import { KST } from "@su-maek/core/shared";
 
 export const metadata: Metadata = { title: "일일·확인테스트" };
 
@@ -110,7 +112,7 @@ export default async function TestsPage({
     sql<{ session_date: string }[]>`
       select min(session_date)::text as session_date from sessions
       where organization_id = ${user.organizationId}
-        and session_date >= (now() at time zone ${user.timezone})::date
+        and session_date >= (now() at time zone ${KST})::date
     `,
   ]);
 
@@ -118,7 +120,7 @@ export default async function TestsPage({
 
   const defaultDate =
     nextSession[0]?.session_date ??
-    new Date().toLocaleDateString("en-CA", { timeZone: user.timezone });
+    todayInKst();
 
   const columns: Column<AssessmentRow>[] = [
     {

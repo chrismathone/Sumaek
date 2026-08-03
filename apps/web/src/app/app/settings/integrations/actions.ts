@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import {
   NEIS_ALLOWED_FIELDS,
   classifyScheduleEvent,
@@ -62,7 +62,7 @@ export async function syncPublicHolidays(
   if (!user || !canWrite(DEFAULT_MATRIX, user.role, "integrations")) return deny();
 
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
   const end = await horizonEnd(user.organizationId, today);
   const years = [...new Set([Number(today.slice(0, 4)), Number(end.slice(0, 4))])];
 
@@ -246,7 +246,7 @@ export async function syncSchoolSchedule(
     if (!group) return { ok: false, message: "선택한 반을 찾을 수 없습니다." };
   }
 
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
   const end = await horizonEnd(user.organizationId, today);
   const schoolName = connection.config.schoolName ?? "학교";
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import {
   listMaterials,
   listPracticeQuestions,
@@ -41,7 +41,7 @@ function blocksToText(body: unknown): string {
 
 export default async function PracticePage() {
   const learner = (await getCurrentLearner())!;
-  const today = todayInTimeZone(learner.user.timezone);
+  const today = todayInKst();
   const scope = await getTodayScope(learner, today);
   const materials = await listMaterials({
     organizationId: learner.user.organizationId,

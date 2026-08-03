@@ -243,7 +243,6 @@ describe.skipIf(!hasDb)("학습자 일정 실체화의 제품 배선 (인수 4)"
       organizationId: ORG,
       learningGroupId: GROUP,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
     expect(groupRun.ok).toBe(true);

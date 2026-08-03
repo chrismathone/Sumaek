@@ -1,4 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
+import { KST } from "@su-maek/core/shared";
 import { getSharedSql } from "../client";
 
 /* ─────────────────────────────────────────────────────────────
@@ -107,10 +108,10 @@ export async function checkAiBudget(
       coalesce((
         select sum(estimated_cost_usd) from ai_usage_events
         where organization_id = ${organizationId}
-          -- 월 경계는 **조직 시간대** 기준이다. date_trunc('month', now())만
+          -- 월 경계는 **KST** 기준이다. date_trunc('month', now())만
           -- 쓰면 세션 시간대(UTC)로 끊겨 KST 1일 00:00~09:00이 전달로 잡힌다.
-          and created_at >= (date_trunc('month', now() at time zone o.timezone)
-                             at time zone o.timezone)
+          and created_at >= (date_trunc('month', now() at time zone ${KST})
+                             at time zone ${KST})
       ), 0)::text as month_to_date,
       b.monthly_limit_usd::text as limit_usd,
       b.warn_ratio::text as warn_ratio
@@ -160,10 +161,10 @@ export async function recordAiUsage(options: {
 
   const evaluation = await checkAiBudget(options.organizationId);
   if (evaluation.warn && evaluation.limitUsd !== null) {
-    // 경고 묶음 키의 월도 집계 창과 **같은 시간대**로 끊는다 —
+    // 경고 묶음 키의 월도 집계 창과 **같은 KST**로 끊는다 —
     // 둘이 어긋나면 월초에 경고가 두 번 가거나 아예 가지 않는다.
     const [monthRow] = await sql<{ month_key: string }[]>`
-      select to_char(now() at time zone o.timezone, 'YYYY-MM') as month_key
+      select to_char(now() at time zone ${KST}, 'YYYY-MM') as month_key
       from organizations o where o.id = ${options.organizationId}
     `;
     const monthKey =

@@ -7,7 +7,7 @@ import {
   SESSION_STATUS_LABEL,
   formatTime,
   label,
-  todayInTimeZone,
+  todayInKst,
 } from "@/lib/format";
 
 export const metadata: Metadata = { title: "캘린더" };
@@ -61,13 +61,7 @@ function entryKey(entry: CalendarEntry): string {
 }
 
 /** 셀·스마트창에서 같은 모양으로 쓰는 한 줄 항목 */
-function EntryChip({
-  entry,
-  timezone,
-}: {
-  entry: CalendarEntry;
-  timezone: string;
-}) {
+function EntryChip({ entry }: { entry: CalendarEntry }) {
   if (entry.kind === "holiday") {
     const h = entry.holiday;
     return (
@@ -88,12 +82,12 @@ function EntryChip({
       className={`mt-0.5 block truncate rounded-[var(--radius-control)] border-l-2 px-1 py-0.5 text-[11px] hover:bg-pen-soft/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-pen ${
         SESSION_TONE[s.status] ?? "border-rule text-ink"
       }`}
-      title={`${s.group_name} ${formatTime(s.starts_at, timezone)} · ${label(
+      title={`${s.group_name} ${formatTime(s.starts_at)} · ${label(
         SESSION_STATUS_LABEL,
         s.status,
       )}`}
     >
-      <span className="font-mono">{formatTime(s.starts_at, timezone)}</span>{" "}
+      <span className="font-mono">{formatTime(s.starts_at)}</span>{" "}
       {s.group_name}
     </Link>
   );
@@ -107,7 +101,7 @@ export default async function CalendarPage({
   const user = await requireAccess("calendar");
   const sql = getSharedSql();
 
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
   const { month } = await searchParams;
   const view = resolveMonth(month, today.slice(0, 7));
 
@@ -161,7 +155,7 @@ export default async function CalendarPage({
         <div>
           <h1 className="font-[MaruBuri] text-2xl font-semibold">캘린더</h1>
           <p className="mt-1.5 text-sm text-ink-soft">
-            {user.timezone} 기준 · 수업 {sessions.length}건 · 휴일{" "}
+            KST 기준 · 수업 {sessions.length}건 · 휴일{" "}
             {holidaysByDay.size}일
           </p>
         </div>
@@ -269,7 +263,7 @@ export default async function CalendarPage({
                   </p>
 
                   {visible.map((e) => (
-                    <EntryChip key={entryKey(e)} entry={e} timezone={user.timezone} />
+                    <EntryChip key={entryKey(e)} entry={e} />
                   ))}
 
                   {hidden > 0 && (
@@ -288,7 +282,6 @@ export default async function CalendarPage({
                             <EntryChip
                               key={`all-${entryKey(e)}`}
                               entry={e}
-                              timezone={user.timezone}
                             />
                           ))}
                         </div>

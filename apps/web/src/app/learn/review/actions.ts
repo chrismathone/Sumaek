@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import { answerReview, type ReviewAnswerResult } from "@/lib/domain/review";
 
 export async function answerReviewAction(
@@ -33,7 +33,7 @@ export async function answerReviewAction(
     learnerId: learner.learnerId,
     reviewItemId,
     answer,
-    today: todayInTimeZone(learner.user.timezone),
+    today: todayInKst(),
   });
   revalidatePath("/learn/review");
   revalidatePath("/learn/today");

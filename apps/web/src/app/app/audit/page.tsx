@@ -136,7 +136,7 @@ export default async function AuditPage({
       className: "whitespace-nowrap",
       render: (e) => (
         <span className="text-ink-soft">
-          {formatDateTime(e.created_at, user.timezone)}
+          {formatDateTime(e.created_at)}
         </span>
       ),
     },

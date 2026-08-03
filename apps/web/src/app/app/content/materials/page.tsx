@@ -210,7 +210,7 @@ export default async function MaterialsPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (r) => formatDate(r.updated_at, user.timezone),
+      render: (r) => formatDate(r.updated_at),
     },
     ...(canAuthor
       ? [

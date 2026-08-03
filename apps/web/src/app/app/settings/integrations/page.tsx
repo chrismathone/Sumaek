@@ -83,7 +83,7 @@ export default async function IntegrationsPage() {
           {holidayStats[0]?.latest && ` · 가장 늦은 날 ${holidayStats[0].latest}`}
           {" · 마지막 동기화 "}
           {lastHolidaySync[0]
-            ? formatDateTime(lastHolidaySync[0].created_at, user.timezone)
+            ? formatDateTime(lastHolidaySync[0].created_at)
             : "없음"}
         </p>
         <div className="mt-3">
@@ -142,7 +142,7 @@ export default async function IntegrationsPage() {
               <p className="mt-1 font-mono text-xs text-ink-soft">
                 {c.resource ?? "school_schedule"} · 마지막 동기화{" "}
                 {c.last_synced_at
-                  ? formatDateTime(c.last_synced_at, user.timezone)
+                  ? formatDateTime(c.last_synced_at)
                   : "없음"}
               </p>
               {c.last_error && (

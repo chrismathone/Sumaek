@@ -10,7 +10,7 @@ import {
   type ScheduleEngineInput,
   type ScheduledItem,
 } from "@su-maek/core/scheduling";
-import { eachDate, zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
+import { KST, eachDate, zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 학습자 스코프 일정 실체화 (인수 4).
@@ -77,12 +77,11 @@ export async function materializeLearnerSchedule(options: {
   learnerId: string;
   /** null이면 자동화 실행 (감사 actor_type=automation) */
   actorUserId: string | null;
-  timezone: string;
-  /** 기준 날짜 (워크스페이스 시간대 오늘) — 테스트 재현성 위해 주입 */
+  /** 기준 날짜 (워크스페이스 오늘, KST 기준) — 테스트 재현성 위해 주입 */
   today: IsoDate;
 }): Promise<MaterializeLearnerResult> {
   const sql = getSharedSql();
-  const { organizationId, learnerId, timezone, today } = options;
+  const { organizationId, learnerId, today } = options;
 
   /* ── 입력 스냅샷 로드 ── */
   const [learner] = await sql<{ id: string; display_name: string }[]>`
@@ -256,8 +255,8 @@ export async function materializeLearnerSchedule(options: {
         itemId: `${row.id}:${nodeId}`,
         nodeId,
         date: row.item_date,
-        startTime: toHm(row.starts_at, timezone),
-        endTime: toHm(row.ends_at, timezone),
+        startTime: toHm(row.starts_at),
+        endTime: toHm(row.ends_at),
         minutes: 60,
         locked,
         completed,
@@ -292,7 +291,7 @@ export async function materializeLearnerSchedule(options: {
   const input: ScheduleEngineInput = {
     engineVersion: ENGINE_VERSION,
     seed: `${routeVersionId}:${learnerId}`,
-    timezone,
+    timezone: KST,
     scope: { type: "learner", id: learnerId },
     cutoffDate: today,
     horizon: { from: today, to: base.ends_on },
@@ -364,7 +363,7 @@ export async function materializeLearnerSchedule(options: {
   `;
   const sessionByKey = new Map<string, GroupSessionRow>();
   for (const s of groupSessions) {
-    sessionByKey.set(`${s.session_date}T${toHm(s.starts_at, timezone)}`, s);
+    sessionByKey.set(`${s.session_date}T${toHm(s.starts_at)}`, s);
   }
 
   /* 날짜·슬롯별로 노드를 묶어 학생 차시를 구성.
@@ -484,9 +483,9 @@ export async function materializeLearnerSchedule(options: {
           matches_group, is_rejoin
         ) values (
           ${uuidv7()}, ${organizationId}, ${learnerId}, ${learningGroupId},
-          ${revisionId}, ${row.sessionId}, ${row.date}, ${timezone},
-          ${zonedTimeToUtc(row.date, row.startTime, timezone)},
-          ${zonedTimeToUtc(row.date, row.endTime, timezone)},
+          ${revisionId}, ${row.sessionId}, ${row.date}, ${KST},
+          ${zonedTimeToUtc(row.date, row.startTime)},
+          ${zonedTimeToUtc(row.date, row.endTime)},
           ${tx.json(row.nodeIds as never)},
           ${tx.json([...row.reasons].sort() as never)},
           ${row.matchesGroup}, ${row.isRejoin}
@@ -647,11 +646,11 @@ function fail(message: string): MaterializeLearnerResult {
   };
 }
 
-function toHm(d: Date, timezone: string): string {
+function toHm(d: Date): string {
   return new Date(d).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: timezone,
+    timeZone: KST,
   });
 }

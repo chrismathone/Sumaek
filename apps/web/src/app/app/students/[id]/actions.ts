@@ -7,7 +7,7 @@ import { getSharedSql } from "@su-maek/db";
 import { executeLearnerErasure } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import { materializeLearnerSchedule } from "@/lib/domain/schedule";
 import {
   linkLearnerAccount,
@@ -129,8 +129,7 @@ export async function materializeLearnerScheduleAction(
     /* 감사 주체 — 실체화가 audit_events에 actor_type='user'로 남긴다
      * (null이면 automation). 여기가 그 기록의 유일한 주입점이다. */
     actorUserId: user.userId,
-    timezone: user.timezone,
-    today: todayInTimeZone(user.timezone),
+    today: todayInKst(),
   });
 
   revalidatePath(`/app/students/${parsed.data.learnerId}`);

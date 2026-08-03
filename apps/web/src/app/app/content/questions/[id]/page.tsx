@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { renderMixedText } from "@su-maek/core/math";
+import { KST } from "@su-maek/core/shared";
 import { requireAccess } from "@/lib/auth/require-access";
 
 export const metadata: Metadata = { title: "문항 상세" };
@@ -739,6 +740,6 @@ function formatDateTime(d: Date): string {
   return new Date(d).toLocaleString("ko-KR", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "Asia/Seoul",
+    timeZone: KST,
   });
 }

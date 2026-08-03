@@ -3,7 +3,8 @@ import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite, grantState } from "@su-maek/core/authz";
 import { requireAccess } from "@/lib/auth/require-access";
-import { todayInTimeZone } from "@/lib/format";
+import { KST } from "@su-maek/core/shared";
+import { todayInKst } from "@/lib/format";
 import { GroupForm, LearnerForm, PeriodForm } from "./SetupForms";
 import { KillSwitchControls, type SwitchView } from "./KillSwitchControls";
 import { AiBudgetForm } from "./AiBudgetForm";
@@ -133,8 +134,10 @@ export default async function SettingsPage() {
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <dt className="text-ink-soft">이름</dt>
           <dd>{user.organizationName}</dd>
+          {/* 고를 수 있는 설정이 아니라 이 제품의 고정 사실이다 — 예전에는
+              조직 값을 그대로 찍어 설정처럼 보였다 (core/shared/dates.ts) */}
           <dt className="text-ink-soft">시간대</dt>
-          <dd className="font-mono">{user.timezone}</dd>
+          <dd className="font-mono">{KST} (고정)</dd>
           <dt className="text-ink-soft">학습 그룹</dt>
           <dd className="font-mono">{groups[0]?.cnt ?? 0}개</dd>
           <dt className="text-ink-soft">내 역할</dt>
@@ -170,7 +173,7 @@ export default async function SettingsPage() {
         {groupList.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">먼저 반을 만드세요.</p>
         ) : (
-          <LearnerForm groups={groupList} today={todayInTimeZone(user.timezone)} />
+          <LearnerForm groups={groupList} today={todayInKst()} />
         )}
       </section>
 

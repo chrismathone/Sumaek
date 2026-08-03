@@ -286,7 +286,7 @@ export default async function InboxPage({
       label: "기한",
       sortable: true,
       mono: true,
-      render: (r) => (r.due_at ? formatDateTime(r.due_at, user.timezone) : "—"),
+      render: (r) => (r.due_at ? formatDateTime(r.due_at) : "—"),
     },
     {
       key: "created_at",
@@ -294,7 +294,7 @@ export default async function InboxPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (r) => formatDateTime(r.created_at, user.timezone),
+      render: (r) => formatDateTime(r.created_at),
     },
     {
       key: "link",

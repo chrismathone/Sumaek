@@ -5,7 +5,7 @@ import { getSharedSql } from "@su-maek/db";
 import { studentAnswer, type StudentAnswer } from "@su-maek/contracts";
 import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import { startAttempt } from "@/lib/domain/attempt";
 import {
   AttemptRunner,
@@ -54,7 +54,7 @@ export default async function AttemptPage({
     assessmentId,
     learnerId: learner.learnerId,
     // 응시일 판정은 조직 시간대 기준 (UTC로 뽑으면 KST 00~09시에 하루 밀린다)
-    today: todayInTimeZone(learner.user.timezone),
+    today: todayInKst(),
   });
   if ("error" in started) {
     return (

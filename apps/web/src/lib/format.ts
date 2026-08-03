@@ -1,39 +1,41 @@
+import { KST } from "@su-maek/core/shared";
+
+/* 오늘 날짜는 core가 갖는다 — 워커도 같은 함수를 쓴다. 화면 쪽 호출부가
+ * 서식 헬퍼와 같은 자리에서 가져오도록 여기서 다시 내보낸다. */
+export { todayInKst } from "@su-maek/core/shared";
+
 /* ─────────────────────────────────────────────────────────────
- * 교사 앱 조회 화면 공용 서식 헬퍼.
+ * 조회 화면 공용 서식 헬퍼.
  *
- * 시각은 언제나 워크스페이스 시간대 기준으로 표시한다 (불변 조건 14 —
- * UTC 저장 + 시간대 ID 보존). 서버 컴포넌트에서만 쓰이므로 클라이언트
- * 로캘에 의존하지 않는다.
+ * 시각은 **언제나 KST**로 표시한다 (불변 조건 14 — UTC 저장 + 표시는 KST).
+ * 시간대를 인자로 받지 않는 이유는 core/shared/dates.ts의 KST 주석에 있다:
+ * 고를 수 없게 만들면 잘못 넘길 수도 없다. 서버 컴포넌트에서만 쓰이므로
+ * 클라이언트 로캘에도 의존하지 않는다.
  * ───────────────────────────────────────────────────────────── */
 
-/** 24시간 표기 시:분 */
-export function formatTime(value: Date | string, timeZone: string): string {
+/** 24시간 표기 시:분 (KST) */
+export function formatTime(value: Date | string): string {
   return new Date(value).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone,
+    timeZone: KST,
   });
 }
 
 /** YYYY-MM-DD (숫자 표기 — font-mono와 함께 쓴다) */
-export function formatDate(value: Date | string, timeZone: string): string {
+export function formatDate(value: Date | string): string {
   return new Date(value).toLocaleDateString("en-CA", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone,
+    timeZone: KST,
   });
 }
 
-/** YYYY-MM-DD HH:MM */
-export function formatDateTime(value: Date | string, timeZone: string): string {
-  return `${formatDate(value, timeZone)} ${formatTime(value, timeZone)}`;
-}
-
-/** 워크스페이스 시간대 기준 오늘 (YYYY-MM-DD) */
-export function todayInTimeZone(timeZone: string): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone });
+/** YYYY-MM-DD HH:MM (KST) */
+export function formatDateTime(value: Date | string): string {
+  return `${formatDate(value)} ${formatTime(value)}`;
 }
 
 /** "2026-07-31" → "7월 31일" (달력·일정 목록용) */

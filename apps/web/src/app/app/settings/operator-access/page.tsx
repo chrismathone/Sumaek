@@ -163,7 +163,7 @@ export default async function OperatorAccessPage({
       secondary: true,
       render: (r) => (
         <span className="text-ink-soft">
-          {formatDateTime(r.expires_at, user.timezone)}
+          {formatDateTime(r.expires_at)}
         </span>
       ),
     },

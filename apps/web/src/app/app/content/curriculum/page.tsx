@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
+import { KST } from "@su-maek/core/shared";
 import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
@@ -512,7 +513,7 @@ export default async function CurriculumStudioPage({
                     (
                     {new Date(
                       release.validation_report.checkedAt,
-                    ).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                    ).toLocaleString("ko-KR", { timeZone: KST })}
                     {release.validation_report.dryRun ? " · 예행" : ""})
                   </span>
                 )}

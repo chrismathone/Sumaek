@@ -124,7 +124,6 @@ describe.skipIf(!hasDb)("일정 검증 게이트 (인수 22)", () => {
       organizationId: ORG,
       learningGroupId: GROUP_BLOCKED,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
 
@@ -159,7 +158,6 @@ describe.skipIf(!hasDb)("일정 검증 게이트 (인수 22)", () => {
       organizationId: ORG,
       learningGroupId: GROUP_OK,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
     expect(first.ok).toBe(true);
@@ -190,7 +188,6 @@ describe.skipIf(!hasDb)("일정 검증 게이트 (인수 22)", () => {
       organizationId: ORG,
       learningGroupId: GROUP_OK,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
     expect(second.ok).toBe(false);

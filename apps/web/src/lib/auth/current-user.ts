@@ -36,7 +36,6 @@ export interface CurrentUser {
   organizationId: string;
   organizationName: string;
   role: Role;
-  timezone: string;
   /** 이 세션이 break-glass 승인으로 열렸다면 그 근거. 아니면 null */
   breakGlass: BreakGlassContext | null;
 }
@@ -58,12 +57,11 @@ export const getCurrentUser = cache(
           organization_id: string;
           organization_name: string;
           role: string;
-          timezone: string;
         }[]
       >`
         select u.id as user_id, u.email, u.display_name,
                m.organization_id, o.name as organization_name,
-               m.role, o.timezone
+               m.role
         from users u
         join memberships m on m.user_id = u.id and m.status = 'active'
         join organizations o on o.id = m.organization_id and o.status = 'active'
@@ -81,7 +79,6 @@ export const getCurrentUser = cache(
           organizationId: row.organization_id,
           organizationName: row.organization_name,
           role: row.role as Role,
-          timezone: row.timezone,
           breakGlass: null,
         };
       }
@@ -94,11 +91,11 @@ export const getCurrentUser = cache(
     if (!session) return null;
 
     const [operator] = await sql<
-      { email: string; display_name: string; timezone: string }[]
+      { email: string; display_name: string }[]
     >`
-      select u.email, u.display_name, o.timezone
-      from users u, organizations o
-      where u.id = ${userId} and o.id = ${session.grant.organizationId}
+      select u.email, u.display_name
+      from users u
+      where u.id = ${userId}
     `;
     if (!operator) return null;
 
@@ -110,7 +107,6 @@ export const getCurrentUser = cache(
       organizationName: session.grant.organizationName,
       // 매트릭스의 operator 열에는 full·scoped가 하나도 없다 — 읽기 전용이다
       role: "operator",
-      timezone: operator.timezone,
       breakGlass: {
         grantId: session.grant.id,
         reason: session.grant.reason,

@@ -51,7 +51,7 @@ export default async function ReportsPage() {
               <span className="text-sm">{r.kind}</span>
               <span className="font-mono text-xs text-ink-soft">
                 {STATUS_LABEL[r.status] ?? r.status} ·{" "}
-                {formatDateTime(r.created_at, user.timezone)}
+                {formatDateTime(r.created_at)}
               </span>
             </li>
           ))}

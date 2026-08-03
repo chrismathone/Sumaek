@@ -3,7 +3,7 @@ import { getSharedSql } from "@su-maek/db";
 import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
-import { formatDate, todayInTimeZone } from "@/lib/format";
+import { formatDate, todayInKst } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { MaterializeButton } from "./MaterializeButton";
 import { NewRouteForm } from "./RouteBuilderForms";
@@ -55,7 +55,7 @@ export default async function RoutesPage({
 }) {
   const user = await requireAccess("routes");
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
 
   const query = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SORT_COLUMN),
@@ -162,7 +162,7 @@ export default async function RoutesPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (r) => formatDate(r.updated_at, user.timezone),
+      render: (r) => formatDate(r.updated_at),
     },
     {
       key: "materialize",

@@ -141,8 +141,8 @@ describe.skipIf(!hasDb)("재실체화 과거 보존 (인수 5)", () => {
         cancelled_reason, planned_node_ids
       ) values (
         ${row.id}, ${ORG}, ${row.groupId}, ${row.date}, ${TZ},
-        ${zonedTimeToUtc(row.date, FIXTURE_START, TZ)},
-        ${zonedTimeToUtc(row.date, FIXTURE_END, TZ)},
+        ${zonedTimeToUtc(row.date, FIXTURE_START)},
+        ${zonedTimeToUtc(row.date, FIXTURE_END)},
         ${row.status}::session_status,
         ${row.locked ? new Date() : null},
         ${row.status === "completed" ? new Date() : null},
@@ -243,7 +243,6 @@ describe.skipIf(!hasDb)("재실체화 과거 보존 (인수 5)", () => {
       organizationId: ORG,
       learningGroupId: GROUP,
       actorUserId: null,
-      timezone: TZ,
       today,
     };
     firstRun = await materializeGroupSchedule(options);

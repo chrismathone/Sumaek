@@ -288,7 +288,7 @@ export default async function ContentReviewPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (r) => formatDateTime(r.created_at, user.timezone),
+      render: (r) => formatDateTime(r.created_at),
     },
     {
       key: "action",

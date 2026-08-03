@@ -125,7 +125,6 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
       organizationId: ORG_ID,
       attemptId,
       learnerId: ids.learner,
-      timezone: "Asia/Seoul",
     });
     expect(submitted.ok).toBe(true);
     expect(submitted.attemptStatus).toBe("review_required");
@@ -148,7 +147,6 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
       organizationId: ORG_ID,
       attemptId,
       learnerId: ids.learner,
-      timezone: "Asia/Seoul",
     });
     expect(resubmit.ok).toBe(false);
 
@@ -157,7 +155,6 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
       organizationId: ORG_ID,
       exceptionId: exception?.id as string,
       resolverUserId: TEACHER_ID,
-      timezone: "Asia/Seoul",
       verdict: "correct",
       note: "값이 정확하고 단위는 문항 맥락상 명확 — 정답 인정",
     });

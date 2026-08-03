@@ -4,7 +4,7 @@ import { getSharedSql } from "@su-maek/db";
 import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
-import { formatDate, todayInTimeZone, trimScore } from "@/lib/format";
+import { formatDate, todayInKst, trimScore } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 
 export const metadata: Metadata = { title: "학습자" };
@@ -49,7 +49,7 @@ export default async function StudentsPage({
 }) {
   const user = await requireAccess("learners");
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
 
   const query = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SORT_COLUMN),
@@ -187,7 +187,7 @@ export default async function StudentsPage({
             : "채점 대기";
         return (
           <span className="whitespace-nowrap">
-            {l.last_attempt_at ? formatDate(l.last_attempt_at, user.timezone) : "—"}
+            {l.last_attempt_at ? formatDate(l.last_attempt_at) : "—"}
             <span className="ml-1.5 text-ink-soft">{score}</span>
           </span>
         );

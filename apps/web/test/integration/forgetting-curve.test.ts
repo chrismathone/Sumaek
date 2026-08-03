@@ -120,7 +120,6 @@ describe.skipIf(!hasDb)("망각곡선 복습 (라이브 DB)", () => {
       organizationId: ORG_ID,
       attemptId: started.attemptId,
       learnerId: ids.learner,
-      timezone: TZ,
     });
   });
 

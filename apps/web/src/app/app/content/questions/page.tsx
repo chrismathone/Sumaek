@@ -235,7 +235,7 @@ export default async function QuestionBankPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (r) => formatDate(r.created_at, user.timezone),
+      render: (r) => formatDate(r.created_at),
     },
   ];
 

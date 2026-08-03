@@ -11,6 +11,7 @@ import {
   type MasteryPolicySpec,
 } from "@su-maek/core/mastery";
 import type { IsoDate } from "@su-maek/core/shared";
+import { todayInKst } from "@/lib/format";
 
 /* ─────────────────────────────────────────────────────────────
  * 응시·채점·숙련도 연쇄 (시퀀스 4·5 · 19장 · 20장).
@@ -160,7 +161,6 @@ export async function submitAndGrade(options: {
   organizationId: string;
   attemptId: string;
   learnerId: string;
-  timezone: string;
 }): Promise<SubmitResult> {
   const sql = getSharedSql();
   const { organizationId, attemptId, learnerId } = options;
@@ -214,9 +214,7 @@ export async function submitAndGrade(options: {
   `;
 
   /* 3) 채점 + 증거 + 복습 — 단일 트랜잭션 */
-  const evidenceDate = new Date().toLocaleDateString("en-CA", {
-    timeZone: options.timezone,
-  });
+  const evidenceDate = todayInKst();
   /* 복습 일정도 **정책**을 따른다. 예전에는 여기서 DEFAULT_MASTERY_POLICY를
    * 하드코딩해, DB에서 정책을 바꿔도 실제 만들어지는 복습에는 반영되지 않았다 —
    * "임계값 코드 상수 금지"(ADR-0009)를 어기는 유일한 지점이었다. */
@@ -520,7 +518,6 @@ export interface ResolveExceptionInput {
   organizationId: string;
   exceptionId: string;
   resolverUserId: string;
-  timezone: string;
   verdict: "correct" | "incorrect" | "partial";
   /** partial일 때 획득 점수 */
   partialScore?: number;
@@ -575,9 +572,7 @@ export async function resolveGradingException(
         ? 0
         : Math.max(0, Math.min(maxPoints, input.partialScore ?? 0));
   const ratio = maxPoints > 0 ? score / maxPoints : 0;
-  const evidenceDate = new Date().toLocaleDateString("en-CA", {
-    timeZone: input.timezone,
-  });
+  const evidenceDate = todayInKst();
   const touched = Object.keys(exception.concept_weights ?? {});
   // 복습 일정도 정책을 따른다 — 트랜잭션 안에서 쓰므로 미리 읽는다
   const policy = await loadActivePolicy(input.organizationId);

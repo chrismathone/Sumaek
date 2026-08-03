@@ -231,7 +231,7 @@ export default async function IngestionPage({
       sortable: true,
       mono: true,
       secondary: true,
-      render: (f) => formatDateTime(f.created_at, user.timezone),
+      render: (f) => formatDateTime(f.created_at),
     },
   ];
 
@@ -268,7 +268,7 @@ export default async function IngestionPage({
       label: "실행 시각",
       sortable: true,
       mono: true,
-      render: (j) => formatDateTime(j.run_at, user.timezone),
+      render: (j) => formatDateTime(j.run_at),
     },
     {
       key: "last_error",

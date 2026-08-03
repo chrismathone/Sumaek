@@ -274,7 +274,6 @@ describe.skipIf(!hasDb)("학습자 스코프 자동 재계산 핸들러 (인수 
       organizationId: ORG,
       learningGroupId: GROUP,
       actorUserId: null,
-      timezone: TZ,
       today,
     });
     expect(groupRun.ok).toBe(true);

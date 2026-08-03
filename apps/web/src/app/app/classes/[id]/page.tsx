@@ -9,7 +9,7 @@ import {
   formatDate,
   formatDateTime,
   label,
-  todayInTimeZone,
+  todayInKst,
   trimScore,
 } from "@/lib/format";
 import { AvailabilityForm, DismissButton } from "./AvailabilityForm";
@@ -47,7 +47,7 @@ export default async function ClassDetailPage({
   const { id } = await params;
   const user = await requireAccess("groups");
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
 
   const [group] = await sql<
     {
@@ -224,7 +224,7 @@ export default async function ClassDetailPage({
                             : "채점 대기"}
                         </p>
                         <p className="mt-0.5 font-mono text-[11px] text-ink-soft">
-                          {l.last_title} · {formatDate(l.last_at, user.timezone)}
+                          {l.last_title} · {formatDate(l.last_at)}
                           {l.last_status === "review_required" && " · 확인 필요"}
                         </p>
                       </>
@@ -333,7 +333,7 @@ export default async function ClassDetailPage({
                 className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               >
                 <p className="font-mono text-sm">
-                  {formatDateTime(s.starts_at, user.timezone)}
+                  {formatDateTime(s.starts_at)}
                   <span className="ml-2 text-ink-soft">
                     {s.teacher_name ?? "담당 미지정"}
                   </span>

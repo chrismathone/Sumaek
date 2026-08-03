@@ -332,8 +332,8 @@ export default async function MaterialDetailPage({
       <p className="mt-1 text-sm text-ink-soft">
         개념 «{material.concept_name}» · 순서 {material.sort_order} ·{" "}
         {material.author_name ?? "작성자 미상"}가 만듦 ·{" "}
-        {formatDate(material.created_at, user.timezone)} 생성 ·{" "}
-        {formatDate(material.updated_at, user.timezone)} 수정
+        {formatDate(material.created_at)} 생성 ·{" "}
+        {formatDate(material.updated_at)} 수정
       </p>
 
       {/* 붙어 있는 개념이 더 이상 쓸 수 있는 상태가 아니면 학생에게 영원히

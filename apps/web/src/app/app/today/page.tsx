@@ -5,6 +5,7 @@ import { requireAccess } from "@/lib/auth/require-access";
 import { DataTable, type Column } from "@/components/DataTable";
 import { formatTime, label, SESSION_STATUS_LABEL } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams, type TableQuery } from "@/lib/table";
+import { KST } from "@su-maek/core/shared";
 
 export const metadata: Metadata = { title: "오늘 수업" };
 
@@ -94,7 +95,7 @@ export default async function TodayPage({
         from sessions s
         join learning_groups g on g.id = s.learning_group_id
         where s.organization_id = ${user.organizationId}
-          and s.session_date = (now() at time zone ${user.timezone})::date
+          and s.session_date = (now() at time zone ${KST})::date
       )
       select *, count(*) over ()::int as total_count
       from base
@@ -149,7 +150,7 @@ export default async function TodayPage({
       sortable: true,
       mono: true,
       render: (s) =>
-        `${formatTime(s.starts_at, user.timezone)} – ${formatTime(s.ends_at, user.timezone)}`,
+        `${formatTime(s.starts_at)} – ${formatTime(s.ends_at)}`,
     },
     {
       key: "s_status",

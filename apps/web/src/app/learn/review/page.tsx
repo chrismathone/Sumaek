@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
-import { todayInTimeZone } from "@/lib/format";
+import { todayInKst } from "@/lib/format";
 import { listDueReviews } from "@/lib/domain/review";
 import { ReviewForm } from "./ReviewForm";
 
@@ -37,7 +37,7 @@ function bodyToText(body: unknown): string {
 
 export default async function ReviewPage() {
   const learner = (await getCurrentLearner())!;
-  const today = todayInTimeZone(learner.user.timezone);
+  const today = todayInKst();
   const due = await listDueReviews({
     organizationId: learner.user.organizationId,
     learnerId: learner.learnerId,

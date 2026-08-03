@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { v7 as uuidv7 } from "uuid";
 import { createSql } from "../client";
 import * as schema from "../schema";
+import { KST } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 합성 시드 — 실제 학생 개인정보를 절대 사용하지 않는다 (3장).
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
       id: ORG_ID,
       name: "수맥 데모 학원",
       slug: "su-maek-demo",
-      timezone: "Asia/Seoul",
+      timezone: KST,
     })
     .onConflictDoNothing();
 
@@ -572,9 +573,9 @@ async function main(): Promise<void> {
       ) values (
         ${"00000000-0000-7000-8000-000000000080"}, ${ORG_ID},
         ${LEARNERS[0].id}, ${GROUP_ID}, null,
-        (now() at time zone 'Asia/Seoul')::date, 'Asia/Seoul',
-        ((now() at time zone 'Asia/Seoul')::date + time '09:00') at time zone 'Asia/Seoul',
-        ((now() at time zone 'Asia/Seoul')::date + time '10:00') at time zone 'Asia/Seoul',
+        (now() at time zone ${KST})::date, ,
+        ((now() at time zone ${KST})::date + time '09:00') at time zone ${KST},
+        ((now() at time zone ${KST})::date + time '10:00') at time zone ${KST},
         ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
         false, false
       )
@@ -600,9 +601,9 @@ async function main(): Promise<void> {
       ) values (
         ${"00000000-0000-7000-8000-000000000081"}, ${ORG_ID},
         ${LEARNERS[1].id}, ${GROUP_ID}, null,
-        (now() at time zone 'Asia/Seoul')::date, 'Asia/Seoul',
-        ((now() at time zone 'Asia/Seoul')::date + time '09:00') at time zone 'Asia/Seoul',
-        ((now() at time zone 'Asia/Seoul')::date + time '10:00') at time zone 'Asia/Seoul',
+        (now() at time zone ${KST})::date, ,
+        ((now() at time zone ${KST})::date + time '09:00') at time zone ${KST},
+        ((now() at time zone ${KST})::date + time '10:00') at time zone ${KST},
         ${JSON.stringify([eliminationNodeId])}::jsonb, ${JSON.stringify(["seed_demo"])}::jsonb,
         false, false
       )

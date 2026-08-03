@@ -9,7 +9,7 @@ import {
   type ScheduleEngineInput,
   type ScheduledItem,
 } from "@su-maek/core/scheduling";
-import { eachDate, zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
+import { KST, eachDate, zonedTimeToUtc, type IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 일정 실체화 — 게시된 루트 버전 → 실제 수업(sessions) 생성.
@@ -36,12 +36,11 @@ export async function materializeGroupSchedule(options: {
   learningGroupId: string;
   /** null이면 자동화 실행 (감사 actor_type=automation) */
   actorUserId: string | null;
-  timezone: string;
-  /** 기준 날짜 (워크스페이스 시간대 오늘) — 테스트 재현성 위해 주입 */
+  /** 기준 날짜 (워크스페이스 오늘, KST 기준) — 테스트 재현성 위해 주입 */
   today: IsoDate;
 }): Promise<MaterializeResult> {
   const sql = getSharedSql();
-  const { organizationId, learningGroupId, timezone, today } = options;
+  const { organizationId, learningGroupId, today } = options;
 
   /* ── 입력 스냅샷 로드 ── */
   const [group] = await sql<
@@ -170,8 +169,8 @@ export async function materializeGroupSchedule(options: {
         itemId: `${s.id}:${nodeId}`,
         nodeId,
         date: s.session_date,
-        startTime: toHm(s.starts_at, timezone),
-        endTime: toHm(s.ends_at, timezone),
+        startTime: toHm(s.starts_at),
+        endTime: toHm(s.ends_at),
         minutes: 60,
         locked: s.locked_at !== null,
         completed,
@@ -199,7 +198,7 @@ export async function materializeGroupSchedule(options: {
   const input: ScheduleEngineInput = {
     engineVersion: ENGINE_VERSION,
     seed: `${plan.active_version_id}:${learningGroupId}`,
-    timezone,
+    timezone: KST,
     scope: { type: "learning_group", id: learningGroupId },
     cutoffDate: today,
     horizon: { from: today, to: group.ends_on },
@@ -333,9 +332,9 @@ export async function materializeGroupSchedule(options: {
           id, organization_id, learning_group_id, session_date, timezone,
           starts_at, ends_at, status, schedule_revision_id, planned_node_ids
         ) values (
-          ${uuidv7()}, ${organizationId}, ${learningGroupId}, ${s.date}, ${timezone},
-          ${zonedTimeToUtc(s.date, s.startTime, timezone)},
-          ${zonedTimeToUtc(s.date, s.endTime, timezone)},
+          ${uuidv7()}, ${organizationId}, ${learningGroupId}, ${s.date}, ${KST},
+          ${zonedTimeToUtc(s.date, s.startTime)},
+          ${zonedTimeToUtc(s.date, s.endTime)},
           'planned', ${revisionId}, ${tx.json(s.nodeIds as never)}
         )
       `;
@@ -411,11 +410,11 @@ function fail(message: string): MaterializeResult {
   };
 }
 
-function toHm(d: Date, timezone: string): string {
+function toHm(d: Date): string {
   return new Date(d).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: timezone,
+    timeZone: KST,
   });
 }

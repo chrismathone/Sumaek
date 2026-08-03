@@ -11,6 +11,7 @@ import {
   materializeGroupSchedule,
   materializeLearnerSchedule,
 } from "@su-maek/db/domain";
+import { todayInKst } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 일정 재계산 소비자 — 결과 기반 미래 일정 갱신 (20장 재계산 트리거).
@@ -62,11 +63,7 @@ export async function handleScheduleRecalculate(
   }
   if (groupIds.size === 0) return { skipped: "대상 그룹 없음" };
 
-  const [org] = await sql<{ timezone: string }[]>`
-    select timezone from organizations where id = ${organizationId}
-  `;
-  const timezone = org?.timezone ?? "Asia/Seoul";
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
+  const today = todayInKst();
 
   /* 그룹 단위 체크포인트 — 배치 경계마다 기록해 중단 지점부터 재개 */
   const done = new Set(checkpoint?.doneGroupIds ?? []);
@@ -80,7 +77,6 @@ export async function handleScheduleRecalculate(
       organizationId,
       learningGroupId: groupId,
       actorUserId: null, // 자동화 실행
-      timezone,
       today,
     });
     results[groupId] = {
@@ -132,17 +128,12 @@ export async function handleLearnerScheduleMaterialize(
   );
   if (!fresh) return { skipped: "중복 이벤트 (inbox)" };
 
-  const [org] = await sql<{ timezone: string }[]>`
-    select timezone from organizations where id = ${organizationId}
-  `;
-  const timezone = org?.timezone ?? "Asia/Seoul";
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
+  const today = todayInKst();
 
   const result = await materializeLearnerSchedule({
     organizationId,
     learnerId,
     actorUserId: null, // 자동화 실행
-    timezone,
     today,
   });
   /* 실체화 거절(기준 반 루트 없음 등)은 일시적 오류가 아니다 — 던져서
@@ -189,15 +180,10 @@ export async function handleNotificationDispatch(
   );
   if (!fresh) return { skipped: "중복 이벤트 (inbox)" };
 
-  /* 하루 1회 묶음 키는 **조직 시간대**로 끊는다.
+  /* 하루 1회 묶음 키는 **KST**로 끊는다.
    * UTC 날짜를 쓰면 KST 00:00~09:00 사이가 전날로 잡혀 하루 경계가
    * 자정이 아니라 오전 9시에 넘어간다. */
-  const [org] = await sql<{ timezone: string }[]>`
-    select timezone from organizations where id = ${organizationId}
-  `;
-  const localDay = new Date().toLocaleDateString("en-CA", {
-    timeZone: org?.timezone ?? "Asia/Seoul",
-  });
+  const localDay = todayInKst();
 
   const templates: Record<
     string,

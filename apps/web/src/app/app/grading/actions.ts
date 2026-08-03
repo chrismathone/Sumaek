@@ -21,7 +21,6 @@ export async function resolveExceptionAction(
     organizationId: user.organizationId,
     exceptionId: String(formData.get("exceptionId") ?? ""),
     resolverUserId: user.userId,
-    timezone: user.timezone,
     verdict: verdict as "correct" | "incorrect" | "partial",
     partialScore: Number(formData.get("partialScore") ?? 0),
     note: String(formData.get("note") ?? "") || undefined,

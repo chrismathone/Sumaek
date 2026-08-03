@@ -10,7 +10,7 @@ import {
   formatRatio,
   formatTime,
   label,
-  todayInTimeZone,
+  todayInKst,
   trimScore,
 } from "@/lib/format";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
@@ -150,7 +150,7 @@ export default async function StudentDetailPage({
   const { id } = await params;
   const user = await requireAccess("learners");
   const sql = getSharedSql();
-  const today = todayInTimeZone(user.timezone);
+  const today = todayInKst();
 
   const scheduleQuery = parseTableQuery(await searchParams, {
     sortKeys: Object.keys(SCHEDULE_SORT_COLUMN),
@@ -399,7 +399,7 @@ export default async function StudentDetailPage({
       mono: true,
       secondary: true,
       render: (r) =>
-        `${formatTime(r.starts_at, user.timezone)}–${formatTime(r.ends_at, user.timezone)}`,
+        `${formatTime(r.starts_at)}–${formatTime(r.ends_at)}`,
     },
     {
       key: "nodes",
@@ -539,7 +539,7 @@ export default async function StudentDetailPage({
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-ink-soft">
                       {m.last_evidence_at
-                        ? formatDate(m.last_evidence_at, user.timezone)
+                        ? formatDate(m.last_evidence_at)
                         : "—"}
                     </td>
                   </tr>
@@ -567,7 +567,7 @@ export default async function StudentDetailPage({
                   <p className="font-medium">{a.title}</p>
                   <p className="mt-0.5 font-mono text-xs text-ink-soft">
                     {label(PURPOSE_LABEL, a.purpose)} ·{" "}
-                    {a.at ? formatDate(a.at, user.timezone) : "날짜 없음"} ·{" "}
+                    {a.at ? formatDate(a.at) : "날짜 없음"} ·{" "}
                     {label(ATTEMPT_STATUS_LABEL, a.status)}
                   </p>
                 </div>
