@@ -79,6 +79,28 @@ interface EdgeRow {
   total_count: number;
 }
 
+interface StandardRow {
+  id: string;
+  code: string;
+  statement: string;
+  domain_name: string;
+  release_status: string;
+  review_status: string;
+  original_url: string | null;
+  file_checksum: string | null;
+  mapped_concepts: number;
+}
+
+const RELEASE_STATUS_LABEL: Record<string, string> = {
+  imported: "가져옴",
+  parsed: "구조화됨 (발행 전)",
+  mapped: "매핑됨",
+  expert_review: "전문가 검토",
+  validated: "검증됨",
+  published: "발행됨",
+  superseded: "대체됨",
+};
+
 export default async function CurriculumStudioPage({
   searchParams,
 }: {
@@ -96,7 +118,7 @@ export default async function CurriculumStudioPage({
   const levelFilter = query.params.level ?? "";
   const statusFilter = query.params.status ?? "";
 
-  const [concepts, edges, authority] = await Promise.all([
+  const [concepts, edges, authority, standards] = await Promise.all([
     sql<ConceptRow[]>`
       with base as (
         select c.id, c.name, c.slug, c.school_level, c.grade_band, c.domain_name,
@@ -139,6 +161,21 @@ export default async function CurriculumStudioPage({
       select count(*)::int as cnt,
              count(*) filter (where review_status = 'verified')::int as verified
       from curriculum_authority_sources
+    `,
+    sql<StandardRow[]>`
+      select s.id, s.code, s.statement,
+             n.official_name as domain_name,
+             r.status::text as release_status,
+             src.review_status::text as review_status,
+             src.original_url, src.file_checksum,
+             (select count(*)::int from curriculum_mappings m
+               where m.official_type = 'achievement_standard'
+                 and m.official_id = s.id and m.status = 'active') as mapped_concepts
+      from achievement_standards s
+      join official_curriculum_nodes n on n.id = s.official_node_id
+      join curriculum_releases r on r.id = s.release_id
+      left join curriculum_authority_sources src on src.id = s.source_id
+      order by s.code
     `,
   ]);
 
@@ -334,15 +371,79 @@ export default async function CurriculumStudioPage({
       {/* 2K 규칙 3 — 공식·내부 구분 고지 */}
       <div className="mt-3 rounded-lg border border-highlight bg-highlight-soft p-4 text-sm">
         <p className="font-medium">
-          공식 성취기준 데이터는 권위 소스 등록 후 표시됩니다 — 내부 개념 체계는
-          공식 성취기준이 아닙니다.
+          공식 성취기준(교육부 고시)과 내부 개념 체계를 구분합니다 — 내부 개념
+          체계는 공식 성취기준이 아닙니다.
         </p>
         <p className="mt-1.5 text-ink-soft">
-          아래 개념·선수 관계는 수업 설계와 숙련도 계산에 쓰는 내부 해석입니다.
-          현재 등록된 권위 문서 {sourceCount}건 (원문 대조 완료 {verifiedCount}건).
-          성취기준 코드·문구는 원문 대조가 끝난 릴리스에서만 노출합니다.
+          공식 성취기준은 원문 그대로만 싣고 체크섬으로 역추적됩니다. 아래
+          개념·선수 관계는 수업 설계와 숙련도 계산에 쓰는 내부 해석입니다.
+          등록된 권위 문서 {sourceCount}건 (원문 대조 완료 {verifiedCount}건).
         </p>
       </div>
+
+      {/* 공식 성취기준 — 원문·역추적. 릴리스 상태를 숨기지 않는다 */}
+      {standards.length > 0 && (
+        <section className="mt-8">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold">
+              공식 성취기준 (2022 개정 · 중학교)
+            </h2>
+            <p className="font-mono text-xs text-ink-soft">
+              {standards.length}개 ·{" "}
+              {RELEASE_STATUS_LABEL[standards[0]!.release_status] ??
+                standards[0]!.release_status}
+              {standards[0]!.review_status !== "verified" && " · 원문 대조 전"}
+            </p>
+          </div>
+          <div className="mt-3 overflow-x-auto rounded-lg border border-rule bg-surface">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead>
+                <tr className="border-b border-rule-soft text-left text-xs text-ink-soft">
+                  <th className="px-4 py-2 font-medium">코드</th>
+                  <th className="px-4 py-2 font-medium">공식 문구 (원문)</th>
+                  <th className="px-4 py-2 font-medium">영역</th>
+                  <th className="px-4 py-2 text-right font-medium">연결 개념</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-rule-soft">
+                {standards.map((s) => (
+                  <tr key={s.id}>
+                    <td className="px-4 py-2 font-mono text-xs">[{s.code}]</td>
+                    <td className="px-4 py-2">{s.statement}</td>
+                    <td className="px-4 py-2 text-xs text-ink-soft">
+                      {s.domain_name}
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono text-xs">
+                      {s.mapped_concepts > 0 ? (
+                        s.mapped_concepts
+                      ) : (
+                        <span className="text-ink-soft">0</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-ink-soft">
+            출처: 교육부 고시 제2022-33호 [별책8]
+            {standards[0]!.original_url && (
+              <>
+                {" · "}
+                <a
+                  href={standards[0]!.original_url}
+                  className="text-pen underline underline-offset-2"
+                >
+                  원문 내려받기
+                </a>
+              </>
+            )}
+            {standards[0]!.file_checksum &&
+              ` · sha256 ${standards[0]!.file_checksum.slice(0, 12)}…`}
+            {" — 연결 개념은 사람 큐레이션 매핑(전역)만 셉니다."}
+          </p>
+        </section>
+      )}
 
       {/* 개념 목록 */}
       <section className="mt-8">

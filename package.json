@@ -36,7 +36,8 @@
     "requeue-outbox": "pnpm --filter @su-maek/db exec tsx scripts/requeue-outbox.mts",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "rebuild:readmodels": "node scripts/rebuild-read-models.mjs",
-    "env:sync": "node scripts/sync-vercel-env.mjs"
+    "env:sync": "node scripts/sync-vercel-env.mjs",
+    "curriculum:collect": "pnpm --filter @su-maek/db exec tsx scripts/collect-curriculum.mts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
