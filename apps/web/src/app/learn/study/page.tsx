@@ -15,6 +15,9 @@ export const metadata: Metadata = { title: "개념 공부" };
  * 스크롤이 수백 줄이 되고, 학생은 자기가 어디까지 읽었는지 잃어버린다.
  * 기본 페이지는 첫 미완료 자료 — 다시 들어와도 읽던 곳에서 이어진다.
  *
+ * 넓은 화면에서는 남는 좌우를 쓴다 — data-wide로 셸을 넓히고 본문을
+ * 2단으로 흘려, 한 자료가 스크롤 없이 한 화면에 최대한 들어가게 한다.
+ *
  * AI 고지(disclosure)는 학생 화면에 싣지 않는다 — 출처·생성 경위는 교사
  * 검수 화면의 정보다. 데이터는 그대로 있으므로 정책이 바뀌면 다시 켠다.
  *
@@ -47,13 +50,43 @@ export default async function StudyPage({
   const doneCount = materials.filter((m) => m.progress === "completed").length;
 
   return (
-    <div>
-      <h1 className="font-[MaruBuri] text-2xl font-semibold">개념 공부</h1>
-      <p className="mt-1 text-sm text-ink-soft">
-        {materials.length > 0
-          ? `오늘 자료 ${materials.length}건 중 ${doneCount}건을 읽었습니다. 다 읽었으면 「다 봤어요」를 눌러 주세요.`
-          : "오늘 배우는 개념의 설명입니다."}
-      </p>
+    <div data-wide>
+      {/* 제목·진행과 번호 차례를 한 줄에 — 세로 공간은 본문에 양보한다 */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div>
+          <h1 className="font-[MaruBuri] text-2xl font-semibold">개념 공부</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            {materials.length > 0
+              ? `오늘 자료 ${materials.length}건 중 ${doneCount}건을 읽었습니다. 다 읽었으면 「다 봤어요」를 눌러 주세요.`
+              : "오늘 배우는 개념의 설명입니다."}
+          </p>
+        </div>
+        {materials.length > 1 && current && (
+          <nav aria-label="자료 차례" className="flex flex-wrap gap-1.5">
+            {materials.map((m, i) => {
+              const isCurrent = i + 1 === page;
+              const isDone = m.progress === "completed";
+              return (
+                <Link
+                  key={m.id}
+                  href={`/learn/study?p=${i + 1}`}
+                  aria-current={isCurrent ? "page" : undefined}
+                  title={`${m.conceptName} — ${m.title}`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border font-mono text-sm ${
+                    isCurrent
+                      ? "border-pen bg-pen font-bold text-white"
+                      : isDone
+                        ? "border-rule bg-paper text-ink-soft"
+                        : "border-pen/50 bg-surface text-pen"
+                  }`}
+                >
+                  {isDone && !isCurrent ? "✓" : i + 1}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
+      </div>
 
       {materials.length === 0 || !current ? (
         <div className="mt-4 rounded-lg border border-rule bg-surface p-5">
@@ -69,33 +102,6 @@ export default async function StudyPage({
         </div>
       ) : (
         <>
-          {/* 차례 — 번호로 건너뛴다. 완료는 채워진 원, 현재는 테두리 강조 */}
-          {materials.length > 1 && (
-            <nav aria-label="자료 차례" className="mt-4 flex flex-wrap gap-1.5">
-              {materials.map((m, i) => {
-                const isCurrent = i + 1 === page;
-                const isDone = m.progress === "completed";
-                return (
-                  <Link
-                    key={m.id}
-                    href={`/learn/study?p=${i + 1}`}
-                    aria-current={isCurrent ? "page" : undefined}
-                    title={`${m.conceptName} — ${m.title}`}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full border font-mono text-sm ${
-                      isCurrent
-                        ? "border-pen bg-pen font-bold text-white"
-                        : isDone
-                          ? "border-rule bg-paper text-ink-soft"
-                          : "border-pen/50 bg-surface text-pen"
-                    }`}
-                  >
-                    {isDone && !isCurrent ? "✓" : i + 1}
-                  </Link>
-                );
-              })}
-            </nav>
-          )}
-
           <section className="mt-3 rounded-lg border border-rule bg-surface p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -110,7 +116,7 @@ export default async function StudyPage({
               />
             </div>
             <div className="mt-3">
-              <ReadingBody body={current.body} mode="publish" />
+              <ReadingBody body={current.body} mode="publish" layout="columns" />
             </div>
 
             {/* 아래 이동 — 긴 본문을 다 읽은 자리에서 바로 다음으로 */}

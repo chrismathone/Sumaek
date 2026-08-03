@@ -103,18 +103,76 @@ function Mixed({ content, mode }: { content: string; mode: Mode }) {
   return <span dangerouslySetInnerHTML={{ __html: rendered.html }} />;
 }
 
+/* ── 단바꿈 규칙 ─────────────────────────────────────────────
+ * 2단 흘림에서 브라우저 균형 배치에만 맡기면 "예를 들어 … 보면:" 같은
+ * 이끄는 문장과 그 대상이 서로 다른 단으로 갈라진다. 데이터를 보고
+ * 한 몸으로 묶어야 할 이웃을 미리 정한다:
+ *   ① 콜론으로 끝나는 문단은 다음 블록과 — 소개문과 대상은 한 몸
+ *   ② 소제목(heading)은 다음 블록과 — 단 끝에 제목만 남지 않게
+ *   ③ 표·세로셈 바로 뒤의 display_math는 그 표와 — 계산과 결론은 한 몸
+ * 묶음 자체는 break-inside-avoid라 단 경계에서 쪼개지지 않는다. */
+
+function trailingText(block: Block): string {
+  if (block.type === "text") return block.text ?? "";
+  const runs = block.runs ?? [];
+  const last = runs[runs.length - 1];
+  return last?.kind !== "math" ? (last?.text ?? "") : "";
+}
+
+function gluesToNext(blocks: Block[], i: number): boolean {
+  const block = blocks[i]!;
+  const next = blocks[i + 1];
+  if (!next) return false;
+  if (block.type === "heading") return true;
+  if (block.type === "text" || block.type === "paragraph") {
+    return /[:：]\s*$/.test(trailingText(block));
+  }
+  return block.type === "math_table" && next.type === "display_math";
+}
+
+function groupBlocks(blocks: Block[]): Block[][] {
+  const groups: Block[][] = [];
+  let carry: Block[] = [];
+  blocks.forEach((block, i) => {
+    carry.push(block);
+    if (!gluesToNext(blocks, i)) {
+      groups.push(carry);
+      carry = [];
+    }
+  });
+  if (carry.length > 0) groups.push(carry);
+  return groups;
+}
+
 export function ReadingBody({
   body,
   mode = "publish",
+  layout = "single",
 }: {
   body: unknown;
   mode?: Mode;
+  /* columns: 큰 화면(lg)에서 블록을 교과서 지면처럼 2단으로 흘린다.
+   * 블록 순서는 그대로다(왼단 위→아래, 그다음 오른단) — 내용과 블록은
+   * 두 모드에서 동일하고 흐름만 다르다. 좁은 화면에서는 한 단으로 돌아온다. */
+  layout?: "single" | "columns";
 }) {
   if (!Array.isArray(body)) return null;
+  /* 묶음은 두 모드 공통 DOM — 검수자가 본 것과 학생이 보는 것이 같아야
+   * 하므로 single에서도 같은 구조로 감싼다(간격은 안팎 모두 space-y-3라
+   * 화면상 차이 없음). */
+  const groups = groupBlocks(body as Block[]);
   return (
-    <div className="space-y-3 text-[15px] leading-relaxed">
-      {(body as Block[]).map((block, i) => (
-        <BlockView key={i} block={block} mode={mode} />
+    <div
+      className={`space-y-3 text-[15px] leading-relaxed ${
+        layout === "columns" ? "lg:columns-2 lg:gap-10" : ""
+      }`}
+    >
+      {groups.map((group, g) => (
+        <div key={g} className="space-y-3 break-inside-avoid">
+          {group.map((block, i) => (
+            <BlockView key={i} block={block} mode={mode} />
+          ))}
+        </div>
       ))}
     </div>
   );

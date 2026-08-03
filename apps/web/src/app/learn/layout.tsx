@@ -44,9 +44,9 @@ export default async function LearnLayout({
   }
 
   return (
-    <div className="min-h-dvh bg-paper">
+    <div className="group min-h-dvh bg-paper">
       <header className="sticky top-0 z-40 border-b border-rule-soft bg-surface">
-        <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4">
+        <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4 group-has-[[data-wide]]:max-w-6xl">
           <Link href="/learn/today" className="font-bold">
             수맥
           </Link>
@@ -60,7 +60,11 @@ export default async function LearnLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-6">{children}</main>
+      {/* 기본은 좁은 한 줄(한 화면에 한 행동). 읽기 위주 화면만 data-wide로
+       * 넓힌다 — 개념 공부가 넓은 화면에서 2단으로 흐르기 위한 스위치. */}
+      <main className="mx-auto max-w-2xl px-4 py-6 has-[[data-wide]]:max-w-6xl">
+        {children}
+      </main>
     </div>
   );
 }
