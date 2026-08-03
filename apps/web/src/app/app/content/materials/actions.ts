@@ -215,8 +215,8 @@ const updateSchema = z.object({
  * 두 교사가 같은 자료 상세를 열면 나중에 저장하는 쪽의 **낡은 폼이 전부
  * 이긴다**: A가 연습문제 문항 5개를 지정·저장한 직후, 폼이 낡은 B가 제목
  * 오탈자만 고쳐 저장하면 hidden questionIds=""가 함께 실려 와 question_ids가
- * '[]'로 리셋되고 자동 선정으로 되돌아간다 — 감사 이벤트에는 questionCount만
- * 남아 지워진 목록을 복구할 수도 없다.
+ * '[]'로 리셋되고 자동 선정으로 되돌아간다. 이 거부가 1차 방어이고, 그래도
+ * 바뀐 목록은 감사 이벤트가 before/after에 전문으로 남긴다 (아래 참조).
  *
  * 그래서 폼은 읽은 시점의 updated_at을 그대로 제시하고, 서버는 DB의 현재
  * 값과 대조해 어긋나면 거부한다. 토큰은 DB가 만든 값(now())을 텍스트로
@@ -256,6 +256,7 @@ export async function updateMaterialAction(
       concept_id: string;
       body: unknown;
       is_pipeline: boolean;
+      question_ids: unknown;
       updated_at: string;
     }[]
   >`
@@ -263,6 +264,7 @@ export async function updateMaterialAction(
            concept_id::text as concept_id, body,
            (source_ref is not null or derived_from_material_id is not null)
              as is_pipeline,
+           question_ids,
            updated_at::text as updated_at
     from learning_materials
     where id = ${d.materialId} and organization_id = ${user.organizationId}
@@ -329,6 +331,15 @@ export async function updateMaterialAction(
     }
   }
 
+  /* 감사에는 문항 목록 **전문**을 남긴다 — 개수만 남기면 목록이 바뀌거나
+   * 지워졌을 때 어떤 문항이 빠졌는지 복구할 길이 없다. 상한 100개 uuid라
+   * 감사 행 크기로 감당된다. */
+  const previousQuestionIds = Array.isArray(material.question_ids)
+    ? (material.question_ids as unknown[]).filter(
+        (v): v is string => typeof v === "string",
+      )
+    : [];
+
   const disclosure = d.disclosure.trim() || null;
   const sourceJobId = d.sourceJobId || null;
   const saved = await sql.begin(async (tx) => {
@@ -380,10 +391,15 @@ export async function updateMaterialAction(
         ${uuidv7()}, ${user.organizationId}, 'user', ${user.userId},
         'material.update', 'learning_material', ${material.id},
         ${`${concept.name} — ${d.title}`},
-        ${tx.json({ title: material.title, conceptId: material.concept_id } as never)},
+        ${tx.json({
+          title: material.title,
+          conceptId: material.concept_id,
+          questionIds: previousQuestionIds,
+        } as never)},
         ${tx.json({
           title: d.title,
           conceptId: d.conceptId,
+          questionIds,
           questionCount: questionIds.length,
         } as never)}
       )

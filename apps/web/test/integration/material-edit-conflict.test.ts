@@ -10,11 +10,12 @@ import { v7 as uuidv7 } from "uuid";
  * 제목만 고쳐 저장 → question_ids가 '[]'로 리셋되어 자동 선정으로 되돌아가고,
  * 감사에는 questionCount만 남아 지워진 목록을 복구할 수 없었다.
  *
- * 붙잡는 것 넷:
+ * 붙잡는 것 다섯:
  *   1) 낡은 토큰의 저장은 거부되고 A의 지정 5개가 그대로 남는다
  *   2) 거부된 저장은 감사에 한 줄도 남지 않는다
  *   3) 새로 고친 폼(현재 토큰)은 저장된다 — 연속 저장이 막히지 않는다
- *   4) 토큰 없이 폼을 우회해도 조용히 덮지 못한다
+ *   4) 감사가 문항 목록 전문을 before/after에 남긴다 — 개수가 아니라 복구 가능한 목록
+ *   5) 토큰 없이 폼을 우회해도 조용히 덮지 못한다
  *
  * Supabase 인증과 Next 캐시만 대역이고 나머지(권한·DB·토큰 대조)는 진짜다.
  * 조직·사용자·개념은 고정 ID다 — 저장이 남기는 감사 행은 지울 수 없어서
@@ -77,14 +78,22 @@ describe.skipIf(!hasDb)("자료 수정 낙관적 동시성 (라이브 DB)", () =
     return row!;
   };
 
-  const auditCount = async (): Promise<number> => {
-    const [row] = await sql<{ cnt: number }[]>`
-      select count(*)::int as cnt from audit_events
+  interface AuditPayload {
+    questionIds?: string[];
+  }
+
+  /* materialId가 실행마다 새 uuid라 과거 실행의 감사 행과 섞이지 않는다 */
+  const auditRows = async (): Promise<
+    { before: AuditPayload; after: AuditPayload }[]
+  > =>
+    await sql<{ before: AuditPayload; after: AuditPayload }[]>`
+      select before, after from audit_events
       where organization_id = ${ORG}
         and action = 'material.update' and target_id = ${materialId}
+      order by id
     `;
-    return row!.cnt;
-  };
+
+  const auditCount = async (): Promise<number> => (await auditRows()).length;
 
   const form = (entries: Record<string, string>): FormData => {
     const fd = new FormData();
@@ -224,6 +233,17 @@ describe.skipIf(!hasDb)("자료 수정 낙관적 동시성 (라이브 DB)", () =
     expect(row.title).toBe("연습 묶음 (고침)");
     expect(row.question_ids).toEqual(pickedIds);
     expect(await auditCount()).toBe(2);
+  });
+
+  it("감사가 문항 목록 전문을 남긴다 — 지워진 목록을 복구할 수 있다", async () => {
+    const rows = await auditRows();
+    expect(rows).toHaveLength(2);
+    // A의 저장: 빈 목록 → 지정 5개
+    expect(rows[0]!.before.questionIds).toEqual([]);
+    expect(rows[0]!.after.questionIds).toEqual(pickedIds);
+    // B의 새로 고친 저장: 지정 5개 유지 — before가 곧 복구 원본이다
+    expect(rows[1]!.before.questionIds).toEqual(pickedIds);
+    expect(rows[1]!.after.questionIds).toEqual(pickedIds);
   });
 
   it("토큰 없이 온 요청은 거부한다 — 폼 우회도 조용히 덮지 못한다", async () => {
