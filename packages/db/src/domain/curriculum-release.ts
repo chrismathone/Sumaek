@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
 import type postgres from "postgres";
 import { v7 as uuidv7 } from "uuid";
 import {
+  diffReleases,
+  draftMappingMigration,
   validateRelease,
   type GraphEdge,
   type GraphNode,
+  type MigrationDraftEntry,
+  type ReleaseDiff,
   type ReleaseGateReport,
 } from "@su-maek/core/curriculum";
 import { isFeatureEnabled } from "../kill-switch";
@@ -419,4 +424,171 @@ export async function publishCurriculumRelease(
       findings,
     };
   });
+}
+
+/* ── 3. 릴리스 차이 계산 (인수 50) ──────────────────────────── */
+
+/** 초안 매핑의 결정론적 ID — 재실행이 같은 행을 갱신한다 */
+function stableDraftMappingId(key: string): string {
+  const digest = createHash("sha256")
+    .update(`su-maek:migration-mapping:${key}`)
+    .digest("hex");
+  return (
+    `${digest.slice(0, 8)}-${digest.slice(8, 12)}-` +
+    `7${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`
+  );
+}
+
+export interface DiffReleasesInput {
+  fromReleaseId: string;
+  toReleaseId: string;
+  /** true면 이관 초안을 curriculum_mappings에 **draft**로 저장한다 */
+  writeDraft: boolean;
+  actorId: string | null;
+  actorLabel: string;
+  similarityThreshold?: number;
+}
+
+export interface DiffReleasesOutcome {
+  diff: ReleaseDiff;
+  draft: MigrationDraftEntry[];
+  /** writeDraft로 실제 저장(갱신 포함)된 초안 행 수 */
+  draftWritten: number;
+}
+
+/**
+ * 두 릴리스의 성취기준을 비교하고 매핑 마이그레이션 초안을 만든다.
+ *
+ * 원칙 13 집행: 초안은 언제나 status='draft'·provenance='imported'로만
+ * 저장된다 — 발행 게이트의 커버리지(활성 매핑)와 자동 계획은 초안을
+ * 세지 않으므로, 사람이 승격하기 전에는 아무것도 자동 재매핑되지 않는다.
+ */
+export async function diffCurriculumReleases(
+  sql: postgres.Sql,
+  input: DiffReleasesInput,
+): Promise<DiffReleasesOutcome> {
+  const loadStandards = async (releaseId: string) => {
+    const rows = await sql<
+      { id: string; code: string; statement: string; domain_name: string }[]
+    >`
+      select s.id, s.code, s.statement, n.official_name as domain_name
+      from achievement_standards s
+      join official_curriculum_nodes n on n.id = s.official_node_id
+      where s.release_id = ${releaseId}
+      order by s.code
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      statement: r.statement,
+      domainName: r.domain_name,
+    }));
+  };
+  const fromStandards = await loadStandards(input.fromReleaseId);
+  const toStandards = await loadStandards(input.toReleaseId);
+  if (fromStandards.length === 0 || toStandards.length === 0) {
+    throw new CurriculumProcedureError(
+      `비교할 성취기준이 없습니다 (from ${fromStandards.length}건, to ${toStandards.length}건) — 릴리스 ID를 확인하세요.`,
+    );
+  }
+
+  const mappings = await sql<
+    {
+      standard_code: string;
+      internal_type: string;
+      internal_id: string;
+      relation_type: string;
+    }[]
+  >`
+    select s.code as standard_code, m.internal_type, m.internal_id,
+           m.relation_type::text as relation_type
+    from curriculum_mappings m
+    join achievement_standards s on s.id = m.official_id
+    where m.official_type = 'achievement_standard' and m.status = 'active'
+      and s.release_id = ${input.fromReleaseId}
+    order by s.code, m.internal_id
+  `;
+
+  const diff = diffReleases(fromStandards, toStandards, {
+    ...(input.similarityThreshold !== undefined
+      ? { similarityThreshold: input.similarityThreshold }
+      : {}),
+  });
+  const draft = draftMappingMigration(
+    diff,
+    mappings.map((m) => ({
+      standardCode: m.standard_code,
+      internalType: m.internal_type,
+      internalId: m.internal_id,
+      relationType: m.relation_type,
+    })),
+  );
+
+  let draftWritten = 0;
+  if (input.writeDraft) {
+    const toByCode = new Map(toStandards.map((s) => [s.code, s]));
+    await sql.begin(async (tx) => {
+      for (const entry of draft) {
+        if (entry.action !== "carry" && entry.action !== "carry_review") continue;
+        if (!entry.toCode || !entry.internalId || !entry.internalType) continue;
+        const target = toByCode.get(entry.toCode);
+        if (!target) continue;
+        const result = await tx`
+          insert into curriculum_mappings (
+            id, organization_id, official_type, official_id, internal_type,
+            internal_id, relation_type, evidence, provenance, status
+          ) values (
+            ${stableDraftMappingId(
+              `${input.toReleaseId}:${entry.toCode}:${entry.internalType}:${entry.internalId}`,
+            )},
+            null, 'achievement_standard', ${target.id}, ${entry.internalType},
+            ${entry.internalId}, ${entry.relationType},
+            ${tx.json([
+              {
+                kind: "migration_draft",
+                fromRelease: input.fromReleaseId,
+                fromCode: entry.fromCode,
+                reason: entry.reason,
+                needsReview: entry.action === "carry_review",
+              },
+            ] as never)},
+            'imported', 'draft'
+          )
+          on conflict (id) do update
+          set relation_type = excluded.relation_type,
+              evidence = excluded.evidence, updated_at = now()
+          where curriculum_mappings.status = 'draft'
+        `;
+        /* 사람이 이미 승격한 행(where 절 불일치)은 세지 않는다 */
+        draftWritten += result.count;
+      }
+      await tx`
+        insert into audit_events (
+          id, organization_id, actor_type, actor_id, action,
+          target_type, target_id, reason, after
+        ) values (
+          ${uuidv7()}, ${PLATFORM_SCOPE_ORG}, 'user', ${input.actorId},
+          'curriculum.release_diff', 'curriculum_release', ${input.toReleaseId},
+          '릴리스 차이 계산 + 마이그레이션 초안 저장',
+          ${tx.json({
+            fromRelease: input.fromReleaseId,
+            actor: input.actorLabel,
+            counts: {
+              unchanged: diff.unchanged.length,
+              modified: diff.modified.length,
+              moved: diff.moved.length,
+              recoded: diff.recoded.length,
+              split: diff.split.length,
+              merged: diff.merged.length,
+              added: diff.added.length,
+              removed: diff.removed.length,
+              draftWritten,
+            },
+          } as never)}
+        )
+      `;
+    });
+  }
+
+  return { diff, draft, draftWritten };
 }

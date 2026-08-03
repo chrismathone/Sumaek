@@ -3,6 +3,7 @@ config({ path: ["../../.env", ".env"] });
 import { createSql } from "../src/client.ts";
 import {
   CurriculumProcedureError,
+  diffCurriculumReleases,
   publishCurriculumRelease,
   verifyAuthoritySource,
   type PublishGateFindings,
@@ -37,6 +38,10 @@ interface Options {
   checksum: string | null;
   by: string | null;
   dryRun: boolean;
+  from: string | null;
+  to: string | null;
+  writeDraft: boolean;
+  threshold: number | null;
 }
 
 function parseOptions(argv: string[]): Options {
@@ -46,6 +51,10 @@ function parseOptions(argv: string[]): Options {
     checksum: null,
     by: null,
     dryRun: false,
+    from: null,
+    to: null,
+    writeDraft: false,
+    threshold: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -55,8 +64,21 @@ function parseOptions(argv: string[]): Options {
       options.dryRun = true;
       continue;
     }
+    if (arg === "--write-draft") {
+      options.writeDraft = true;
+      continue;
+    }
     const value = argv[i + 1];
-    if (["--source", "--release", "--checksum", "--by"].includes(arg)) {
+    const valued = [
+      "--source",
+      "--release",
+      "--checksum",
+      "--by",
+      "--from",
+      "--to",
+      "--threshold",
+    ];
+    if (valued.includes(arg)) {
       if (value === undefined || value.startsWith("--")) {
         throw new CurriculumProcedureError(`${arg} 에 값이 없습니다.`);
       }
@@ -64,6 +86,17 @@ function parseOptions(argv: string[]): Options {
       if (arg === "--release") options.release = value;
       if (arg === "--checksum") options.checksum = value;
       if (arg === "--by") options.by = value;
+      if (arg === "--from") options.from = value;
+      if (arg === "--to") options.to = value;
+      if (arg === "--threshold") {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 1) {
+          throw new CurriculumProcedureError(
+            `--threshold 는 0과 1 사이여야 합니다: ${value}`,
+          );
+        }
+        options.threshold = parsed;
+      }
       i += 1;
       continue;
     }
@@ -89,8 +122,10 @@ function usage(): void {
   console.log("  pnpm curriculum:release status  [--source <uuid>] [--release <uuid>]");
   console.log("  pnpm curriculum:release verify-source --checksum <sha256 앞 12자+> --by <이메일> [--source <uuid>]");
   console.log("  pnpm curriculum:release publish [--dry-run] --by <이메일> [--release <uuid>]");
+  console.log("  pnpm curriculum:release diff --from <릴리스 uuid> --to <릴리스 uuid> [--write-draft --by <이메일>] [--threshold 0.45]");
   console.log("");
   console.log("기본 대상: 교육부 고시 제2022-33호 별책8 소스 · KR-MATH-2022 릴리스 1");
+  console.log("diff의 --write-draft 는 이관 초안을 draft 매핑으로만 저장합니다 — 자동 재매핑 없음 (원칙 13)");
 }
 
 async function runStatus(
@@ -257,6 +292,60 @@ async function main(): Promise<void> {
       for (const failure of failures) console.log(`  ✗ ${failure}`);
       console.log("  리포트를 릴리스 validation_report에 저장했습니다 (status로 확인).");
       if (!outcome.ok) process.exit(1);
+      return;
+    }
+
+    if (command === "diff") {
+      if (!options.from || !options.to) {
+        throw new CurriculumProcedureError(
+          "--from 과 --to 릴리스 uuid가 필요합니다.",
+        );
+      }
+      const { actorId, label } = await resolveActor(sql, options.by);
+      if (options.writeDraft && !actorId) {
+        throw new CurriculumProcedureError(
+          "--write-draft 에는 --by (users의 실계정) 가 필요합니다.",
+        );
+      }
+      const outcome = await diffCurriculumReleases(sql, {
+        fromReleaseId: options.from,
+        toReleaseId: options.to,
+        writeDraft: options.writeDraft,
+        actorId,
+        actorLabel: label,
+        ...(options.threshold !== null
+          ? { similarityThreshold: options.threshold }
+          : {}),
+      });
+      const d = outcome.diff;
+      console.log("릴리스 차이:");
+      console.log(`  동일 ${d.unchanged.length} · 문구 수정 ${d.modified.length} · 영역 이동 ${d.moved.length}`);
+      console.log(`  재코드 ${d.recoded.length} · 분할 ${d.split.length} · 통합 ${d.merged.length} · 추가 ${d.added.length} · 삭제 ${d.removed.length}`);
+      for (const c of d.modified) console.log(`  ~ [${c.code}] 문구 수정`);
+      for (const c of d.moved) {
+        console.log(`  ⇄ [${c.code}] ${c.before.domainName} → ${c.after.domainName}${c.statementChanged ? " (+문구)" : ""}`);
+      }
+      for (const c of d.recoded) console.log(`  ≈ [${c.fromCode}] → [${c.toCode}] (유사도 ${c.similarity.toFixed(2)})`);
+      for (const c of d.split) console.log(`  ⑂ [${c.fromCode}] → ${c.toCodes.map((t) => `[${t}]`).join(" ")}`);
+      for (const c of d.merged) console.log(`  ⑃ ${c.fromCodes.map((f) => `[${f}]`).join(" ")} → [${c.toCode}]`);
+      for (const code of d.added) console.log(`  + [${code}] 신규 — 개념 매핑 새로 큐레이션`);
+      for (const code of d.removed) console.log(`  − [${code}] 삭제 — 기존 매핑 폐기 검토`);
+
+      const actions = new Map<string, number>();
+      for (const entry of outcome.draft) {
+        actions.set(entry.action, (actions.get(entry.action) ?? 0) + 1);
+      }
+      console.log("마이그레이션 초안:");
+      console.log(
+        `  그대로 이관 ${actions.get("carry") ?? 0} · 이관 후 검토 ${actions.get("carry_review") ?? 0} · 폐기 검토 ${actions.get("retire_review") ?? 0} · 새 큐레이션 ${actions.get("curate_new") ?? 0}`,
+      );
+      if (options.writeDraft) {
+        console.log(
+          `  draft 매핑 ${outcome.draftWritten}행 저장 (status=draft — 발행 게이트·자동 계획은 세지 않음, 사람 승격 필요)`,
+        );
+      } else {
+        console.log("  보고만 했습니다 — 저장하려면 --write-draft --by <이메일>");
+      }
       return;
     }
 
