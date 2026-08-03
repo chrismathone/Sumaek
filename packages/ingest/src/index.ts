@@ -20,3 +20,12 @@ export {
   refineOutput,
 } from "./refine";
 export type { RefineCheck, RefineOutput, RefineWarning } from "./refine";
+export {
+  ALIGN_PROMPT_VERSION,
+  alignOutput,
+  buildAlignSystemPrompt,
+  buildAlignUserPrompt,
+  checkAlignment,
+  questionBodyToMixedText,
+} from "./align";
+export type { AlignOutput, ConceptCandidate } from "./align";

@@ -175,7 +175,10 @@ export async function generateDailyTest(options: {
     from questions q
     join question_versions v on v.id = q.current_version_id
     join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-    left join question_alignments a on a.question_id = q.id
+    left join question_alignments a
+      on a.question_id = q.id
+      /* ai_suggested(미검수 제안)는 개념 축이 아니다 — 승인돼야 풀에 잡힌다 */
+      and a.provenance <> 'ai_suggested'
     where q.organization_id = ${organizationId}
       and q.review_status = 'published'
       and q.is_auto_assignable = true
@@ -431,6 +434,9 @@ export async function generateDailyTest(options: {
       const weights = await tx<{ concept_id: string; weight: string }[]>`
         select concept_id::text, weight::text from question_alignments
         where question_id = ${sel.questionId}
+          /* 미검수 AI 제안은 숙련도 증거로 스냅샷하지 않는다 — 틀린 정렬이
+           * 여기로 들어오면 학생 화면 어디에도 안 보인 채 출제만 틀어진다 */
+          and provenance <> 'ai_suggested'
       `;
       await tx`
         insert into assessment_questions (
@@ -592,7 +598,10 @@ export async function generateConfirmationTest(options: {
     from questions q
     join question_versions v on v.id = q.current_version_id
     join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-    left join question_alignments a on a.question_id = q.id
+    left join question_alignments a
+      on a.question_id = q.id
+      /* ai_suggested(미검수 제안)는 개념 축이 아니다 — 승인돼야 풀에 잡힌다 */
+      and a.provenance <> 'ai_suggested'
     where q.organization_id = ${organizationId}
       and q.review_status = 'published'
       and q.is_auto_assignable = true
@@ -698,6 +707,9 @@ export async function generateConfirmationTest(options: {
       const weights = await tx<{ concept_id: string; weight: string }[]>`
         select concept_id::text, weight::text from question_alignments
         where question_id = ${sel.questionId}
+          /* 미검수 AI 제안은 숙련도 증거로 스냅샷하지 않는다 — 틀린 정렬이
+           * 여기로 들어오면 학생 화면 어디에도 안 보인 채 출제만 틀어진다 */
+          and provenance <> 'ai_suggested'
       `;
       await tx`
         insert into assessment_questions (

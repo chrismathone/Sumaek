@@ -108,7 +108,11 @@ export default async function QuestionBankPage({
                (select count(*)::int from assessment_questions aq
                  where aq.question_id = q.id
                    and aq.organization_id = q.organization_id) as used_count,
-               (select coalesce(string_agg(c.name, ' · ' order by c.name), '')
+               /* 미검수 제안은 사람 정렬과 같은 얼굴로 서면 안 된다 — 라벨을 단다 */
+               (select coalesce(string_agg(
+                          case when qa.provenance = 'ai_suggested'
+                               then c.name || ' (AI 제안)' else c.name end,
+                          ' · ' order by c.name), '')
                   from question_alignments qa
                   join canonical_concepts c on c.id = qa.concept_id
                  where qa.question_id = q.id

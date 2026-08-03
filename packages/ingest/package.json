@@ -15,6 +15,8 @@
     "load": "tsx src/cli/load.mts",
     "load-concepts": "tsx src/cli/load-concepts.mts",
     "refine-concepts": "tsx src/cli/refine-concepts.mts",
+    "suggest-alignments": "tsx src/cli/suggest-alignments.mts",
+    "review-alignments": "tsx src/cli/review-alignments.mts",
     "verify-templates": "tsx src/cli/verify-templates.mts",
     "variants": "tsx src/cli/variants.mts",
     "audit-katex": "tsx src/cli/audit-katex.mts",
