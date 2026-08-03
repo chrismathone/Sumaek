@@ -32,6 +32,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { v7 as uuidv7 } from "uuid";
 import { createSql } from "../src/client.ts";
+import {
+  CATALOG_CONCEPTS,
+  CATALOG_MAPPINGS,
+} from "./data/middle-math-concept-catalog.mts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -61,54 +65,20 @@ const DOMAIN_NAMES: Record<string, string> = {
 };
 
 /**
- * RPM 1단원 개념 ↔ 성취기준 — **사람이 쓴 표다** (rpm-2022-concepts.ts와
- * 같은 원칙). 고시문 문장과 개념 정의를 대조해 잇는다.
- * 약수의 개수는 [9수01-01] 문장("소인수분해의 뜻을 알고 … 할 수 있다")의
- * 문면을 넘어 해설·교과서 통용 범위라 partially_covers로 적는다.
+ * 개념 ↔ 성취기준 매핑은 사람 큐레이션 카탈로그가 담당한다 —
+ * ./data/middle-math-concept-catalog.mts (성취기준 60개 전체 커버).
+ * 카탈로그에 고정 ID가 없는 매핑은 code+slug에서 결정론적으로 만들어
+ * 재실행이 같은 행을 갱신하게 한다.
  */
-const RPM_CONCEPT_STANDARD_MAP: Array<{
-  mappingId: string;
-  conceptSlug: string;
-  standardCode: string;
-  relation: "covers" | "partially_covers" | "extends_beyond";
-  note: string;
-}> = [
-  {
-    mappingId: "00000000-0000-7000-8000-0000000c1101",
-    conceptSlug: "m1-prime-composite",
-    standardCode: "9수01-01",
-    relation: "covers",
-    note: "소수·합성수 구분은 소인수분해의 뜻을 아는 것의 전제",
-  },
-  {
-    mappingId: "00000000-0000-7000-8000-0000000c1102",
-    conceptSlug: "m1-prime-factorization",
-    standardCode: "9수01-01",
-    relation: "covers",
-    note: "성취기준 문장의 본체",
-  },
-  {
-    mappingId: "00000000-0000-7000-8000-0000000c1103",
-    conceptSlug: "m1-divisors",
-    standardCode: "9수01-01",
-    relation: "partially_covers",
-    note: "약수의 개수 세기는 문장 문면 밖·해설/교과서 통용 범위",
-  },
-  {
-    mappingId: "00000000-0000-7000-8000-0000000c1104",
-    conceptSlug: "m1-gcd",
-    standardCode: "9수01-02",
-    relation: "covers",
-    note: "최대공약수 — 성취기준 문장에 명시",
-  },
-  {
-    mappingId: "00000000-0000-7000-8000-0000000c1105",
-    conceptSlug: "m1-lcm",
-    standardCode: "9수01-02",
-    relation: "covers",
-    note: "최소공배수 — 성취기준 문장에 명시",
-  },
-];
+function stableMappingId(code: string, slug: string): string {
+  const digest = createHash("sha256")
+    .update(`su-maek:curriculum-mapping:${code}:${slug}`)
+    .digest("hex");
+  return (
+    `${digest.slice(0, 8)}-${digest.slice(8, 12)}-` +
+    `7${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`
+  );
+}
 
 interface Args {
   text?: string;
@@ -337,8 +307,30 @@ async function main(): Promise<void> {
         `;
       }
 
-      /* 6. RPM 개념 ↔ 성취기준 매핑 (사람 큐레이션) — 개념이 없으면 보고만 */
-      for (const mapping of RPM_CONCEPT_STANDARD_MAP) {
+      /* 6a. 개념 카탈로그 — 기존 slug(RPM·시드)는 건드리지 않는다 */
+      for (const concept of CATALOG_CONCEPTS) {
+        await tx`
+          insert into canonical_concepts (
+            id, slug, name, description, curriculum_version_id,
+            school_level, grade_band, domain_name, status, evidence
+          ) values (
+            ${uuidv7()}, ${concept.slug}, ${concept.name}, ${concept.description},
+            ${VERSION_ID}, 'middle', ${concept.gradeBand}, ${concept.domainName},
+            'active',
+            ${tx.json([
+              {
+                kind: "document",
+                source: "교육부 고시 제2022-33호 별책8",
+                note: "성취기준 대응 교수 단위 개념 (사람 큐레이션 카탈로그)",
+              },
+            ] as never)}
+          )
+          on conflict (slug) do nothing
+        `;
+      }
+
+      /* 6b. 개념 ↔ 성취기준 매핑 (사람 큐레이션) — 대상이 없으면 보고만 */
+      for (const mapping of CATALOG_MAPPINGS) {
         const [concept] = await tx<{ id: string }[]>`
           select id from canonical_concepts where slug = ${mapping.conceptSlug}
         `;
@@ -352,19 +344,23 @@ async function main(): Promise<void> {
           );
           continue;
         }
+        const mappingId =
+          mapping.mappingId ??
+          stableMappingId(mapping.standardCode, mapping.conceptSlug);
         await tx`
           insert into curriculum_mappings (
             id, organization_id, official_type, official_id, internal_type,
             internal_id, relation_type, confidence, evidence, source_id,
             provenance, status
           ) values (
-            ${mapping.mappingId}, null, 'achievement_standard', ${standard.id},
+            ${mappingId}, null, 'achievement_standard', ${standard.id},
             'canonical_concept', ${concept.id}, ${mapping.relation}, 1.0,
             ${tx.json([
               {
                 kind: "document",
                 note: mapping.note,
-                source: "교육부 고시 제2022-33호 별책8 ↔ rpm-2022-concepts.ts",
+                source:
+                  "교육부 고시 제2022-33호 별책8 ↔ middle-math-concept-catalog.mts",
               },
             ] as never)},
             ${SOURCE_ID}, 'human', 'active'
@@ -387,24 +383,57 @@ async function main(): Promise<void> {
     console.log("\n영역별 성취기준:");
     for (const row of byDomain) console.log(`  ${row.official_name}: ${row.cnt}개`);
 
-    const chain = await sql<
-      { code: string; statement: string; concepts: number; questions: number }[]
+    const coverage = await sql<
+      { total: number; mapped: number; concepts: number }[]
     >`
-      select s.code, s.statement,
+      select count(*)::int as total,
+             count(*) filter (where exists (
+               select 1 from curriculum_mappings m
+               where m.official_type = 'achievement_standard'
+                 and m.official_id = s.id and m.status = 'active'
+             ))::int as mapped,
+             (select count(distinct m.internal_id)::int from curriculum_mappings m
+               join achievement_standards s2 on s2.id = m.official_id
+               where m.official_type = 'achievement_standard'
+                 and m.status = 'active' and s2.release_id = ${RELEASE_ID}) as concepts
+      from achievement_standards s
+      where s.release_id = ${RELEASE_ID}
+    `;
+    const cov = coverage[0]!;
+    console.log(
+      `\n매핑 커버리지: 성취기준 ${cov.mapped}/${cov.total} · 연결 개념 ${cov.concepts}개`,
+    );
+    if (cov.mapped < cov.total) {
+      const unmapped = await sql<{ code: string }[]>`
+        select code from achievement_standards s
+        where s.release_id = ${RELEASE_ID}
+          and not exists (
+            select 1 from curriculum_mappings m
+            where m.official_type = 'achievement_standard'
+              and m.official_id = s.id and m.status = 'active'
+          )
+        order by code
+      `;
+      console.log(`  ! 미매핑: ${unmapped.map((u) => u.code).join(", ")}`);
+    }
+
+    const chain = await sql<
+      { code: string; concepts: number; questions: number }[]
+    >`
+      select s.code,
              count(distinct m.internal_id)::int as concepts,
              count(distinct qa.question_id)::int as questions
       from achievement_standards s
       join curriculum_mappings m
         on m.official_type = 'achievement_standard' and m.official_id = s.id
        and m.status = 'active'
-      left join question_alignments qa on qa.concept_id = m.internal_id
+      join question_alignments qa on qa.concept_id = m.internal_id
       where s.release_id = ${RELEASE_ID}
-      group by s.code, s.statement order by s.code
+      group by s.code order by s.code
     `;
-    console.log("\n성취기준 → 개념 → 문항 사슬 (인수 48의 첫 두 고리):");
+    console.log("\n문항까지 잇긴 성취기준 (반입 문항 보유분):");
     for (const row of chain) {
       console.log(`  [${row.code}] 개념 ${row.concepts} · 문항 ${row.questions}`);
-      console.log(`    ${row.statement}`);
     }
     console.log(
       `\n원문 역추적: ${ATTACHMENT_URL}\n  hwp sha256 ${hwpChecksum}\n` +

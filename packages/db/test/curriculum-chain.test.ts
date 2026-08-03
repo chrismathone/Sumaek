@@ -67,6 +67,29 @@ describe.skipIf(!hasDb)("교육과정 권위 사슬 (인수 41·48)", () => {
     );
   });
 
+  it("성취기준 60개 전부에 개념이 잇겨 있다 — 커버리지 공백 0 (사람 큐레이션 카탈로그)", async () => {
+    const [coverage] = await sql<{ total: number; mapped: number; concepts: number }[]>`
+      select count(*)::int as total,
+             count(*) filter (where exists (
+               select 1 from curriculum_mappings m
+               where m.official_type = 'achievement_standard'
+                 and m.official_id = s.id
+                 and m.status = 'active' and m.provenance = 'human'
+             ))::int as mapped,
+             (select count(distinct m.internal_id)::int from curriculum_mappings m
+               join achievement_standards s2 on s2.id = m.official_id
+               where m.official_type = 'achievement_standard'
+                 and m.status = 'active' and s2.release_id = ${RELEASE_ID}) as concepts
+      from achievement_standards s
+      where s.release_id = ${RELEASE_ID}
+    `;
+    expect(coverage!.mapped).toBe(coverage!.total);
+    expect(coverage!.total).toBe(60);
+    // 개념 ≠ 성취기준 1:1 등치 금지(2K) — 갈라지고 합쳐져 60과 다르다
+    expect(coverage!.concepts).toBeGreaterThanOrEqual(65);
+    expect(coverage!.concepts).not.toBe(60);
+  });
+
   it("성취기준 → 개념 → 문항 사슬이 실제로 잇긴다 (인수 48 첫 두 고리)", async () => {
     const chain = await sql<{ code: string; concepts: number; questions: number }[]>`
       select s.code,
