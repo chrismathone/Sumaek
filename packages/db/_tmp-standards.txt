@@ -1,0 +1,304 @@
+﻿9수01-01 | 소인수분해의 뜻을 알고, 자연수를 소인수분해 할 수 있다.
+9수01-02 | 소인수분해를 이용하여 최대공약수와 최소공배수를 구할 수 있다.
+9수01-03 | 다양한 상황을 이용하여 음수의 필요성을 인식하고, 양수와 음수, 정수와 유리수의 개념을 이해한다.
+9수01-04 | 정수와 유리수의 대소 관계를 판단할 수 있다.
+9수01-05 | 정수와 유리수의 사칙계산의 원리를 이해하고, 그 계산을 할 수 있다.
+9수01-06 | 순환소수의 뜻을 알고, 유리수와 순환소수의 관계를 설명할 수 있다.
+9수01-07 | 제곱근의 뜻과 성질을 알고, 제곱근의 대소 관계를 판단할 수 있다.
+9수01-08 | 무리수의 개념을 이해하고, 무리수의 유용성을 인식할 수 있다.
+9수01-09 | 실수의 대소 관계를 판단하고 설명할 수 있다.
+9수01-10 | 근호를 포함한 식의 사칙계산의 원리를 이해하고, 그 계산을 할 수 있다.
+9수02-01 | 다양한 상황을 문자를 사용한 식으로 나타내어 그 유용성을 인식하고, 식의 값을 구할 수 있다.
+9수02-02 | 일차식의 덧셈과 뺄셈의 원리를 이해하고, 그 계산을 할 수 있다.
+9수02-03 | 방정식과 그 해의 뜻을 알고, 등식의 성질을 설명할 수 있다.
+9수02-04 | 일차방정식을 풀 수 있고, 이를 활용하여 문제를 해결할 수 있다.
+9수02-05 | 순서쌍과 좌표를 이해하고, 그 편리함을 인식할 수 있다.
+9수02-06 | 다양한 상황을 그래프로 나타내고, 주어진 그래프를 해석할 수 있다.
+9수02-07 | 정비례, 반비례 관계를 이해하고, 그 관계를 표, 식, 그래프로 나타낼 수 있다.
+9수02-08 | 지수법칙을 이해하고, 이를 이용하여 식을 간단히 할 수 있다.
+9수02-09 | 다항식의 덧셈과 뺄셈의 원리를 이해하고, 그 계산을 할 수 있다.
+9수02-10 | ‘(단항식)(다항식)’, ‘(다항식)(단항식)’과 같은 곱셈과 나눗셈의 원리를 이해하고, 그 계산을 할 수 있다.
+9수02-11 | 부등식과 그 해의 뜻을 알고, 부등식의 성질을 설명할 수 있다.
+9수02-12 | 일차부등식을 풀 수 있고, 이를 활용하여 문제를 해결할 수 있다.
+9수02-13 | 미지수가 2개인 연립일차방정식을 풀 수 있고, 이를 활용하여 문제를 해결할 수 있다.
+9수02-14 | 함수의 개념을 이해하고, 함숫값을 구할 수 있다.
+9수02-15 | 일차함수의 개념을 이해하고, 그 그래프를 그릴 수 있다.
+9수02-16 | 일차함수의 그래프의 성질을 이해하고, 이를 활용하여 문제를 해결할 수 있다.
+9수02-17 | 일차함수와 미지수가 2개인 일차방정식의 관계를 설명할 수 있다.
+9수02-18 | 두 일차함수의 그래프와 연립일차방정식의 관계를 설명할 수 있다.
+9수02-19 | 다항식의 곱셈과 인수분해를 할 수 있다.
+9수02-20 | 이차방정식을 풀 수 있고, 이를 활용하여 문제를 해결할 수 있다.
+9수02-21 | 이차함수의 개념을 이해한다.
+9수02-22 | 이차함수의 그래프를 그릴 수 있고, 그 성질을 설명할 수 있다.
+9수03-01 | 점, 선, 면, 각을 이해하고, 실생활 상황과 연결하여 점, 직선, 평면의 위치 관계를 설명할 수 있다.
+9수03-02 | 평행선에서 동위각과 엇각의 성질을 이해하고 설명할 수 있다.
+9수03-03 | 삼각형을 작도하고, 그 과정을 설명할 수 있다.
+9수03-04 | 삼각형의 합동 조건을 이해하고, 이를 이용하여 두 삼각형이 합동인지 판별할 수 있다.
+9수03-05 | 다각형의 성질을 이해하고 설명할 수 있다.
+9수03-06 | 부채꼴의 중심각과 호의 관계를 이해하고, 이를 이용하여 부채꼴의 호의 길이와 넓이를 구할 수 있다.
+9수03-07 | 구체적인 모형이나 공학 도구를 이용하여 다면체와 회전체의 성질을 탐구하고, 이를 설명할 수 있다.
+9수03-08 | 입체도형의 겉넓이와 부피를 구할 수 있다.
+9수03-09 | 이등변삼각형의 성질을 이해하고 정당화할 수 있다.
+9수03-10 | 삼각형의 외심과 내심의 성질을 이해하고 정당화할 수 있다.
+9수03-11 | 사각형의 성질을 이해하고 정당화할 수 있다.
+9수03-12 | 도형의 닮음의 뜻과 닮은 도형의 성질을 이해하고, 닮음비를 구할 수 있다.
+9수03-13 | 삼각형의 닮음 조건을 이해하고, 이를 이용하여 두 삼각형이 닮음인지 판별할 수 있다.
+9수03-14 | 평행선 사이의 선분의 길이의 비를 구할 수 있다.
+9수03-15 | 피타고라스 정리를 이해하고 정당화할 수 있다.
+9수03-16 | 삼각비의 뜻을 알고, 간단한 삼각비의 값을 구할 수 있다.
+9수03-17 | 삼각비를 활용하여 여러 가지 문제를 해결할 수 있다.
+9수03-18 | 원의 현에 관한 성질과 접선에 관한 성질을 이해하고 정당화할 수 있다.
+9수03-19 | 원주각의 성질을 이해하고 정당화할 수 있다.
+9수04-01 | 중앙값, 최빈값의 뜻을 알고, 자료의 특성에 따라 적절한 대푯값을 선택하여 구할 수 있다.
+9수04-02 | 자료를 줄기와 잎 그림, 도수분포표, 히스토그램, 도수분포다각형으로 나타내고 해석할 수 있다.
+9수04-03 | 상대도수를 구하고, 상대도수의 분포를 표나 그래프로 나타내고 해석할 수 있다.
+9수04-04 | 통계적 탐구 문제를 설정하고, 공학 도구를 이용하여 자료를 수집하여 분석하고, 그 결과를 해석할 수 있다.
+9수04-05 | 경우의 수를 구할 수 있다.
+9수04-06 | 확률의 개념과 그 기본 성질을 이해하고, 확률을 구할 수 있다.
+9수04-07 | 분산과 표준편차를 구하고 자료의 분포를 설명할 수 있다.
+9수04-08 | 공학 도구를 이용하여 자료를 상자그림으로 나타내고 분포를 비교할 수 있다.
+9수04-09 | 자료를 산점도로 나타내고 상관관계를 말할 수 있다.
+---기존 개념---
+ctest-019fb892 | 확인 개념 | -
+ctest-019fb893 | 확인 개념 | -
+ctest-019fbb0d | 확인 개념 | -
+ctest-019fbbb4 | 확인 개념 | -
+ctest-019fbbc0 | 확인 개념 | -
+ctest-019fbbd6 | 확인 개념 | -
+ctest-019fbbdc | 확인 개념 | -
+ctest-019fbbf3 | 확인 개념 | -
+ctest-019fbc07 | 확인 개념 | -
+ctest-019fbc25 | 확인 개념 | -
+ctest-019fbc2b | 확인 개념 | -
+ctest-019fbc31 | 확인 개념 | -
+ctest-019fbc6f | 확인 개념 | -
+ctest-019fbc8d | 확인 개념 | -
+ctest-019fbc9d | 확인 개념 | -
+ctest-019fbc9e | 확인 개념 | -
+ctest-019fbcb0 | 확인 개념 | -
+ctest-019fbcb3 | 확인 개념 | -
+ctest-019fbcb6 | 확인 개념 | -
+ctest-019fbcb7 | 확인 개념 | -
+ctest-019fbcb8 | 확인 개념 | -
+ctest-019fbcbc | 확인 개념 | -
+ctest-019fbcce | 확인 개념 | -
+ctest-019fbcd0 | 확인 개념 | -
+ctest-019fbcd1 | 확인 개념 | -
+ctest-019fbcd6 | 확인 개념 | -
+ctest-019fbcd7 | 확인 개념 | -
+ctest-019fbcd9 | 확인 개념 | -
+ctest-019fbcdd | 확인 개념 | -
+ctest-019fbce0 | 확인 개념 | -
+ctest-019fbce4 | 확인 개념 | -
+ctest-019fbce5 | 확인 개념 | -
+ctest-019fbcf0 | 확인 개념 | -
+ctest-019fbd0c | 확인 개념 | -
+ctest-019fbd13 | 확인 개념 | -
+ctest-019fbd1a | 확인 개념 | -
+ctest-019fbd1b | 확인 개념 | -
+ctest-019fbd1c | 확인 개념 | -
+ctest-019fbd26 | 확인 개념 | -
+ctest-019fbd2d | 확인 개념 | -
+ctest-019fbd31 | 확인 개념 | -
+ctest-019fbd32 | 확인 개념 | -
+ctest-019fbe0d | 확인 개념 | -
+ctest-019fbe0e | 확인 개념 | -
+ctest-019fbe13 | 확인 개념 | -
+ctest-019fbe19 | 확인 개념 | -
+ctest-019fbe30 | 확인 개념 | -
+ctest-019fbe5b | 확인 개념 | -
+ctest-019fbe75 | 확인 개념 | -
+ctest-019fbe7c | 확인 개념 | -
+ctest-019fbe7e | 확인 개념 | -
+ctest-019fbe8a | 확인 개념 | -
+ctest-019fbe93 | 확인 개념 | -
+ctest-019fbec5 | 확인 개념 | -
+ctest-019fbfd0 | 확인 개념 | -
+ctest-019fbfd2 | 확인 개념 | -
+ctest-019fbfdb | 확인 개념 | -
+ctest-019fbfe1 | 확인 개념 | -
+ctest-019fbff4 | 확인 개념 | -
+ctest-019fc026 | 확인 개념 | -
+ctest-019fc02d | 확인 개념 | -
+ctest-019fc033 | 확인 개념 | -
+ctest-019fc03d | 확인 개념 | -
+ctest-019fc046 | 확인 개념 | -
+ctest-019fc04a | 확인 개념 | -
+ctest-019fc05a | 확인 개념 | -
+ctest-019fc085 | 확인 개념 | -
+ctest-019fc1ad | 확인 개념 | -
+ctest-019fc1b6 | 확인 개념 | -
+ctest-019fc29e | 확인 개념 | -
+ctest-019fc2c1 | 확인 개념 | -
+ctest-019fc2e6 | 확인 개념 | -
+ctest-019fc315 | 확인 개념 | -
+ctest-019fc363 | 확인 개념 | -
+ctest-019fc5dd | 확인 개념 | -
+ctest-019fc5e5 | 확인 개념 | -
+itest-019fb892 | 통합테스트 개념 | -
+itest-019fb893 | 통합테스트 개념 | -
+itest-019fbb0d | 통합테스트 개념 | -
+itest-019fbbb4 | 통합테스트 개념 | -
+itest-019fbbc0 | 통합테스트 개념 | -
+itest-019fbbd6 | 통합테스트 개념 | -
+itest-019fbbdc | 통합테스트 개념 | -
+itest-019fbbf3 | 통합테스트 개념 | -
+itest-019fbc07 | 통합테스트 개념 | -
+itest-019fbc25 | 통합테스트 개념 | -
+itest-019fbc2b | 통합테스트 개념 | -
+itest-019fbc31 | 통합테스트 개념 | -
+itest-019fbc6f | 통합테스트 개념 | -
+itest-019fbc8d | 통합테스트 개념 | -
+itest-019fbc9c | 통합테스트 개념 | -
+itest-019fbc9d | 통합테스트 개념 | -
+itest-019fbc9e | 통합테스트 개념 | -
+itest-019fbcb0 | 통합테스트 개념 | -
+itest-019fbcb3 | 통합테스트 개념 | -
+itest-019fbcb6 | 통합테스트 개념 | -
+itest-019fbcb7 | 통합테스트 개념 | -
+itest-019fbcb8 | 통합테스트 개념 | -
+itest-019fbcbc | 통합테스트 개념 | -
+itest-019fbcce | 통합테스트 개념 | -
+itest-019fbcd0 | 통합테스트 개념 | -
+itest-019fbcd1 | 통합테스트 개념 | -
+itest-019fbcd6 | 통합테스트 개념 | -
+itest-019fbcd7 | 통합테스트 개념 | -
+itest-019fbcd9 | 통합테스트 개념 | -
+itest-019fbcdd | 통합테스트 개념 | -
+itest-019fbce0 | 통합테스트 개념 | -
+itest-019fbce4 | 통합테스트 개념 | -
+itest-019fbce5 | 통합테스트 개념 | -
+itest-019fbcf0 | 통합테스트 개념 | -
+itest-019fbd0c | 통합테스트 개념 | -
+itest-019fbd13 | 통합테스트 개념 | -
+itest-019fbd1a | 통합테스트 개념 | -
+itest-019fbd1b | 통합테스트 개념 | -
+itest-019fbd1c | 통합테스트 개념 | -
+itest-019fbd26 | 통합테스트 개념 | -
+itest-019fbd2e | 통합테스트 개념 | -
+itest-019fbd31 | 통합테스트 개념 | -
+itest-019fbd32 | 통합테스트 개념 | -
+itest-019fbe0d | 통합테스트 개념 | -
+itest-019fbe0e | 통합테스트 개념 | -
+itest-019fbe13 | 통합테스트 개념 | -
+itest-019fbe19 | 통합테스트 개념 | -
+itest-019fbe30 | 통합테스트 개념 | -
+itest-019fbe5b | 통합테스트 개념 | -
+itest-019fbe75 | 통합테스트 개념 | -
+itest-019fbe7c | 통합테스트 개념 | -
+itest-019fbe7e | 통합테스트 개념 | -
+itest-019fbe8a | 통합테스트 개념 | -
+itest-019fbe93 | 통합테스트 개념 | -
+itest-019fbec5 | 통합테스트 개념 | -
+itest-019fbfd0 | 통합테스트 개념 | -
+itest-019fbfd2 | 통합테스트 개념 | -
+itest-019fbfdb | 통합테스트 개념 | -
+itest-019fbfe1 | 통합테스트 개념 | -
+itest-019fbff4 | 통합테스트 개념 | -
+itest-019fc026 | 통합테스트 개념 | -
+itest-019fc02d | 통합테스트 개념 | -
+itest-019fc033 | 통합테스트 개념 | -
+itest-019fc03d | 통합테스트 개념 | -
+itest-019fc046 | 통합테스트 개념 | -
+itest-019fc04a | 통합테스트 개념 | -
+itest-019fc05a | 통합테스트 개념 | -
+itest-019fc085 | 통합테스트 개념 | -
+itest-019fc1ad | 통합테스트 개념 | -
+itest-019fc1b6 | 통합테스트 개념 | -
+itest-019fc29e | 통합테스트 개념 | -
+itest-019fc2c1 | 통합테스트 개념 | -
+itest-019fc2e6 | 통합테스트 개념 | -
+itest-019fc315 | 통합테스트 개념 | -
+itest-019fc363 | 통합테스트 개념 | -
+itest-019fc5dd | 통합테스트 개념 | -
+itest-019fc5e5 | 통합테스트 개념 | -
+itest-fc-019fbfd2-15dc-763f-b31c-a83c87546681 | 통합테스트 개념 | -
+itest-fc-019fbfdb-41af-7518-8c4c-57d231319422 | 통합테스트 개념 | -
+itest-fc-019fbfe1-c919-74dc-8991-bcb90f411faa | 통합테스트 개념 | -
+itest-fc-019fbff4-2352-71de-ac0d-828418a2d1ee | 통합테스트 개념 | -
+itest-fc-019fc025-fe69-777d-824a-fa7232702320 | 통합테스트 개념 | -
+itest-fc-019fc02d-dd31-76d5-bf86-feceeb0899f7 | 통합테스트 개념 | -
+itest-fc-019fc033-662e-76ec-884a-0457915e6477 | 통합테스트 개념 | -
+itest-fc-019fc03d-748e-7219-9f6e-4b67f2afe443 | 통합테스트 개념 | -
+itest-fc-019fc046-81b5-75b9-a3b2-4a52900d1c5f | 통합테스트 개념 | -
+itest-flow-019fbe0e-246e-77c9-a830-538cae6d65a0 | 통합테스트 개념 | -
+itest-flow-019fbe13-26b9-77ee-956e-b06d420481d2 | 통합테스트 개념 | -
+itest-flow-019fbe19-162f-740d-a0de-b87a9b40d673 | 통합테스트 개념 | -
+itest-flow-019fbe2f-dbbd-73b4-9d39-d26f52e270b9 | 통합테스트 개념 | -
+itest-flow-019fbe5b-9780-7338-b915-eecf37c1744b | 통합테스트 개념 | -
+itest-flow-019fbe75-9c61-7718-b4ed-20c8960c3f3d | 통합테스트 개념 | -
+itest-flow-019fbe7c-8d67-750a-9f71-9ffc6bf16e8d | 통합테스트 개념 | -
+itest-flow-019fbe7e-6ebe-777e-9759-9ab8423583e4 | 통합테스트 개념 | -
+itest-flow-019fbe8a-6bf9-751c-a742-df55d4d8eca2 | 통합테스트 개념 | -
+itest-flow-019fbe93-3ce6-74fb-8b67-624b6f6e0a04 | 통합테스트 개념 | -
+itest-flow-019fbec5-4aee-76af-993e-dfd1d2767ebb | 통합테스트 개념 | -
+itest-flow-019fbfd0-8013-757f-a85e-3cfa3e7d6d78 | 통합테스트 개념 | -
+itest-flow-019fbfd1-fa8f-74fe-bf51-6520cb1ab532 | 통합테스트 개념 | -
+itest-flow-019fbfdb-1873-74be-a6f1-f6ed09c40ccb | 통합테스트 개념 | -
+itest-flow-019fbfe1-9eb2-759a-be21-6d9ec0469b2c | 통합테스트 개념 | -
+itest-flow-019fbff3-f664-776f-9215-ceaac21e2188 | 통합테스트 개념 | -
+itest-flow-019fc025-db9e-710b-946f-e006be1f400b | 통합테스트 개념 | -
+itest-flow-019fc02d-b19d-774d-855b-5ec5d916f4d8 | 통합테스트 개념 | -
+itest-flow-019fc033-431d-772d-8162-e56fc6449a41 | 통합테스트 개념 | -
+itest-flow-019fc03d-48a7-736e-b88f-9616906cfd1e | 통합테스트 개념 | -
+itest-flow-019fc046-0ebf-755b-9fc6-b2517656d7fb | 통합테스트 개념 | -
+itest-flow-019fc046-604c-7204-a40d-760b3fa6faf7 | 통합테스트 개념 | -
+itest-flow-019fc04a-5678-7329-891c-7247508747a3 | 통합테스트 개념 | -
+itest-flow-019fc055-bf84-744f-ba25-0d2deae06014 | 통합테스트 개념 | -
+itest-flow-019fc05a-1e87-739a-accf-844161b9c99d | 통합테스트 개념 | -
+itest-flow-019fc085-1bce-7072-b7c2-8466f4f5a284 | 통합테스트 개념 | -
+itest-flow-019fc1ad-71d6-753b-8794-538dd30bc5cd | 통합테스트 개념 | -
+itest-flow-019fc1b3-2b73-708a-bf88-ac9ca23ae880 | 통합테스트 개념 | -
+itest-flow-019fc1b5-f617-765b-a22b-6d26f0758f54 | 통합테스트 개념 | -
+itest-flow-019fc29e-9f87-71bf-9ec0-12d60e241bf1 | 통합테스트 개념 | -
+itest-flow-019fc2c1-2271-76e1-ac40-68f139da2226 | 통합테스트 개념 | -
+itest-flow-019fc2e6-3a45-7050-a9ff-688515037240 | 통합테스트 개념 | -
+itest-flow-019fc315-b1e7-7788-b66b-a15ab97ca303 | 통합테스트 개념 | -
+itest-flow-019fc363-348b-7276-ae69-48c21f75aa48 | 통합테스트 개념 | -
+itest-flow-019fc5dc-b7c1-71ad-b516-caaa3c4aa975 | 통합테스트 개념 | -
+itest-flow-019fc5e5-a0ec-703f-917c-cd131c4922d5 | 통합테스트 개념 | -
+itest-forgetting-curve | 통합테스트 개념 (망각곡선) | -
+itest-review-selection-fading | 복습출제 개념 fading | -
+itest-review-selection-forgotten | 복습출제 개념 forgotten | -
+itest-review-selection-fresh | 복습출제 개념 fresh | -
+itest-rs-019fbfdf-cd91-756c-8247-7528cffce6b3 | 복습출제 개념 forgotten | -
+itest-rs-019fbfdf-cd91-756c-8247-81e5cc5c3e22 | 복습출제 개념 fading | -
+itest-rs-019fbfdf-cd91-756c-8247-8d41e8daa513 | 복습출제 개념 fresh | -
+itest-rs-019fbfe1-dcc5-7568-9b25-3a7ab25b36b2 | 복습출제 개념 forgotten | -
+itest-rs-019fbfe1-dcc5-7568-9b25-460b0eb43ca3 | 복습출제 개념 fading | -
+itest-rs-019fbfe1-dcc5-7568-9b25-53de37528c10 | 복습출제 개념 fresh | -
+itest-rs-019fbff4-1adc-7162-8245-82c23c59125c | 복습출제 개념 forgotten | -
+itest-rs-019fbff4-1adc-7162-8245-8df3fc2a9b0e | 복습출제 개념 fading | -
+itest-rs-019fbff4-1adc-7162-8245-999e601666b4 | 복습출제 개념 fresh | -
+itest-rs-019fc026-0607-7198-805b-d025c38d8c5b | 복습출제 개념 forgotten | -
+itest-rs-019fc026-0607-7198-805b-dfc4f23380fa | 복습출제 개념 fading | -
+itest-rs-019fc026-0607-7198-805b-eb8e2afe4039 | 복습출제 개념 fresh | -
+itest-rs-019fc02d-ed25-7451-af61-9357d80d941a | 복습출제 개념 forgotten | -
+itest-rs-019fc02d-ed26-776c-b5be-b7a0ae84d309 | 복습출제 개념 fading | -
+itest-rs-019fc02d-ed26-776c-b5be-c3bac684602a | 복습출제 개념 fresh | -
+itest-rs-019fc033-7cfa-712d-9fe9-9fe1288b3f79 | 복습출제 개념 forgotten | -
+itest-rs-019fc033-7cfa-712d-9fe9-abae927e3a56 | 복습출제 개념 fading | -
+itest-rs-019fc033-7cfa-712d-9fe9-b7c76742c2e2 | 복습출제 개념 fresh | -
+itest-rs-019fc034-7a58-7045-a04b-5889a70edeba | 복습출제 개념 forgotten | -
+itest-rs-019fc034-7a58-7045-a04b-65ad7b6a4847 | 복습출제 개념 fading | -
+itest-rs-019fc034-7a58-7045-a04b-72fd6b9e0e1b | 복습출제 개념 fresh | -
+itest-rs-019fc03d-6b79-7599-9664-ae4298c40dd0 | 복습출제 개념 forgotten | -
+itest-rs-019fc03d-6b79-7599-9664-bbcf691d41a9 | 복습출제 개념 fading | -
+itest-rs-019fc03d-6b79-7599-9664-c7d0511e27f4 | 복습출제 개념 fresh | -
+itest-rs-019fc03e-6bfe-7626-80b4-3e64f9dc0e3a | 복습출제 개념 forgotten | -
+itest-rs-019fc03e-6bfe-7626-80b4-4886cd6a88d6 | 복습출제 개념 fading | -
+itest-rs-019fc03e-6bfe-7626-80b4-57a27cb6b08e | 복습출제 개념 fresh | -
+itest-rs-019fc046-91ec-70aa-bab5-0becd1306d70 | 복습출제 개념 forgotten | -
+itest-rs-019fc046-91ec-70aa-bab5-168ac3341c63 | 복습출제 개념 fading | -
+itest-rs-019fc046-91ec-70aa-bab5-2142a66f065b | 복습출제 개념 fresh | -
+m1-divisors | 약수와 약수의 개수 | middle-1
+m1-gcd | 최대공약수 | middle-1
+m1-lcm | 최소공배수 | middle-1
+m1-prime-composite | 소수와 합성수 | middle-1
+m1-prime-factorization | 소인수분해 | middle-1
+m2-linear-eq-review | 일차방정식 복습 | middle-2
+m2-linear-fn-intro | 일차함수의 뜻 | middle-2
+m2-simeq-application | 연립방정식의 활용 | middle-2
+m2-simeq-elimination | 가감법 | middle-2
+m2-simeq-intro | 연립일차방정식의 뜻 | middle-2
+m2-simeq-substitution | 대입법 | middle-2
