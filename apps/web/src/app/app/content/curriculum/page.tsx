@@ -592,7 +592,15 @@ export default async function CurriculumStudioPage({
       {/* 선수 관계 */}
       <section className="mt-8">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold">선수 관계 (prerequisite)</h2>
+          <h2 className="text-lg font-semibold">
+            선수 관계 (prerequisite){" "}
+            <Link
+              href="/app/content/curriculum/progression"
+              className="ml-2 align-middle text-sm font-normal text-pen underline underline-offset-2"
+            >
+              수직 진행 탐색 →
+            </Link>
+          </h2>
           <p className="font-mono text-xs text-ink-soft">
             {edgeTotal}개{unapproved > 0 && ` · 미승인 AI 제안 ${unapproved}개`}
           </p>

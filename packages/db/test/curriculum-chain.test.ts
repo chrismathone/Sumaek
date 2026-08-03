@@ -164,6 +164,77 @@ describe.skipIf(!hasDb)("교육과정 권위 사슬 (인수 41·48)", () => {
     expect(objective!.success_evidence?.allowedErrors).toBeTruthy();
   });
 
+  it("수직 계통: 초등 선수 → 중1 → 중3 → 고등 확장이 승인 간선으로 잇긴다 (인수 45)", async () => {
+    /* 소인수분해 계통의 수직 사슬 — 학교급을 3개 넘는 대표 경로 */
+    const chain: Array<[string, string, string]> = [
+      ["e6-divisors-multiples", "m1-prime-composite", "prerequisite"],
+      ["m1-prime-composite", "m1-prime-factorization", "prerequisite"],
+      ["m1-prime-factorization", "m3-factorization", "extends"],
+      ["m3-factorization", "h1-polynomial-factorization", "extends"],
+    ];
+    for (const [from, to, kind] of chain) {
+      const [edge] = await sql<{ status: string; provenance: string }[]>`
+        select e.status::text as status, e.provenance::text as provenance
+        from concept_edges e
+        join canonical_concepts f on f.id = e.from_concept_id
+        join canonical_concepts t on t.id = e.to_concept_id
+        where f.slug = ${from} and t.slug = ${to} and e.kind = ${kind}
+      `;
+      expect(edge, `${from} -[${kind}]-> ${to}`).toBeDefined();
+      expect(edge!.status).toBe("active");
+      expect(edge!.provenance).toBe("human");
+    }
+    /* 양 끝의 학교급이 실제로 다르다 — 평평한 표가 아니라 수직이다 */
+    const levels = await sql<{ slug: string; school_level: string }[]>`
+      select slug, school_level from canonical_concepts
+      where slug in ('e6-divisors-multiples', 'h1-polynomial-factorization')
+      order by slug
+    `;
+    expect(levels.map((l) => l.school_level)).toEqual(["elementary", "high"]);
+  });
+
+  it("문항 잇긴 개념 10종 전부에 표상과 대표 오개념이 있다 (인수 45 데이터면)", async () => {
+    const slugs = [
+      "m1-prime-composite",
+      "m1-prime-factorization",
+      "m1-divisors",
+      "m1-gcd",
+      "m1-lcm",
+      "m2-simeq-intro",
+      "m2-simeq-substitution",
+      "m2-simeq-elimination",
+      "m2-simeq-application",
+      "m2-linear-eq-review",
+    ];
+    const rows = await sql<
+      { slug: string; representations: number; misconceptions: number }[]
+    >`
+      select c.slug,
+             (select count(*)::int from representations r where r.concept_id = c.id) as representations,
+             (select count(*)::int from misconceptions m
+               where m.concept_id = c.id and m.status <> 'deprecated') as misconceptions
+      from canonical_concepts c
+      where c.slug = any(${slugs})
+      order by c.slug
+    `;
+    expect(rows).toHaveLength(slugs.length);
+    for (const row of rows) {
+      expect(row.representations, `${row.slug} 표상`).toBeGreaterThanOrEqual(1);
+      expect(row.misconceptions, `${row.slug} 오개념`).toBeGreaterThanOrEqual(1);
+    }
+
+    /* 오개념의 혼동 대상 교차 참조 — gcd·lcm 대조쌍이 실제로 서로를 가리킨다 */
+    const [confusion] = await sql<{ cnt: number }[]>`
+      select count(*)::int as cnt
+      from misconceptions m
+      join canonical_concepts c on c.id = m.concept_id
+      join canonical_concepts cw on cw.id = m.confused_with_concept_id
+      where (c.slug = 'm1-gcd' and cw.slug = 'm1-lcm')
+         or (c.slug = 'm1-lcm' and cw.slug = 'm1-gcd')
+    `;
+    expect(confusion!.cnt).toBe(2);
+  });
+
   it("적용 규칙: 2026 중1·중2만 2022 개정 — 중3(2015)은 데이터가 없어 비워 둔다", async () => {
     const rows = await sql<{ grade_band: string; code: string }[]>`
       select a.grade_band, v.code

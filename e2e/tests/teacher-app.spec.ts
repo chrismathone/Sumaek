@@ -99,6 +99,47 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
   });
 });
 
+/** 인수 45: 수직 진행 탐색 — 이전 학교급(초등)부터 다음 확장(고등)까지
+ * 한 화면에 계통이 서고, 표상·대표 오개념이 함께 보인다. 읽기 전용. */
+test("수직 진행 탐색: 초등→중1→중3→고등 계통 + 표상·오개념", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto(
+    "/app/content/curriculum/progression?concept=m1-prime-factorization",
+  );
+
+  // 내부 해석 고지 (2K 규칙 3)
+  await expect(page.getByText(/공식 성취기준 체계가 아닙니다/)).toBeVisible();
+
+  // 계통의 양 끝 — 이전 학교급(초등 선수)과 다음 확장(고등)이 **계통 사슬 안에**
+  // 보인다. 상단 개념 선택 내비에도 같은 이름의 링크가 있으므로 반드시
+  // 계통 섹션으로 스코프한다 (변이 검증이 잡은 약한 단언).
+  const chain = page.getByRole("region", { name: "수직 계통" });
+  await expect(
+    chain.getByRole("link", { name: "약수와 배수 (초등)" }),
+  ).toBeVisible();
+  await expect(
+    chain.getByRole("link", { name: "다항식의 인수분해 (고등)" }),
+  ).toBeVisible();
+
+  // 표상과 대표 오개념
+  await expect(page.getByText("인수 나무").first()).toBeVisible();
+  await expect(page.getByText("합성수 인수에서 멈춘 분해")).toBeVisible();
+
+  // 계통 이동 — 고등 개념을 누르면 그 개념 중심으로 다시 선다
+  await page
+    .getByRole("navigation", { name: "개념 선택" })
+    .getByRole("link", { name: "다항식의 인수분해 (고등)" })
+    .click();
+  await expect(page).toHaveURL(/concept=h1-polynomial-factorization/);
+  await expect(
+    page
+      .getByRole("navigation", { name: "개념 선택" })
+      .getByRole("link", { name: "다항식의 인수분해 (고등)" }),
+  ).toHaveAttribute("aria-current", "page");
+});
+
 /** 인수 15: 1024px 미만에서도 메뉴 디스클로저로 전 화면에 도달할 수 있다 */
 test("모바일(390px): 메뉴 디스클로저 → 화면 이동 + 스킵 링크 존재", async ({
   page,

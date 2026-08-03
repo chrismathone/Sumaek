@@ -37,6 +37,12 @@ import {
   CATALOG_MAPPINGS,
 } from "./data/middle-math-concept-catalog.mts";
 import { CATALOG_OBJECTIVES } from "./data/middle-math-objective-catalog.mts";
+import {
+  CATALOG_MISCONCEPTIONS,
+  CATALOG_REPRESENTATIONS,
+  VERTICAL_CONCEPTS,
+  VERTICAL_EDGES,
+} from "./data/middle-math-vertical-catalog.mts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -448,6 +454,117 @@ async function main(): Promise<void> {
       }
       console.log(
         `학습 목표 ${objectiveCount}개 · 평가 증거 ${evidenceCount}개 적재 (문항 잇긴 개념 우선)`,
+      );
+
+      /* 8. 수직 계통·표상·오개념 (인수 45의 데이터면) — 이전 학교급(초등)과
+       * 다음 확장(중3·고등) 인접 개념 + 학습 진행 간선 + 표상·오개념. */
+      for (const concept of VERTICAL_CONCEPTS) {
+        await tx`
+          insert into canonical_concepts (
+            id, slug, name, description, school_level, grade_band, domain_name,
+            status, evidence
+          ) values (
+            ${uuidv7()}, ${concept.slug}, ${concept.name}, ${concept.description},
+            ${concept.schoolLevel}, ${concept.gradeBand}, ${concept.domainName},
+            'active',
+            ${tx.json([
+              {
+                kind: "document",
+                source: "교육부 고시 제2022-33호 별책8 (초·중·고 수학과)",
+                note: "수직 계통 인접 개념 (사람 큐레이션 카탈로그)",
+              },
+            ] as never)}
+          )
+          on conflict (slug) do nothing
+        `;
+      }
+
+      const slugToId = new Map<string, string>();
+      const resolveConcept = async (slug: string): Promise<string | null> => {
+        const cached = slugToId.get(slug);
+        if (cached) return cached;
+        const [row] = await tx<{ id: string }[]>`
+          select id from canonical_concepts where slug = ${slug}
+        `;
+        if (row) slugToId.set(slug, row.id);
+        return row?.id ?? null;
+      };
+
+      let edgeCount = 0;
+      for (const edge of VERTICAL_EDGES) {
+        const fromId = await resolveConcept(edge.fromSlug);
+        const toId = await resolveConcept(edge.toSlug);
+        if (!fromId || !toId) {
+          console.log(`  ! 간선 건너뜀: ${edge.fromSlug} → ${edge.toSlug} (개념 없음)`);
+          continue;
+        }
+        await tx`
+          insert into concept_edges (
+            id, from_concept_id, to_concept_id, kind, rationale, provenance, status
+          ) values (
+            ${stableId("concept-edge", `${edge.fromSlug}:${edge.toSlug}:${edge.kind}`)},
+            ${fromId}, ${toId}, ${edge.kind}, ${edge.rationale}, 'human', 'active'
+          )
+          on conflict (from_concept_id, to_concept_id, kind) do update
+          set rationale = excluded.rationale, updated_at = now()
+        `;
+        edgeCount += 1;
+      }
+
+      let representationCount = 0;
+      for (const rep of CATALOG_REPRESENTATIONS) {
+        const conceptId = await resolveConcept(rep.conceptSlug);
+        if (!conceptId) {
+          console.log(`  ! 표상 건너뜀: 개념 없음 ${rep.conceptSlug}`);
+          continue;
+        }
+        await tx`
+          insert into representations (id, concept_id, kind, description, example)
+          values (
+            ${stableId("representation", `${rep.conceptSlug}:${rep.key}`)},
+            ${conceptId}, ${rep.kind}, ${rep.description},
+            ${rep.example ? tx.json(rep.example as never) : null}
+          )
+          on conflict (id) do update
+          set kind = excluded.kind, description = excluded.description,
+              example = excluded.example, updated_at = now()
+        `;
+        representationCount += 1;
+      }
+
+      let misconceptionCount = 0;
+      for (const misconception of CATALOG_MISCONCEPTIONS) {
+        const conceptId = await resolveConcept(misconception.conceptSlug);
+        if (!conceptId) {
+          console.log(`  ! 오개념 건너뜀: 개념 없음 ${misconception.conceptSlug}`);
+          continue;
+        }
+        const confusedWithId = misconception.confusedWithSlug
+          ? await resolveConcept(misconception.confusedWithSlug)
+          : null;
+        await tx`
+          insert into misconceptions (
+            id, concept_id, name, error_pattern, confused_with_concept_id,
+            detection_evidence, remediation_strategy, source_note, status
+          ) values (
+            ${stableId("misconception", `${misconception.conceptSlug}:${misconception.key}`)},
+            ${conceptId}, ${misconception.name}, ${misconception.errorPattern},
+            ${confusedWithId},
+            ${tx.json(misconception.detectionEvidence as never)},
+            ${tx.json(misconception.remediationStrategy as never)},
+            '사람 큐레이션 (middle-math-vertical-catalog.mts)', 'active'
+          )
+          on conflict (id) do update
+          set name = excluded.name, error_pattern = excluded.error_pattern,
+              confused_with_concept_id = excluded.confused_with_concept_id,
+              detection_evidence = excluded.detection_evidence,
+              remediation_strategy = excluded.remediation_strategy,
+              updated_at = now()
+        `;
+        misconceptionCount += 1;
+      }
+      console.log(
+        `수직 계통: 인접 개념 ${VERTICAL_CONCEPTS.length} · 간선 ${edgeCount} · 표상 ${representationCount} · 오개념 ${misconceptionCount} 적재`,
       );
     });
 
