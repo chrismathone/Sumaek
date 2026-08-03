@@ -192,6 +192,40 @@ select id from questions where source_ref->>'printedNumber' = '0027';
 때마다 갱신되므로, 프로파일 버전만 올리고 다시 돌리면 판의 프로파일과 문항의
 `source_ref.extractedBy.version`이 어긋난 채로 남는다.
 
+### 3.2 개념서(개념원리 본책) — 개념 블록 반입 (2026-08-03)
+
+RPM 문항과 별개로, 같은 폴더의 『22개정 개념원리 중 1-1 교사용.pdf』에서
+**I단원 개념 블록 8개**를 뽑아 `learning_materials`(kind=reading, draft)로
+넣었다. 학생 「개념 공부」 화면이 읽는 자리다. RPM 문항이 걸린 것과 같은
+정본 개념(m1-*)에 붙어서, 개념 설명 → 문항이 한 줄로 이어진다.
+
+```bash
+python packages/ingest/python/extract.py \
+  "N:/개인/강아/교재자료/RPM/22/22개정 개념원리 중 1-1 교사용.pdf" \
+  -o kwr-dump.json --from 6 --to 47
+pnpm --filter @su-maek/ingest load-concepts --dump=kwr-dump.json \
+  --org=<uuid> --actor=<uuid>   # --pages 기본값 10,11,17,30,35 (차례로 확인한 값)
+```
+
+규칙·함정·실측은 [packages/ingest/README.md](../packages/ingest/README.md)의
+`kwr-2022` 절에 있다. 재적재는 문항과 같은 원칙 — **덮어쓰지 않는다**
+(같은 조직·개념·제목이면 건너뜀). 고친 것을 반영하려면
+`source_ref->>'book'`으로 지운 뒤 다시 넣는다. 검증은 셋: CLI가 찍는
+미분류·미해독 수(0이어야 한다), 게시 렌더 게이트(renderMixedText 실패 0),
+그리고 지면 이미지(render-page.py) 대 화면 렌더의 눈 대조.
+
+**정제 층 (2026-08-03 구현 완료)**: 추출본은 지면 사본이라 게시할 수 없다.
+`refine-concepts`가 우리 표현·구조화 블록으로 다시 쓴 새 draft를 만들고
+원본을 archived로 보관한다 — 시범으로 8건 전부 정제됨(차단 0·렌더 실패 0).
+게시는 자료 상세의 나란히 보기(원본 vs 정제본 + 게이트 경고)에서 사람이.
+설계·실측·해설 정제 평가는 [refine-design.md](refine-design.md).
+
+**데모 1단원 검증 세팅**: `pnpm --filter @su-maek/db seed-unit1-demo` (멱등).
+검증반·오늘 세션·**개별 일정**(중요: 학생 「오늘」은 learner_schedule_items가
+있으면 반 세션을 무시한다)을 잇고 정제본을 게시한다. demo-student로
+/learn/study에 8건이 나오는 것까지 실화면 확인(2026-08-03). 연습·테스트
+검증은 1단원 문항 213건의 검수·사용권 확정이 선행이다(현재 출제 가능 0).
+
 ---
 
 ## 4. 왜 이렇게 만들었나 — 다시 알아내지 않아도 되는 것들

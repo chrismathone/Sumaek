@@ -40,6 +40,7 @@ export function MaterialEditForm({
   conceptQuery,
   candidates,
   progressCount,
+  bodyLocked = false,
 }: {
   material: {
     id: string;
@@ -61,6 +62,9 @@ export function MaterialEditForm({
   conceptQuery: string;
   candidates: QuestionOption[];
   progressCount: number;
+  /** 구조화 본문(정제본) — 평문 편집이 구조를 부수므로 본문만 잠근다.
+   *  최종 판정은 서버가 DB 본문을 보고 다시 한다 (actions.ts). */
+  bodyLocked?: boolean;
 }) {
   const [state, action, pending] = useActionState<MaterialResult | null, FormData>(
     updateMaterialAction,
@@ -159,7 +163,24 @@ export function MaterialEditForm({
         />
       </div>
 
-      {material.kind === "reading" && (
+      {material.kind === "reading" && bodyLocked && (
+        <div className="max-w-2xl">
+          <span className="block text-sm">본문</span>
+          <p className="mt-1 rounded-[var(--radius-control)] border border-highlight bg-highlight-soft px-3 py-2 text-sm">
+            파이프라인이 만든 본문(추출본·정제본)입니다. 평문 편집으로 저장하면
+            블록 구조 — 추출본이라면 지면 근거 — 가 복구 불가로 사라져서
+            본문을 잠갔습니다. 문구를 고치려면 이 자료만 다시 정제하세요:{" "}
+            <code className="font-mono text-xs">
+              refine-concepts --material={material.id} --force
+            </code>
+            . 재정제는 <strong className="font-medium">새 자료</strong>를
+            만들므로 게시 상태와 학생 진도는 새로 시작됩니다. 제목·개념·순서·
+            고지는 여기서 그대로 고칠 수 있습니다.
+          </p>
+        </div>
+      )}
+
+      {material.kind === "reading" && !bodyLocked && (
         <>
           <label htmlFor="body" className="block text-sm">
             본문

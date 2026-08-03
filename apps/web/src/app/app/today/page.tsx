@@ -43,6 +43,7 @@ const GROUP_SORT: Record<string, string> = {
 
 interface SessionRow {
   id: string;
+  group_id: string;
   group_name: string;
   starts_at: Date;
   ends_at: Date;
@@ -85,6 +86,7 @@ export default async function TodayPage({
     sql<SessionRow[]>`
       with base as (
         select s.id,
+               g.id as group_id,
                g.name as group_name,
                s.starts_at,
                s.ends_at,
@@ -139,7 +141,7 @@ export default async function TodayPage({
       key: "s_group",
       label: "반 이름",
       sortable: true,
-      render: (s) => <span className="font-medium">{s.group_name}</span>,
+      render: (s) => s.group_name,
     },
     {
       key: "s_time",
@@ -202,13 +204,15 @@ export default async function TodayPage({
         />
       </div>
 
-      {/* 시간순 수업 목록 — 수업 상세 라우트가 없으므로 행 링크를 걸지 않는다. */}
+      {/* 시간순 수업 목록 — 수업 상세 라우트가 없으므로 가장 가까운 상세인
+          반 상세로 잇는다. */}
       <section className="mt-8">
         <h2 className="text-lg font-semibold">시간순 수업</h2>
         <DataTable
           columns={sessionColumns}
           rows={sessionRows}
           rowKey={(s) => s.id}
+          rowHref={(s) => `/app/classes/${s.group_id}`}
           total={sessionTotal}
           query={sessionQuery}
           basePath="/app/today"
@@ -240,7 +244,6 @@ export default async function TodayPage({
           total={groupTotal}
           query={groupQuery}
           basePath="/app/today"
-          caption="반을 누르면 학생 명단과 다가오는 수업을 볼 수 있습니다."
           empty={
             <>
               <p className="font-medium">아직 반이 없습니다.</p>

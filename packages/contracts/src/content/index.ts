@@ -269,3 +269,6 @@ export const studentAnswer = z.discriminatedUnion("kind", [
 ]);
 
 export type StudentAnswer = z.infer<typeof studentAnswer>;
+
+/* ── 읽기 자료 블록 어휘 (정제 시스템 — docs/refine-design.md) ── */
+export * from "./reading";

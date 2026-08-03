@@ -125,6 +125,9 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       ["y", "\\cdots "], // 별책 0083 「a×a×…×a=aⁿ」
       ["¾", "\\ge "], // 별책 0255 「x≥-4」
       ["É", "\\le "], // 별책 0256 「x≤11」
+      /* 개념원리 중1-1 p.10 참고② 「a+0일 때, aÚ`=a로 정한다」 —
+       * 지면은 a≠0이다. EHsang의 +는 진짜 덧셈이므로 EHyak에만 둔다. */
+      ["+", "\\ne "],
     ]),
   },
   {
@@ -133,6 +136,9 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       ["¾", "\\degree\\mathrm{C}"], // 별책 0214 「+7 ℃, -10 ℃」
       ["Ç", "^{n}"], // 별책 0071 「2²×3×5ⁿ의 약수의 개수는」
       ["¡", "^{8}"], // 별책 0090 「256=2⁸이므로」
+      /* 개념원리 중1-1 p.17 「A=aµ`_bÇ`」 — 지면은 A=a^m×b^n
+       * (a, b는 서로 다른 소수, m, n은 자연수). Ç(^n)와 짝을 이룬다. */
+      ["µ", "^{m}"],
     ]),
   },
 ];
@@ -147,6 +153,16 @@ const DROPPABLE_CLASS =
 /** 전역 플래그는 lastIndex를 남긴다 — 치환용과 검사용을 나눠 둔다 */
 const DROPPABLE = new RegExp(DROPPABLE_CLASS, "g");
 const DROPPABLE_ONE = new RegExp(DROPPABLE_CLASS);
+
+/**
+ * 폭이 있는 특수 공백 (전각·엔·엠 등) — 보통 공백으로 바꾼다.
+ * KaTeX는 이 코드포인트들의 글자 폭을 몰라 「No character metrics」를
+ * 뿜는다. **지우면 안 된다** — 숫자 나열 「1 2 3」이 「123」으로 붙는다.
+ */
+const WIDE_SPACE = new RegExp(
+  "[\\u00a0\\u2000-\\u2005\\u2007\\u2008\\u202f\\u205f\\u3000]",
+  "g",
+);
 
 /** 분수: `;` 또는 `:`로 감싸이고 안쪽이 분모·분자 교대 */
 const FRACTION = /;([^;:\s]{2,8});|:([^;:\s]{2,8}):/g;
@@ -261,8 +277,8 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
     return `${PH_OPEN}${fractions.length - 1}${PH_CLOSE}`;
   });
 
-  // 2) 조판 부호 제거
-  work = work.replace(DROPPABLE, "");
+  // 2) 조판 부호 제거 · 특수 공백 정규화
+  work = work.replace(DROPPABLE, "").replace(WIDE_SPACE, " ");
 
   // 3) 남은 글자를 하나씩 옮긴다
   let out = "";

@@ -41,10 +41,15 @@ const ALIGN = {
 } as const;
 
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
+  // 비활성도 같은 세모 글리프를 흐리게 쓴다 — ↕ 화살표와 세모가 섞여
+  // 열마다 아이콘이 다른 것처럼 보이던 것을 한 계열로 통일.
   if (!active) {
     return (
-      <span aria-hidden="true" className="ml-1 text-[10px] text-ink-soft/40">
-        ↕
+      <span
+        aria-hidden="true"
+        className="ml-1 text-[10px] tracking-tighter text-ink-soft/40"
+      >
+        ▲▼
       </span>
     );
   }

@@ -16,6 +16,7 @@
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/index.ts",
     "demo-account": "tsx src/seed/demo-account.ts",
+    "seed-unit1-demo": "tsx scripts/seed-unit1-demo.mts",
     "recompute-mastery": "tsx src/seed/recompute-mastery.ts",
     "kill-switch": "tsx scripts/kill-switch.mts",
     "ai-canary": "tsx scripts/ai-canary.mts",

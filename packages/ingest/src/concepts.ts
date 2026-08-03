@@ -143,7 +143,12 @@ function lineToRuns(
   for (const span of line.spans) {
     const table = span.tableLatex;
     const raw = span.text;
-    const adjacent = span.x0 - lastX1 < 1.5;
+    const prevX1 = lastX1;
+    const adjacent = span.x0 - prevX1 < 1.5;
+    /* 조각 사이의 지면 틈 — 이걸 살리지 않으면 배지와 본문(「예2, 3…」),
+     * 밑줄 딸림 표기(「2개3개4개」)가 붙어 버린다 */
+    const gapped =
+      prevX1 !== Number.NEGATIVE_INFINITY && span.x0 - prevX1 >= 2.5;
     lastX1 = span.x1;
     const raised = adjacent && span.size < lastSize * 0.8;
     if (!raised) lastSize = span.size;
@@ -173,18 +178,27 @@ function lineToRuns(
         last.unknown.push(...decoded.unknown);
         continue;
       }
-      /* 수식 조각 사이에 지면의 틈이 있으면 공백을 살린다 — 붙여 두면
-       * 에라토스테네스의 체 같은 숫자 나열이 「$1$$2$$3$」으로 이어져
-       * 한 수처럼 보인다. */
-      if (last?.kind === "math" && !adjacent) {
-        runs.push({ kind: "text", text: " " });
+      if (gapped && last) {
+        if (last.kind === "text") {
+          if (!last.text.endsWith(" ")) last.text += " ";
+        } else {
+          runs.push({ kind: "text", text: " " });
+        }
       }
       runs.push({ kind: "math", raw, latex, unknown: decoded.unknown });
       continue;
     }
-    const text = tidyBodyText(cleanBodyText(raw));
+    let text = tidyBodyText(cleanBodyText(raw));
     if (text.trim() === "") continue;
     const last = runs[runs.length - 1];
+    /* 문장부호는 앞말에 붙는 것이 맞다 — 틈이 있어도 공백을 넣지 않는다 */
+    if (gapped && last && !/^[\s,.)\]}%:：]/.test(text)) {
+      if (last.kind === "text") {
+        if (!last.text.endsWith(" ")) last.text += " ";
+      } else {
+        text = ` ${text}`;
+      }
+    }
     if (last?.kind === "text") {
       last.text = joinKorean(last.text, text);
       continue;
@@ -203,8 +217,99 @@ interface AsideBoxes {
   /** 교사 주석 상자 (강의Plus) — 상자째 본문에서 뺀다 */
   teacher: { page: number; y: number; text: string }[];
   /** 그림 상자 — 본문 뒤에 곁블록으로 남긴다 */
-  figures: { page: number; y: number; spans: ConceptSpan[] }[];
+  figures: {
+    page: number;
+    y: number;
+    spans: ConceptSpan[];
+    /** 격자표 재구성 결과 (에라토스테네스의 체) */
+    gridLatex?: string;
+  }[];
   claimed: Set<ConceptSpan>;
+}
+
+/**
+ * 숫자 격자(에라토스테네스의 체)를 KaTeX 배열로 재구성한다.
+ *
+ * 근거는 전부 지면에 있다 (실측):
+ *  - 수는 글자 상자로 자리가 잡힌다 (한 span에 「8  9  10」처럼 여럿)
+ *  - **지운 수 위에는 사선**(테두리 도형, 약 10×8pt)이 그어져 있다 → \cancel
+ *  - **남는 소수 뒤에는 칠한 원**(약 13×13pt)이 깔려 있고 굵은 글꼴이다 → \mathbf
+ *
+ * 격자가 아니면(숫자가 아니거나 행이 모자라면) null — 억지로 만들지 않는다.
+ */
+function gridToArray(
+  spans: ConceptSpan[],
+  page: PageDump,
+  profile: ConceptExtractionProfile,
+): string | null {
+  interface Token {
+    text: string;
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    bold: boolean;
+  }
+  const tokens: Token[] = [];
+  for (const span of spans) {
+    if (!profile.mathFont.test(span.font)) return null;
+    const glyphs = [...span.text];
+    const boxes = span.chars;
+    if (!boxes || boxes.length !== glyphs.length) {
+      const t = span.text.trim();
+      if (t === "") continue;
+      tokens.push({ text: t, x0: span.x0, y0: span.y0, x1: span.x1, y1: span.y1, bold: /Bold/.test(span.font) });
+      continue;
+    }
+    let cur: Token | null = null;
+    glyphs.forEach((ch, i) => {
+      const b = boxes[i]!;
+      if (ch.trim() === "") {
+        cur = null;
+        return;
+      }
+      if (cur) {
+        cur.text += ch;
+        cur.x1 = Math.max(cur.x1, b[2]);
+        cur.y1 = Math.max(cur.y1, b[3]);
+      } else {
+        cur = { text: ch, x0: b[0], y0: b[1], x1: b[2], y1: b[3], bold: /Bold/.test(span.font) };
+        tokens.push(cur);
+      }
+    });
+  }
+  if (tokens.length < 12 || tokens.some((t) => !/^\d+$/.test(t.text))) return null;
+
+  /* 행 세우기 */
+  const rows: Token[][] = [];
+  for (const token of [...tokens].sort((a, b) => a.y1 - b.y1 || a.x0 - b.x0)) {
+    const row = rows.find((r) => Math.abs(r[0]!.y1 - token.y1) <= 5);
+    if (row) row.push(token);
+    else rows.push([token]);
+  }
+  if (rows.length < 3) return null;
+  for (const row of rows) row.sort((a, b) => a.x0 - b.x0);
+
+  /* 사선 — 수의 상자와 겹치는 작은 테두리 도형 */
+  const strikes = page.drawings.filter((d) => {
+    const w = d.x1 - d.x0;
+    const h = d.y1 - d.y0;
+    return !d.fill && w >= 3 && w <= 16 && h >= 3 && h <= 16;
+  });
+  const struck = (t: Token): boolean =>
+    strikes.some(
+      (d) => d.x0 < t.x1 && d.x1 > t.x0 && d.y0 < t.y1 && d.y1 > t.y0,
+    );
+
+  const body = rows
+    .map((row) =>
+      row
+        .map((t) => (struck(t) ? `\\cancel{${t.text}}` : t.bold ? `\\mathbf{${t.text}}` : t.text))
+        .join(" & "),
+    )
+    .join(" \\\\ ");
+  const cols = Math.max(...rows.map((r) => r.length));
+  return `\\begin{array}{${"c".repeat(cols)}}${body}\\end{array}`;
 }
 
 /**
@@ -274,7 +379,13 @@ function claimBoxes(
     for (const s of inside) out.claimed.add(s);
     /* 그림 상자는 본문 오른쪽에 나란히 선다 — 아래끝으로 자리를 잡아야
      * 겹치던 본문 항목들 **뒤에** 선다 (y0으로 잡으면 항목 사이를 파고든다) */
-    out.figures.push({ page: page.page, y: box.y1, spans: inside });
+    const grid = gridToArray(inside, page, profile);
+    out.figures.push({
+      page: page.page,
+      y: box.y1,
+      spans: inside,
+      ...(grid ? { gridLatex: grid } : {}),
+    });
   }
 
   /* ── 상자 없는 강의Plus — 배지에서 아래로 줍는다 ─────────────
@@ -465,8 +576,31 @@ export function extractConceptPages(
       return true;
     });
 
+    /* ── 2.5 사람이 쓴 대체 문장(figureOverrides) — 영역째 선점 ──
+     * 화살표 도해·복잡한 표는 글자만 옮기면 뜻이 사라진다. 영역 안의
+     * span을 전부 거두고, 지면을 보고 쓴 문장 하나로 대신한다. */
+    const overrideParas: { y: number; text: string }[] = [];
+    let flowSource = spans;
+    for (const o of profile.figureOverrides) {
+      if (o.page !== page.page) continue;
+      const inside = new Set(
+        flowSource.filter((s) => {
+          const cx = (s.x0 + s.x1) / 2;
+          const cy = (s.y0 + s.y1) / 2;
+          return (
+            cx > o.region.x0 && cx < o.region.x1 &&
+            cy > o.region.y0 && cy < o.region.y1
+          );
+        }),
+      );
+      if (inside.size === 0) continue;
+      flowSource = flowSource.filter((s) => !inside.has(s));
+      /* 지면에서 그 자리쯤에 서도록 영역 가운데 높이에 앉힌다 */
+      overrideParas.push({ y: (o.region.y0 + o.region.y1) / 2, text: o.text });
+    }
+
     /* ── 3. 상자 떼기 (교사 주석 · 그림) ───────────────────── */
-    const boxes = claimBoxes(page, spans, profile);
+    const boxes = claimBoxes(page, flowSource, profile);
     teacherBuf.push(...boxes.teacher);
     /* 상자 밖에 남은 배지 글리프('강의'·'Plus')는 상자 테두리에 걸터앉아
      * 있던 것이다 — 본문이 아니다. 소단원 제목이 「소인수분해Plus」가 되고
@@ -475,7 +609,9 @@ export function extractConceptPages(
       profile.teacherBadge.test(s.font) ||
       (s.size <= 9 && /DINPro-Bold/.test(s.font) &&
         cleanBodyText(s.text).trim() === "Plus");
-    const flow = spans.filter((s) => !boxes.claimed.has(s) && !isBadgeGlyph(s));
+    const flow = flowSource.filter(
+      (s) => !boxes.claimed.has(s) && !isBadgeGlyph(s),
+    );
 
     /* ── 4. 표·분수 합치고 줄 세우기 ─────────────────────────
      *
@@ -629,10 +765,12 @@ export function extractConceptPages(
        * 조각으로 두 줄에 걸쳐 오므로, 마커 문단은 한 번만 세운다. */
       if (line.spans.some((s) => profile.supplementBadge.test(s.font))) {
         const rest = { ...line, spans: line.spans.filter((s) => !profile.supplementBadge.test(s.font)) };
+        /* 배지가 「보충」·「학습」 두 조각·두 줄로 오므로, **첫 줄이 마커인
+         * 문단이 바로 앞에 있으면** 이미 연 것이다 (마커 뒤에 제목 줄이
+         * 이어붙은 상태까지 포함해야 한다 — 마지막 문단만 보면 두 번 선다) */
         const last = current.paragraphs[current.paragraphs.length - 1];
         const lastIsMarker =
-          last?.lines.length === 1 &&
-          last.lines[0]?.length === 1 &&
+          last?.lines[0]?.length === 1 &&
           last.lines[0][0]?.kind === "text" &&
           last.lines[0][0].text === "보충학습";
         if (!lastIsMarker) {
@@ -697,12 +835,29 @@ export function extractConceptPages(
         }
         if (para.lines.length > 0) target.paragraphs.push(para);
       }
+      /* 사람이 쓴 대체 문장 — 영역에서 거둔 span들 대신 선다 */
+      for (const o of overrideParas) {
+        const target = owner(o.y);
+        target.paragraphs.push({
+          kind: "aside",
+          lines: [[{ kind: "text", text: o.text }]],
+          page: page.page,
+          y: o.y,
+        });
+      }
       for (const fig of boxes.figures) {
         const target = owner(fig.y);
         const para: ConceptParagraph = { kind: "aside", lines: [], page: page.page, y: fig.y };
-        for (const line of buildLines(fig.spans, profile)) {
-          const runs = lineToRuns(line, profile, target.unknownGlyphs);
-          if (runs.length > 0) para.lines.push(runs);
+        if (fig.gridLatex) {
+          /* 격자표(체) — 사선·굵음까지 좌표·도형 실측으로 재구성한 배열 */
+          para.lines.push([
+            { kind: "math", raw: fig.spans.map((s) => s.text).join(" "), latex: fig.gridLatex, unknown: [] },
+          ]);
+        } else {
+          for (const line of buildLines(fig.spans, profile)) {
+            const runs = lineToRuns(line, profile, target.unknownGlyphs);
+            if (runs.length > 0) para.lines.push(runs);
+          }
         }
         if (para.lines.length > 0) target.paragraphs.push(para);
       }

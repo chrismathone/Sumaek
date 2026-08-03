@@ -2,6 +2,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Next의 tsconfig은 jsx:"preserve" — vitest(esbuild)는 그대로 못 돌린다.
+  // 컴포넌트 테스트(ReadingBody)를 위해 automatic 런타임으로 변환한다.
+  esbuild: { jsx: "automatic" },
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",

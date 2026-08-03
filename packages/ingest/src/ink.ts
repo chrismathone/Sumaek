@@ -23,14 +23,29 @@ const WHITE = 0xffffff;
  */
 export function isInvisibleInk(span: Span, page: PageDump): boolean {
   if (span.color !== WHITE) return false;
-  return !page.drawings.some(
-    (d) =>
-      d.fill &&
-      d.x0 <= span.x0 + 1 &&
-      d.x1 >= span.x1 - 1 &&
-      d.y0 <= span.y0 + 1 &&
-      d.y1 >= span.y1 - 1,
-  );
+  /* 바탕이 **한 장의 사각형**이라는 보장이 없다. 개념원리의 「참고」 배지는
+   * 캡슐을 겹친 사각형 세 조각으로 칠해서, 어느 한 조각도 두 글자짜리
+   * span을 다 덮지 못한다 — 단일 사각형 검사로는 지면에 잘 보이는 배지가
+   * 흔적으로 판정돼 사라졌다. 세로를 덮는 조각들의 **x구간 합집합**이
+   * 글자 폭을 덮으면 보이는 글자다. 맨 종이 위 흔적은 덮는 조각이 아예
+   * 없으므로 이 완화로 판정이 바뀌지 않는다. */
+  const covers = page.drawings
+    .filter(
+      (d) =>
+        d.fill &&
+        d.y0 <= span.y0 + 1 &&
+        d.y1 >= span.y1 - 1 &&
+        d.x1 > span.x0 &&
+        d.x0 < span.x1,
+    )
+    .map((d) => [d.x0, d.x1] as const)
+    .sort((a, b) => a[0] - b[0]);
+  let reach = span.x0 + 1;
+  for (const [x0, x1] of covers) {
+    if (x0 > reach) break;
+    reach = Math.max(reach, x1);
+  }
+  return reach < span.x1 - 1;
 }
 
 /** 보이지 않는 글자를 걷어 낸 span 목록 */

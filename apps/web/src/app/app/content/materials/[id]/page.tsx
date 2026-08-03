@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { renderMixedText } from "@su-maek/core/math";
+import { hasStructuredBlocks } from "@su-maek/contracts/content";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
+import { ReadingBody } from "@/components/materials/ReadingBody";
 import { requireAccess } from "@/lib/auth/require-access";
 import { formatDate } from "@/lib/format";
 import { parseYouTubeId } from "@/lib/youtube";
@@ -113,10 +115,24 @@ interface MaterialDetail {
   status: string;
   disclosure: string | null;
   source_job_id: string | null;
+  derived_from_material_id: string | null;
+  source_ref: unknown;
   updated_at: Date;
   created_at: Date;
   author_name: string | null;
 }
+
+/** 정제 잡이 source_ref에 남기는 보고 — 검수 화면이 읽는다 */
+interface RefineReport {
+  model?: string;
+  promptVersion?: string;
+  warnings?: { kind: string; detail: string }[];
+}
+
+const WARNING_LABEL: Record<string, string> = {
+  fabricated_number: "원본에 없는 수치",
+  copied_span: "원문과 연속 일치",
+};
 
 export default async function MaterialDetailPage({
   params,
@@ -139,13 +155,28 @@ export default async function MaterialDetailPage({
            c.status::text as concept_status, m.kind::text as kind, m.title, m.body,
            m.video_url, m.video_seconds, m.question_ids, m.sort_order,
            m.status::text as status, m.disclosure, m.source_job_id,
-           m.updated_at, m.created_at, u.display_name as author_name
+           m.derived_from_material_id::text as derived_from_material_id,
+           m.source_ref, m.updated_at, m.created_at, u.display_name as author_name
     from learning_materials m
     join canonical_concepts c on c.id = m.concept_id
     left join users u on u.id = m.created_by
     where m.id = ${id} and m.organization_id = ${user.organizationId}
   `;
   if (!material) notFound();
+
+  /* 정제본이면 원본(추출본)을 불러 나란히 보인다 — 검수자가 보는 질문은
+   * "예뻐졌나"가 아니라 「지면의 뜻과 같나, 표현은 우리 것인가」다. */
+  const [refineSource] = material.derived_from_material_id
+    ? await sql<{ id: string; title: string; body: unknown; status: string }[]>`
+        select id::text, title, body, status::text as status
+        from learning_materials
+        where id = ${material.derived_from_material_id}
+          and organization_id = ${user.organizationId}
+      `
+    : [];
+  const refineReport =
+    ((material.source_ref as { refineReport?: RefineReport } | null)
+      ?.refineReport as RefineReport | undefined) ?? null;
 
   const questionIds = Array.isArray(material.question_ids)
     ? (material.question_ids as unknown[]).filter(
@@ -327,6 +358,78 @@ export default async function MaterialDetailPage({
         </p>
       )}
 
+      {/* 정제 보고 — 게이트가 남긴 경고. 게시를 막지는 않지만 검수자 눈에
+          반드시 띄어야 한다 (refine-design.md 결정 3). */}
+      {refineReport && (refineReport.warnings?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-lg border border-highlight bg-highlight-soft p-3 text-sm">
+          <p className="font-medium">
+            정제 검사 경고 {refineReport.warnings!.length}건 — 지면과 대조해
+            확인하세요
+          </p>
+          <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+            {refineReport.warnings!.map((w, i) => (
+              <li key={i}>
+                <span className="font-mono text-xs text-ink-soft">
+                  [{WARNING_LABEL[w.kind] ?? w.kind}]
+                </span>{" "}
+                {w.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 정제본인데 원본이 사라졌다 — 침묵하면 검수자는 "정제본이 아니구나"로
+          읽고 지면 대조 없이 게시하게 된다. 말한다. */}
+      {material.derived_from_material_id && !refineSource && (
+        <p className="mt-3 rounded-lg border border-grade bg-grade-soft p-3 text-sm text-grade">
+          이 자료는 정제본인데 원본 추출본을 찾을 수 없습니다(삭제·이관).
+          지면과 대조할 수 없으니 게시 전에 내용을 다른 근거로 확인하세요.
+        </p>
+      )}
+
+      {/* 본문 미리보기 — 학생 화면과 같은 렌더러(ReadingBody). 정제본이면
+          원본 추출본을 나란히 둔다. */}
+      {material.kind === "reading" &&
+        Array.isArray(material.body) &&
+        (refineSource ? (
+          <section className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-rule bg-paper p-4">
+              <p className="text-xs font-semibold text-ink-soft">
+                원본 추출본 — «{refineSource.title}» (
+                {STATUS_LABEL[refineSource.status] ?? refineSource.status}
+                · 게시 대상 아님)
+              </p>
+              <div className="mt-2 opacity-80">
+                <ReadingBody body={refineSource.body} mode="authoring" />
+              </div>
+            </div>
+            <div className="rounded-lg border border-pen bg-surface p-4">
+              <p className="text-xs font-semibold text-pen">
+                정제본 — 학생이 보게 될 모습
+                {refineReport?.model && (
+                  <span className="ml-2 font-mono font-normal text-ink-soft">
+                    {refineReport.model} · {refineReport.promptVersion}
+                  </span>
+                )}
+              </p>
+              <div className="mt-2">
+                <ReadingBody body={material.body} mode="authoring" />
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+            <h2 className="font-semibold">본문 미리보기</h2>
+            <p className="mt-0.5 text-xs text-ink-soft">
+              학생 「개념 공부」 화면과 같은 렌더러로 그린 것입니다.
+            </p>
+            <div className="mt-3">
+              <ReadingBody body={material.body} mode="authoring" />
+            </div>
+          </section>
+        ))}
+
       {canAuthor ? (
         <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
           <h2 className="font-semibold">자료 고치기</h2>
@@ -373,6 +476,12 @@ export default async function MaterialDetailPage({
             conceptQuery={conceptQuery}
             candidates={candidates}
             progressCount={progressCount}
+            bodyLocked={
+              material.kind === "reading" &&
+              (material.source_ref !== null ||
+                material.derived_from_material_id !== null ||
+                hasStructuredBlocks(material.body))
+            }
           />
         </section>
       ) : (

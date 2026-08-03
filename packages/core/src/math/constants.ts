@@ -4,7 +4,7 @@
  */
 
 export const NORMALIZER_VERSION = "su-maek-normalizer/1.0.0";
-export const MACRO_POLICY_VERSION = "macro-policy/1.0.0";
+export const MACRO_POLICY_VERSION = "macro-policy/1.1.0"; // 1.1.0: cancel 허용
 
 /** KaTeX Main-Regular에 없는 유니코드 → LaTeX (mathlab·mathg-gen 실전 목록) */
 export const UNICODE_MATH_MAP: ReadonlyArray<readonly [RegExp, string]> = [
@@ -127,6 +127,9 @@ export const ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
   "text", "textrm", "textbf", "textit", "textnormal", "mbox",
   // 허용 확장 (명령 단위 — 기하 호 표기 전용)
   "htmlClass",
+  /* 취소선 — 에라토스테네스의 체처럼 「지운 수」를 표로 옮길 때 쓴다.
+   * KaTeX 내장 명령이고 인자 하나(내용)뿐이라 자원 고갈 여지가 없다. */
+  "cancel",
   // 기타 실전 빈출
   "not", "AA", "underbar", "checkmark", "bigcup", "bigcap", "bigvee",
   "bigwedge", "bigoplus", "bigotimes", "approx", "fallingdotseq", "risingdotseq",

@@ -10,7 +10,7 @@ import { visibleSpans } from "./ink";
 import type { PageDump, Run, SourceDump } from "./types";
 
 /** 2행 분수·세로셈 표로 합쳐진 span — 구조를 구조로 들고 간다 */
-type MaybeStacked = PageDump["spans"][number] & {
+export type MaybeStacked = PageDump["spans"][number] & {
   stacked?: { numerator: string; denominator: string };
   /** 세로셈 나눗셈 표를 옮긴 LaTeX 배열 */
   tableLatex?: string;
@@ -127,6 +127,18 @@ export const RPM_2022_ANSWERS: AnswerProfile = {
 };
 
 /**
+ * 표·분수 합치기가 필요로 하는 최소 신호 — 별책·개념서 파서가 함께 쓴다.
+ *
+ * AnswerProfile 전체를 요구하면 개념서 파서(concepts.ts)가 별책 전용
+ * 필드(answerLabelFont 등)까지 지어내야 한다. 실제로 읽는 세 필드만 받는다.
+ */
+export interface TableMergeProfile {
+  mathFont: RegExp;
+  inlineFractionFont: RegExp;
+  decorationFont: RegExp;
+}
+
+/**
  * 2행 분수를 한 조각으로 합친다 — 본책 파서와 같은 이유, 같은 근거.
  *
  * 별책에도 `-7/2` 같은 분수가 분자·분모 두 span으로 나뉘어 있고 사이의
@@ -134,10 +146,10 @@ export const RPM_2022_ANSWERS: AnswerProfile = {
  * 흩어져 「$-$$=$, $|3|=3$, … $|$$\frac{7}{2}|$」처럼 뒤엉킨다
  * (문항 0323이 그랬다).
  */
-function mergeStackedFractions(
+export function mergeStackedFractions(
   spans: PageDump["spans"],
   page: PageDump,
-  profile: AnswerProfile,
+  profile: TableMergeProfile,
 ): PageDump["spans"] {
   const bars = page.drawings.filter((d) => d.y1 - d.y0 < 1.5 && d.x1 - d.x0 >= 3);
   if (bars.length === 0) return spans;
@@ -214,10 +226,10 @@ function mergeStackedFractions(
  * 선이 몇 개인지·어디가 바깥인지를 다시 정해야 하는데, 사각형은 한 번에
  * 답을 준다.
  */
-function mergeGridTables(
+export function mergeGridTables(
   spans: PageDump["spans"],
   page: PageDump,
-  profile: AnswerProfile,
+  profile: TableMergeProfile,
 ): PageDump["spans"] {
   /* 배지(「답」 표식)도 칠한 사각형이다 — 8×8pt다. 표만한 크기를 요구한다. */
   const boxes = page.drawings.filter(
@@ -311,9 +323,9 @@ function mergeGridTables(
  * 표가 어디서 끝나는지는 「)」가 알려 준다. 마지막 「)」 아래 한 행이 최종
  * 몫이고, 그 아래는 본문이다.
  */
-function mergeDivisionTables(
+export function mergeDivisionTables(
   spans: PageDump["spans"],
-  profile: AnswerProfile,
+  profile: TableMergeProfile,
 ): PageDump["spans"] {
   const brackets = spans
     .filter((s) => profile.inlineFractionFont.test(s.font) && s.text.includes(">"))
@@ -341,21 +353,56 @@ function mergeDivisionTables(
   const used = new Set<PageDump["spans"][number]>();
   const merged: PageDump["spans"] = [];
 
+  /* 한 span이 여러 칸을 담기도 한다 — 개념서는 「12  24  30」을 통째로
+   * 한 span에 싣는다. 그대로 한 칸이 되면 수식 모드가 공백을 눌러
+   * 「122430」으로 보인다. 글자 상자를 따라 공백에서 가른다. */
+  /** 조각 → 원본 — 조각이 표에 들어가면 원본도 소비된 것으로 표시한다.
+   * 빠뜨리면 원본 span이 본문에 남아 같은 수가 두 번 나온다. */
+  const parentOf = new Map<PageDump["spans"][number], PageDump["spans"][number]>();
+  const splitTokens = (s: PageDump["spans"][number]): PageDump["spans"] => {
+    const glyphs = [...s.text];
+    if (!s.chars || s.chars.length !== glyphs.length || !/\S\s+\S/.test(s.text)) {
+      return [s];
+    }
+    const parts: PageDump["spans"] = [];
+    let cur: (PageDump["spans"][number] & { chars: [number, number, number, number][] }) | null = null;
+    glyphs.forEach((ch, i) => {
+      const box = s.chars![i]!;
+      if (ch.trim() === "") {
+        cur = null;
+        return;
+      }
+      if (cur) {
+        cur.text += ch;
+        cur.x1 = Math.max(cur.x1, box[2]);
+        cur.chars.push(box);
+      } else {
+        cur = { ...s, text: ch, x0: box[0], x1: box[2], chars: [box] };
+        parts.push(cur);
+      }
+    });
+    if (parts.length <= 1) return [s];
+    for (const part of parts) parentOf.set(part, s);
+    return parts;
+  };
+
   /** 이 「)」의 칸에 들어갈 숫자들 — 아직 다른 표가 가져가지 않은 것만 */
   const cellsIn = (
     x: number,
     top: number,
     bottom: number,
   ): PageDump["spans"] =>
-    spans.filter((s) => {
-      if (used.has(s)) return false;
-      if (!profile.mathFont.test(s.font)) return false;
-      if (profile.inlineFractionFont.test(s.font)) return false;
-      const cy = (s.y0 + s.y1) / 2;
-      /* 창을 넓게 잡으면 **옆에 나란히 선 표**의 수를 집어 온다 —
-       * 0053의 48 표가 64 표의 자리를 먹어 「6」이 「46」이 됐다. */
-      return cy > top && cy < bottom && s.x0 > x - 38 && s.x0 < x + 42;
-    });
+    spans
+      .filter((s) => {
+        if (used.has(s)) return false;
+        if (!profile.mathFont.test(s.font)) return false;
+        if (profile.inlineFractionFont.test(s.font)) return false;
+        const cy = (s.y0 + s.y1) / 2;
+        /* 창을 넓게 잡으면 **옆에 나란히 선 표**의 수를 집어 온다 —
+         * 0053의 48 표가 64 표의 자리를 먹어 「6」이 「46」이 됐다. */
+        return cy > top && cy < bottom && s.x0 > x - 38 && s.x0 < x + 42;
+      })
+      .flatMap(splitTokens);
 
   for (const table of tables) {
     /* 행 간격 — 「)」가 하나뿐이면 지면의 기본 행높이를 쓴다 */
@@ -366,7 +413,11 @@ function mergeDivisionTables(
     for (const bracket of table) {
       const cells = cellsIn(bracket.x0, bracket.y0, bracket.y1);
       if (cells.length === 0) continue;
-      for (const s of cells) used.add(s);
+      for (const s of cells) {
+        used.add(s);
+        const parent = parentOf.get(s);
+        if (parent) used.add(parent);
+      }
       rows.push({ x: bracket.x0, spans: cells });
     }
     if (rows.length === 0) continue;
@@ -379,7 +430,11 @@ function mergeDivisionTables(
       (s) => (s.x0 + s.x1) / 2 > tail.x0,
     );
     if (quotient.length > 0) {
-      for (const s of quotient) used.add(s);
+      for (const s of quotient) {
+        used.add(s);
+        const parent = parentOf.get(s);
+        if (parent) used.add(parent);
+      }
       rows.push({ x: tail.x0, spans: quotient });
     }
 
@@ -398,22 +453,40 @@ function mergeDivisionTables(
      * `x ) 4×x  5×x  6×x`처럼 나란히 선다. 오른쪽을 통째로 이으면
      * `4×x5×x`가 되어 어느 수를 나눈 것인지 사라진다(0164·0165).
      * 그래서 오른쪽의 x를 모아 열을 세우고, 행마다 그 열에 채워 넣는다. */
+    /* 열 씨앗의 병합 반경은 **7pt**다. 14pt로 두면 개념서의 세 수 표
+     * (「12 24 30」 — 열 간격 15pt)가 한 열로 합쳐져 「122430」이 된다.
+     * 오른끝 맞춤이라 자릿수에 따라 중심이 ±3pt쯤 흔들리는 것은 7pt가
+     * 흡수한다 (실측). */
     const rightCols: number[] = [];
     for (const row of rows) {
       for (const s of row.spans) {
         if (isLeft(s, row.x)) continue;
         const cx = (s.x0 + s.x1) / 2;
-        if (!rightCols.some((x) => Math.abs(x - cx) <= 14)) rightCols.push(cx);
+        if (!rightCols.some((x) => Math.abs(x - cx) <= 7)) rightCols.push(cx);
       }
     }
     rightCols.sort((a, b) => a - b);
 
+    /* 칸 배정은 **가장 가까운 열 하나**에만 한다. 창(±14pt)으로 거르면
+     * 개념서처럼 열 간격이 15pt까지 좁혀진 표에서 한 수가 두 열에 다
+     * 들어가 「9 15」가 「9 & 915」로 겹쳐 적힌다 (개념원리 p.30 실측). */
+    const nearestCol = (s: PageDump["spans"][number]): number => {
+      const c = (s.x0 + s.x1) / 2;
+      let best = 0;
+      for (let i = 1; i < rightCols.length; i += 1) {
+        if (Math.abs(rightCols[i]! - c) < Math.abs(rightCols[best]! - c)) best = i;
+      }
+      return best;
+    };
     const body = rows.map((row) => [
       cell(row.spans.filter((s) => isLeft(s, row.x))),
-      ...rightCols.map((x) =>
+      ...rightCols.map((x, i) =>
         cell(
           row.spans.filter(
-            (s) => !isLeft(s, row.x) && Math.abs((s.x0 + s.x1) / 2 - x) <= 14,
+            (s) =>
+              !isLeft(s, row.x) &&
+              Math.abs((s.x0 + s.x1) / 2 - x) <= 14 &&
+              nearestCol(s) === i,
           ),
         ),
       ),

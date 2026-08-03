@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
+import {
+  collectReadingContent,
+  hasStructuredBlocks,
+} from "@su-maek/contracts/content";
+import { renderMixedText } from "@su-maek/core/math";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { parseYouTubeId, youTubeWatchUrl } from "@/lib/youtube";
@@ -219,17 +224,43 @@ export async function updateMaterialAction(
 
   const sql = getSharedSql();
   const [material] = await sql<
-    { id: string; kind: string; title: string; status: string; concept_id: string }[]
+    {
+      id: string;
+      kind: string;
+      title: string;
+      status: string;
+      concept_id: string;
+      body: unknown;
+      is_pipeline: boolean;
+    }[]
   >`
     select id::text, kind::text as kind, title, status::text as status,
-           concept_id::text as concept_id
+           concept_id::text as concept_id, body,
+           (source_ref is not null or derived_from_material_id is not null)
+             as is_pipeline
     from learning_materials
     where id = ${d.materialId} and organization_id = ${user.organizationId}
   `;
   if (!material) return { ok: false, message: "학습 자료를 찾을 수 없습니다." };
 
   const kind = material.kind as (typeof KINDS)[number];
-  const payload = buildPayload({ ...d, kind });
+
+  /* 본문 잠금 (refine-design.md 결정 5) — **폼이 아니라 DB를 보고 서버가
+   * 판단한다.** 이 액션은 본문을 평문에서 다시 만들기 때문에, 잠기지 않은
+   * 본문을 저장하면 블록 구조가 통째로 평문 한 덩어리에 눌린다.
+   *
+   * 잠그는 것 둘:
+   * 1. 구조 블록이 있는 본문(정제본) — 정의 카드·단계·표가 증발한다.
+   * 2. **파이프라인 산출물 전부**(source_ref 또는 정제 계보 보유) — 추출본은
+   *    paragraph뿐이라 1로는 안 걸리는데, 그게 바로 지면 사본이다. 저장
+   *    한 번이면 지면 근거가 복구 불가로 파괴된다 (버전 테이블 없음,
+   *    감사도 본문은 안 남긴다 — 적대 검토 실증). */
+  const bodyLocked =
+    kind === "reading" &&
+    (material.is_pipeline || hasStructuredBlocks(material.body));
+  const payload = bodyLocked
+    ? ({ ok: true, body: null, videoUrl: null, seconds: null } as const)
+    : buildPayload({ ...d, kind });
   if (!payload.ok) return { ok: false, message: payload.message };
 
   const concept = await findUsableConcept(d.conceptId);
@@ -272,20 +303,38 @@ export async function updateMaterialAction(
   const disclosure = d.disclosure.trim() || null;
   const sourceJobId = d.sourceJobId || null;
   await sql.begin(async (tx) => {
-    await tx`
-      update learning_materials set
-        concept_id = ${d.conceptId},
-        title = ${d.title},
-        body = ${payload.body === null ? null : tx.json(payload.body as never)},
-        video_url = ${payload.videoUrl},
-        video_seconds = ${payload.seconds},
-        question_ids = ${tx.json(questionIds as never)},
-        sort_order = ${d.sortOrder},
-        disclosure = ${disclosure},
-        source_job_id = ${sourceJobId},
-        updated_at = now()
-      where id = ${material.id} and organization_id = ${user.organizationId}
-    `;
+    /* 잠금 갈래를 눈에 보이게 나눈다 — 잠긴 본문은 set 목록에 아예 없다.
+     * "null로 덮지 않는다"가 아니라 "건드리지 않는다"여야 한다. */
+    if (bodyLocked) {
+      await tx`
+        update learning_materials set
+          concept_id = ${d.conceptId},
+          title = ${d.title},
+          video_url = ${payload.videoUrl},
+          video_seconds = ${payload.seconds},
+          question_ids = ${tx.json(questionIds as never)},
+          sort_order = ${d.sortOrder},
+          disclosure = ${disclosure},
+          source_job_id = ${sourceJobId},
+          updated_at = now()
+        where id = ${material.id} and organization_id = ${user.organizationId}
+      `;
+    } else {
+      await tx`
+        update learning_materials set
+          concept_id = ${d.conceptId},
+          title = ${d.title},
+          body = ${payload.body === null ? null : tx.json(payload.body as never)},
+          video_url = ${payload.videoUrl},
+          video_seconds = ${payload.seconds},
+          question_ids = ${tx.json(questionIds as never)},
+          sort_order = ${d.sortOrder},
+          disclosure = ${disclosure},
+          source_job_id = ${sourceJobId},
+          updated_at = now()
+        where id = ${material.id} and organization_id = ${user.organizationId}
+      `;
+    }
     await tx`
       insert into audit_events (
         id, organization_id, actor_type, actor_id, action, target_type, target_id,
@@ -328,6 +377,28 @@ const statusSchema = z.object({
   status: z.enum(["draft", "published", "archived"]),
 });
 
+/**
+ * 읽기 본문의 게시 렌더 검사 — 학생 화면과 **같은 경로**(renderMixedText
+ * publish, 수집기는 contracts의 collectReadingContent)로 실패를 센다.
+ * 게시 액션이 본문을 안 보면, publish 모드에서 조용히 사라지는 수식을
+ * 검수자가 알 길이 없다 (authoring 미리보기는 폴백으로 보여 주므로).
+ */
+function readingRenderFailures(body: unknown): string[] {
+  const c = collectReadingContent(body);
+  const failures: string[] = [];
+  for (const latex of c.inlineLatex)
+    failures.push(...renderMixedText(`$${latex}$`, "publish").failures);
+  for (const latex of c.displayLatex)
+    failures.push(...renderMixedText(`$$${latex}$$`, "publish").failures);
+  for (const text of c.texts) {
+    const dollars = (text.match(/\$/g) ?? []).length;
+    if (dollars % 2 === 1) failures.push(`홀수 $: "${text.slice(0, 30)}"`);
+    else if (dollars > 0)
+      failures.push(...renderMixedText(text, "publish").failures);
+  }
+  return failures;
+}
+
 export async function setMaterialStatusAction(
   _prev: MaterialResult | null,
   formData: FormData,
@@ -341,13 +412,43 @@ export async function setMaterialStatusAction(
   const { materialId, status } = parsed.data;
 
   const sql = getSharedSql();
-  const [material] = await sql<{ title: string; status: string }[]>`
-    select title, status::text as status from learning_materials
+  const [material] = await sql<
+    { title: string; status: string; kind: string; body: unknown; source_ref: unknown }[]
+  >`
+    select title, status::text as status, kind::text as kind, body, source_ref
+    from learning_materials
     where id = ${materialId} and organization_id = ${user.organizationId}
   `;
   if (!material) return { ok: false, message: "학습 자료를 찾을 수 없습니다." };
   if (material.status === status) {
     return { ok: false, message: "이미 그 상태입니다." };
+  }
+
+  if (status === "published") {
+    /* 추출본은 어떤 경로로도 게시되지 않는다 — 지면 사본이라 표현이
+     * 출판사 것이다 (원칙 9). 설계 문서가 이름 붙인 사고: "상태 하나
+     * 바꾸는 것으로" 원칙을 깨게 되는 그 버튼이 여기다. */
+    const extractedBy = (material.source_ref as { extractedBy?: unknown } | null)
+      ?.extractedBy;
+    if (extractedBy) {
+      return {
+        ok: false,
+        message:
+          "교재에서 추출한 원본은 게시할 수 없습니다. 정제본(refine-concepts)을 만들어 검수한 뒤 게시하세요.",
+      };
+    }
+    /* 읽기 본문 렌더 게이트 — 문항 게시가 렌더 게이트를 거치듯 자료도
+     * 거친다. publish 모드는 실패한 수식을 조용히 비우므로, 여기서 안
+     * 막으면 학생이 빈자리를 본다. */
+    if (material.kind === "reading" && Array.isArray(material.body)) {
+      const failures = readingRenderFailures(material.body);
+      if (failures.length > 0) {
+        return {
+          ok: false,
+          message: `본문 수식 ${failures.length}건이 게시 렌더를 통과하지 못합니다. 첫 실패: ${failures[0]?.slice(0, 60)}`,
+        };
+      }
+    }
   }
 
   await sql.begin(async (tx) => {

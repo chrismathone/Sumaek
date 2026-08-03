@@ -300,6 +300,16 @@ export const learningMaterials = pgTable(
     disclosure: text("disclosure"),
     /** 이 자료를 만든 파이프라인 잡 ID (0012a) — 재생성·추적의 연결 고리 */
     sourceJobId: text("source_job_id"),
+    /**
+     * 출처 메타데이터 (0014a) — 교재에서 반입한 자료의 「어느 교재 몇 쪽
+     * 어느 개념」. 교사용 여백 주석도 여기 담는다. 학생 화면에 노출 금지.
+     */
+    sourceRef: jsonb("source_ref"),
+    /**
+     * 정제 계보 (0015a) — 정제본이 가리키는 원본(추출본) 자료 id.
+     * FK 없음: 원본이 보관·삭제돼도 정제본은 살아야 한다.
+     */
+    derivedFromMaterialId: uuid("derived_from_material_id"),
     /** 같은 개념 안의 표시 순서 (읽기 → 인강 → 연습 순서를 정하는 곳) */
     sortOrder: integer("sort_order").notNull().default(0),
     status: learningMaterialStatus("status").notNull().default("draft"),
@@ -313,6 +323,10 @@ export const learningMaterials = pgTable(
       t.status,
       t.sortOrder,
     ),
+    // 정제 잡의 멱등 판정·나란히 보기가 읽는다 (0015a)
+    index("learning_materials_derived_idx")
+      .on(t.organizationId, t.derivedFromMaterialId)
+      .where(sql`derived_from_material_id is not null`),
   ],
 );
 

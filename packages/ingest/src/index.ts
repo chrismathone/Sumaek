@@ -6,3 +6,17 @@ export type { CheckResult, ExtractionScore, QuestionScore } from "./score";
 export * from "./types";
 export { RPM_2022 } from "./profiles/rpm-2022";
 export type { ExtractionProfile } from "./profiles/types";
+export { extractConceptPages } from "./concepts";
+export type { ConceptExtractionResult, ExtractedConcept } from "./concepts";
+export { KWR_2022, KWR_M11_CH1_TARGETS } from "./profiles/kwr-2022";
+export type { ConceptExtractionProfile } from "./profiles/kwr-2022";
+export {
+  REFINE_DISCLOSURE,
+  REFINE_PROMPT_VERSION,
+  checkRefined,
+  findCopiedSpans,
+  findFabricatedNumbers,
+  findLeaks,
+  refineOutput,
+} from "./refine";
+export type { RefineCheck, RefineOutput, RefineWarning } from "./refine";

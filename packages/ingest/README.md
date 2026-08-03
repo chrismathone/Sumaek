@@ -64,6 +64,7 @@ pnpm --filter @su-maek/ingest audit-katex --verbose
 | 프로파일 | 교재 | 확인된 특징 |
 |---|---|---|
 | `rpm-2022` | 개념원리 RPM (2022 개정) 학생용 | 아래 참조 |
+| `kwr-2022` | 개념원리 본책 (2022 개정) 교사용 — **개념 블록** | 아래 참조 |
 
 ### rpm-2022 — 실측 기록
 
@@ -96,6 +97,55 @@ pnpm --filter @su-maek/ingest audit-katex --verbose
 - **구매자 이메일이 워터마크로 박혀 있다.** 쪽마다 텍스트 레이어에 들어 있고
   문항 본문에 섞인다. 반드시 걸러야 한다.
 - 정답은 본책에 없다. 별책 『정답 및 해설』이 문항 번호 100% 일치.
+
+### kwr-2022 — 개념서의 「개념 블록」 (2026-08-03 실측)
+
+RPM과 같은 조판 시스템(수식 EH*, 한글 YDVY*, HWP 인코딩)이라 해독표를
+그대로 쓴다. 문항이 아니라 **개념 설명**을 뽑는 것이 다르다 — 파서는
+`src/concepts.ts`, 적재는 `load-concepts`(learning_materials, kind=reading).
+
+```bash
+python packages/ingest/python/extract.py "개념서.pdf" -o kwr-dump.json --from 6 --to 47
+pnpm --filter @su-maek/ingest load-concepts --dump=kwr-dump.json \
+  --org=<uuid> --actor=<uuid> [--pages=10,11,17,30,35] [--dry-run] [--verbose]
+```
+
+- **개념 쪽 허용목록(`--pages`)은 사람이 차례를 보고 확인한 값이다.**
+  문제 쪽(확인하기·익히기·시험·마무리)은 조판 신호가 개념 쪽과 겹쳐,
+  추론에 맡겼더니 개념 하나가 문제 12쪽 분량(500줄)을 삼켰다.
+- 소단원마다 「개념 N + 질문형 제목 + 핵심문제 상호참조」가 반복된다.
+  상호참조는 source_ref.xref로 남는다 — 개념→문항 연결의 지면 근거다.
+- **개념 번호는 색 배지 위 흰 글자다.** 배지가 방패꼴 path라 잉크 판정
+  (ink.ts)이 흔적으로 오판한다 — 원시 span에서 폰트·크기·꼴로 직접 줍는다.
+- 교사용 여백의 「강의 Plus」 주석은 본문에 싣지 않고 source_ref.teacherNotes로
+  남긴다. 상자 없는 배지(p.17 지도목표)는 7.6pt 이하 근접 글줄로 줍는다 —
+  본문 화살표 주석은 7.88pt라 이 간극이 둘을 가른다 (실측).
+- **화살표 도해는 프로파일의 figureOverrides로 사람이 문장을 써서 옮긴다**
+  (「5×5×5=5³ — 여기서 5는 밑, 3은 지수다」). 글자만 옮기면 뜻이 사라진다.
+- 에라토스테네스의 체는 사선(테두리 도형)·굵은 글꼴을 좌표로 읽어
+  `\begin{array}` + `\cancel`로 재구성한다 — 지면과 같은 의미가 화면에 선다.
+- 적재는 전부 draft다. 교사가 검수·게시해야 학생 「개념 공부」에 나간다.
+
+### 정제 — 추출본을 수맥 것으로 (2026-08-03)
+
+추출본은 지면 사본이라 게시할 수 없다(표현이 출판사 것). `refine-concepts`가
+우리 표현·구조화 블록(정의 카드·핵심 정리·콜아웃·단계·사선 표)으로 다시 쓴
+**새 draft 행**을 만들고 원본을 archived로 보관한다. 설계·규칙은
+[../../docs/refine-design.md](../../docs/refine-design.md).
+
+```bash
+# API 경로 (ANTHROPIC_API_KEY, 별도 과금)
+pnpm --filter @su-maek/ingest refine-concepts --org=<uuid> --actor=<uuid>
+# 오프라인 경로 (미리 쓴 초안 JSON — 게이트는 같다, 과금 없음)
+pnpm --filter @su-maek/ingest refine-concepts --org=<uuid> --actor=<uuid> \
+  --input=drafts.json [--dry-run] [--force]
+```
+
+게이트 3종(src/refine.ts): 계약 parse → KaTeX 렌더(실패는 모델에 되돌려
+재시도) → 보존·표절 검사. **유출(워터마크·교재명)만 자동 차단**이고 나머지는
+경고로 남아 검수 화면(자료 상세의 나란히 보기)에 뜬다. 검사값은 전부
+실측으로 조정한 것이다 — 수 목록의 쉼표 텍스트런은 표절 후보에서 뺀다
+(글자 없는 일치는 조판의 그림자다).
 
 ## 수식 해독표
 
