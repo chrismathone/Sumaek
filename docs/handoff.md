@@ -3,6 +3,7 @@
 > **이 문서의 존재 이유는 「다음 사람이 처음부터 다시 알아내지 않게」다.**
 > 작성 2026-08-03 · 대상 커밋 `a41621e` (main 병합 전 기준)
 > 다루는 범위: `packages/ingest`(교재 PDF → 문제은행) + `packages/core/src/variants`(숫자 변형)
+> **저장소 전체를 처음 여는 것이라면 [handoff-project.md](handoff-project.md)부터.** 이 문서는 반입 한 갈래다.
 > 관련: [../packages/ingest/README.md](../packages/ingest/README.md) · [./acceptance-status.md](./acceptance-status.md) · [./phase0/decisions.md](./phase0/decisions.md)
 
 여기 적힌 수치·경로·명령은 전부 저장소에서 실측한 것이다. 확인하지 않은 것은
