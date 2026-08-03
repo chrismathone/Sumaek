@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { TEACHER } from "../lib/accounts";
+import { TEACHER, STUDENT } from "../lib/accounts";
 
 // axe-core는 e2e의 직접 의존이 아니다(@axe-core/playwright의 전이 의존).
 // 타입만 쓰자고 의존을 하나 더 늘리지 않고 analyze()의 반환에서 뽑아 쓴다.
@@ -26,9 +26,12 @@ type AxeViolation = Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"][num
  *   현재 남는 미결은 전부 color-contrast이고, 원인은 두 가지뿐이다:
  *   (1) ①·▲·■·×·· 같은 한 글자 장식 기호 — axe가 "텍스트인지 판단 불가"로 보류,
  *   (2) SVG <text> 위에 이미지 노드가 겹쳐 배경색을 확정하지 못한 경우.
- *   해당 색 토큰(--color-ink-soft #3d4b63, --color-pen #2257d7,
- *   --color-grade #b53430)은 교사용지 배경 대비 각각 8.1:1·5.7:1·5.5:1로
- *   손으로 계산해 확인했다. 미결을 실패로 다루면 상시 빨간불이 된다.
+ *   해당 색 토큰의 실측 대비는 다음과 같다(paper #f5f1e8 / surface #fff):
+ *   --color-ink-soft #4a586d 6.41·7.22, --color-pen #315fba 5.36·6.04,
+ *   --color-grade #b53430 5.52·6.00. 미결을 실패로 다루면 상시 빨간불이 된다.
+ *
+ * 학생 화면(/learn/today)은 상태를 색·채움·선 모양·문자·라벨 다섯 채널로
+ * 겹쳐 말한다. 그 겹침이 무너지면 색만 남으므로 여기서 지킨다.
  * ───────────────────────────────────────────────────────────── */
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa"];
@@ -49,6 +52,25 @@ const TEACHER_PAGES = [
   { path: "/app/students", label: "학습자 목록" },
   { path: "/app/calendar", label: "수업 달력" },
   { path: "/app/settings", label: "설정" },
+];
+
+/** KST 오늘 — 하루 상세를 데이터에 기대지 않고 확정적으로 연다 */
+function kstToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** 학생 로그인 후에만 닿는 화면 */
+const STUDENT_PAGES = [
+  { path: "/learn/today", label: "오늘 학습" },
+  { path: "/learn/records", label: "지난 기록" },
+  /* 하루 상세는 시드 데이터에 기대지 않는다 — 기록이 없는 날이어도 그 날의
+   * 빈 상태 분기가 렌더되고, 그 분기도 검사 대상이다. */
+  { path: `/learn/records?day=${kstToday()}`, label: "지난 기록 (하루 상세)" },
 ];
 
 /**
@@ -99,12 +121,16 @@ async function scan(page: Page, path: string, label: string): Promise<string> {
   return describeViolations(label, path, results.violations);
 }
 
-async function login(page: Page): Promise<void> {
+async function login(
+  page: Page,
+  who: { email: string; password: string },
+  landing: RegExp,
+): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel("이메일").fill(TEACHER.email);
-  await page.getByLabel("비밀번호").fill(TEACHER.password);
+  await page.getByLabel("이메일").fill(who.email);
+  await page.getByLabel("비밀번호").fill(who.password);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
+  await expect(page).toHaveURL(landing, { timeout: 30_000 });
 }
 
 test.describe("접근성 자동 검사 — 비로그인 화면 (인수 15·59)", () => {
@@ -136,8 +162,18 @@ test.describe("접근성 자동 검사 — 교사 앱 (인수 15·59)", () => {
   test("교사 로그인 후 주요 화면에 WCAG A·AA 위반 없음", async ({ page }) => {
     // 로그인 왕복이 화면 수만큼 반복되지 않도록 한 테스트에서 순회하고,
     // 단언은 soft로 둔다 — 첫 화면에서 멈추면 나머지 세 화면 상태를 모른다.
-    await login(page);
+    await login(page, TEACHER, /\/app\/today/);
     for (const { path, label } of TEACHER_PAGES) {
+      await open(page, path, label);
+      expect.soft(await scan(page, path, label), `${label} 접근성`).toBe("");
+    }
+  });
+});
+
+test.describe("접근성 자동 검사 — 학생 앱 (인수 15·59)", () => {
+  test("학생 로그인 후 오늘 학습에 WCAG A·AA 위반 없음", async ({ page }) => {
+    await login(page, STUDENT, /\/learn\/today/);
+    for (const { path, label } of STUDENT_PAGES) {
       await open(page, path, label);
       expect.soft(await scan(page, path, label), `${label} 접근성`).toBe("");
     }

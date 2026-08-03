@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { trimScore } from "@/lib/format";
+import { LearnTabs } from "@/components/learn/LearnTabs";
 
 export const metadata: Metadata = { title: "테스트 결과" };
 
@@ -64,6 +65,9 @@ export default async function ResultsPage({
 
   return (
     <div>
+      {/* 결과는 「지난 기록」의 하위 목적지다 — 달력의 하루 상세와 최근
+       * 테스트가 여기로 보낸다. */}
+      <LearnTabs current="records" />
       <p className="font-mono text-sm text-pen">채점 결과</p>
       <h1 className="mt-1 font-[MaruBuri] text-xl font-semibold">{attempt.title}</h1>
 

@@ -26,16 +26,15 @@ test("전체 순환: 학생 응시 → 자동 채점 → 복습 배치 → 교�
     student.getByRole("heading", { name: /박서윤님의 오늘 학습/ }),
   ).toBeVisible();
 
-  /* 끝난 테스트는 「지난 테스트 N건 보기」 안에 접혀 있다 (6단계 흐름).
-   * 닫힌 <details>의 내용은 접근성 트리에 노출되지 않아 getByRole이 0을
-   * 돌려준다 — 펴 놓고 세지 않으면 "이미 완료"를 못 알아본다. */
-  const pastDisclosure = student.getByText(/지난 테스트 \d+건 보기/);
-  if ((await pastDisclosure.count()) > 0) await pastDisclosure.first().click();
-
-  // 배정된 일일테스트 응시
+  /* 완료 판정을 「결과 링크가 있나」에서 **「응시 링크가 없나」**로 뒤집는다.
+   *
+   * 끝난 테스트 목록은 오늘 화면에 없다 — 「지난 기록」(/learn/records)으로
+   * 옮겼다. 예전 판정은 "결과 보기"가 오늘 화면에 있다는 데 기대고 있어서,
+   * 그것이 옮겨 가는 순간 이미 제출한 학생에게 alreadyDone이 영영 false가
+   * 되고 있지도 않은 응시 링크를 30초 기다리다 죽는다. 없는 것을 세면
+   * 목록이 어디로 옮겨 가든 판정이 산다. */
   const takeButton = student.getByRole("link", { name: /응시하기|이어서 풀기/ }).first();
-  const resultLink = student.getByRole("link", { name: /결과 보기/ }).first();
-  const alreadyDone = (await resultLink.count()) > 0 && (await takeButton.count()) === 0;
+  const alreadyDone = (await takeButton.count()) === 0;
 
   if (!alreadyDone) {
     await takeButton.click();
@@ -65,7 +64,12 @@ test("전체 순환: 학생 응시 → 자동 채점 → 복습 배치 → 교�
     // 결과 페이지 — 점수·문항별 판정
     await expect(student).toHaveURL(/\/learn\/results\//, { timeout: 30_000 });
   } else {
-    await resultLink.click();
+    /* 재실행 — 지난 기록에서 결과로 들어간다. 「최근 테스트」 패널은
+     * **보고 있는 달과 무관한 최근 5건**이라, 실행이 월 경계를 넘어도
+     * (7월 31일 실행 → 8월 1일 재실행) 비지 않는다. */
+    await student.goto("/learn/records");
+    await student.getByRole("link", { name: /결과 보기/ }).first().click();
+    await expect(student).toHaveURL(/\/learn\/results\//, { timeout: 30_000 });
   }
 
   await expect(student.getByText("채점 결과")).toBeVisible();

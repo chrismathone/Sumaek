@@ -80,7 +80,14 @@ describe.skipIf(!hasDb)("평가 블루프린트 생성 (라이브 DB)", () => {
       )
       on conflict (id) do nothing
     `;
-    /* 전역 참조: 개념 2종 — 하나만 학습 목표·기대 증거 보유 */
+    /* 전역 참조: 개념 2종 — 하나만 학습 목표·기대 증거 보유.
+     *
+     * status를 **되돌린다** (do nothing이 아니다). E2E 뒷정리(purgeTestData)는
+     * itest- 개념 중 문항이 걸려 지울 수 없는 것을 status='deprecated'로
+     * 내린다 — 교사 개념 목록을 테스트 찌꺼기로 덮지 않기 위한 옳은 동작이다.
+     * 그런데 do nothing이면 이 스펙이 그 상태를 물려받아, **E2E를 한 번
+     * 돌린 뒤부터** 개념 커버리지 단언이 계속 깨졌다(실측). 스펙은 자기
+     * 전제를 스스로 세워야 실행 순서와 무관해진다. */
     await sql`
       insert into canonical_concepts (id, slug, name, status, evidence)
       values
@@ -88,7 +95,7 @@ describe.skipIf(!hasDb)("평가 블루프린트 생성 (라이브 DB)", () => {
          '블루프린트 개념(목표 있음)', 'active', '[]'::jsonb),
         (${CONCEPT_WITHOUT_OBJECTIVE}, 'itest-blueprint-without-objective',
          '블루프린트 개념(목표 없음)', 'active', '[]'::jsonb)
-      on conflict (id) do nothing
+      on conflict (id) do update set status = 'active'
     `;
     await sql`
       insert into learning_objectives (
