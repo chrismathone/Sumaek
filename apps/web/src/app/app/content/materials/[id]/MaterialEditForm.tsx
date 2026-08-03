@@ -57,6 +57,8 @@ export function MaterialEditForm({
     disclosure: string;
     sourceJobId: string;
     questionIds: string[];
+    /** 읽은 시점의 updated_at 원문 — 서버가 DB 현재 값과 대조한다 */
+    updatedAtToken: string;
   };
   concepts: ConceptOption[];
   conceptQuery: string;
@@ -87,6 +89,10 @@ export function MaterialEditForm({
     <form action={action} className="mt-4 space-y-4">
       <input type="hidden" name="materialId" value={material.id} />
       <input type="hidden" name="questionIds" value={picked.join(",")} />
+      {/* 낡은 폼이 조용히 이기는 것을 막는 토큰 — 그 사이 다른 사람이
+          저장했으면 서버가 이 값 불일치로 거부한다. 저장이 성공하면
+          revalidate로 새 토큰이 내려와 연속 저장도 막히지 않는다. */}
+      <input type="hidden" name="updatedAt" value={material.updatedAtToken} />
 
       {/* 개념 찾기는 별도 GET 폼이라 이 폼 밖에 있다 (page.tsx) */}
       <div className="flex flex-wrap items-end gap-3">

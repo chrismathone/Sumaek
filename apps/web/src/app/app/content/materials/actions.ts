@@ -203,7 +203,29 @@ const updateSchema = z.object({
   materialId: z.uuid(),
   /** 지정 문항 — 콤마로 이은 uuid 목록. 비면 자동 선정으로 돌아간다 */
   questionIds: z.string().default(""),
+  /** 폼이 읽은 시점의 updated_at (텍스트 그대로) — 아래 낙관적 동시성 대조용 */
+  updatedAt: z
+    .string("편집을 시작한 시점을 확인할 수 없습니다. 화면을 새로 고친 뒤 다시 저장하세요.")
+    .trim()
+    .min(1, "편집을 시작한 시점을 확인할 수 없습니다. 화면을 새로 고친 뒤 다시 저장하세요."),
 });
+
+/* ── 낙관적 동시성 — 루트의 lock_version(인수 20)과 같은 원리, 토큰만 다르다.
+ *
+ * 두 교사가 같은 자료 상세를 열면 나중에 저장하는 쪽의 **낡은 폼이 전부
+ * 이긴다**: A가 연습문제 문항 5개를 지정·저장한 직후, 폼이 낡은 B가 제목
+ * 오탈자만 고쳐 저장하면 hidden questionIds=""가 함께 실려 와 question_ids가
+ * '[]'로 리셋되고 자동 선정으로 되돌아간다 — 감사 이벤트에는 questionCount만
+ * 남아 지워진 목록을 복구할 수도 없다.
+ *
+ * 그래서 폼은 읽은 시점의 updated_at을 그대로 제시하고, 서버는 DB의 현재
+ * 값과 대조해 어긋나면 거부한다. 토큰은 DB가 만든 값(now())을 텍스트로
+ * 되돌려 받는 것이라 클라이언트 시계가 끼어들 자리가 없다. 대조를 통과해도
+ * UPDATE 자체에 조건을 한 번 더 건다 — 읽기와 쓰기 사이의 틈에 다른 저장이
+ * 끼어들면 count 0으로 드러난다. 신뢰는 폼이 아니라 DB다. ── */
+
+const STALE_SAVE_MESSAGE =
+  "다른 사람이 이 자료를 먼저 고쳤습니다. 내 변경은 저장되지 않았습니다 — 화면을 새로 고쳐 최신 내용을 확인한 뒤 다시 고치세요.";
 
 export async function updateMaterialAction(
   _prev: MaterialResult | null,
@@ -223,6 +245,8 @@ export async function updateMaterialAction(
   const d = parsed.data;
 
   const sql = getSharedSql();
+  /* updated_at은 ::text로 읽는다 — Date로 받으면 마이크로초가 잘려 폼이 실어
+   * 온 토큰과 영영 일치하지 않는다. 토큰은 이 텍스트를 그대로 왕복한다. */
   const [material] = await sql<
     {
       id: string;
@@ -232,16 +256,21 @@ export async function updateMaterialAction(
       concept_id: string;
       body: unknown;
       is_pipeline: boolean;
+      updated_at: string;
     }[]
   >`
     select id::text, kind::text as kind, title, status::text as status,
            concept_id::text as concept_id, body,
            (source_ref is not null or derived_from_material_id is not null)
-             as is_pipeline
+             as is_pipeline,
+           updated_at::text as updated_at
     from learning_materials
     where id = ${d.materialId} and organization_id = ${user.organizationId}
   `;
   if (!material) return { ok: false, message: "학습 자료를 찾을 수 없습니다." };
+  if (material.updated_at !== d.updatedAt) {
+    return { ok: false, message: STALE_SAVE_MESSAGE };
+  }
 
   const kind = material.kind as (typeof KINDS)[number];
 
@@ -302,39 +331,47 @@ export async function updateMaterialAction(
 
   const disclosure = d.disclosure.trim() || null;
   const sourceJobId = d.sourceJobId || null;
-  await sql.begin(async (tx) => {
-    /* 잠금 갈래를 눈에 보이게 나눈다 — 잠긴 본문은 set 목록에 아예 없다.
+  const saved = await sql.begin(async (tx) => {
+    /* 위의 대조를 통과했어도 그 읽기와 이 쓰기 사이에 다른 저장이 끼어들 수
+     * 있다 — UPDATE 자체가 최종 심판이다. 안 맞으면 감사도 남기지 않는다.
+     *
+     * 비교는 반드시 텍스트로 한다(updated_at::text = 토큰). ${토큰}::timestamptz로
+     * 쓰면 postgres.js가 매개변수 타입을 timestamptz로 추론해 JS Date(밀리초)를
+     * 거쳐 직렬화한다 — 마이크로초가 잘려 어떤 저장도 영영 통과하지 못한다.
+     *
+     * 잠금 갈래를 눈에 보이게 나눈다 — 잠긴 본문은 set 목록에 아예 없다.
      * "null로 덮지 않는다"가 아니라 "건드리지 않는다"여야 한다. */
-    if (bodyLocked) {
-      await tx`
-        update learning_materials set
-          concept_id = ${d.conceptId},
-          title = ${d.title},
-          video_url = ${payload.videoUrl},
-          video_seconds = ${payload.seconds},
-          question_ids = ${tx.json(questionIds as never)},
-          sort_order = ${d.sortOrder},
-          disclosure = ${disclosure},
-          source_job_id = ${sourceJobId},
-          updated_at = now()
-        where id = ${material.id} and organization_id = ${user.organizationId}
-      `;
-    } else {
-      await tx`
-        update learning_materials set
-          concept_id = ${d.conceptId},
-          title = ${d.title},
-          body = ${payload.body === null ? null : tx.json(payload.body as never)},
-          video_url = ${payload.videoUrl},
-          video_seconds = ${payload.seconds},
-          question_ids = ${tx.json(questionIds as never)},
-          sort_order = ${d.sortOrder},
-          disclosure = ${disclosure},
-          source_job_id = ${sourceJobId},
-          updated_at = now()
-        where id = ${material.id} and organization_id = ${user.organizationId}
-      `;
-    }
+    const updated = bodyLocked
+      ? await tx`
+          update learning_materials set
+            concept_id = ${d.conceptId},
+            title = ${d.title},
+            video_url = ${payload.videoUrl},
+            video_seconds = ${payload.seconds},
+            question_ids = ${tx.json(questionIds as never)},
+            sort_order = ${d.sortOrder},
+            disclosure = ${disclosure},
+            source_job_id = ${sourceJobId},
+            updated_at = now()
+          where id = ${material.id} and organization_id = ${user.organizationId}
+            and updated_at::text = ${d.updatedAt}
+        `
+      : await tx`
+          update learning_materials set
+            concept_id = ${d.conceptId},
+            title = ${d.title},
+            body = ${payload.body === null ? null : tx.json(payload.body as never)},
+            video_url = ${payload.videoUrl},
+            video_seconds = ${payload.seconds},
+            question_ids = ${tx.json(questionIds as never)},
+            sort_order = ${d.sortOrder},
+            disclosure = ${disclosure},
+            source_job_id = ${sourceJobId},
+            updated_at = now()
+          where id = ${material.id} and organization_id = ${user.organizationId}
+            and updated_at::text = ${d.updatedAt}
+        `;
+    if (updated.count === 0) return false;
     await tx`
       insert into audit_events (
         id, organization_id, actor_type, actor_id, action, target_type, target_id,
@@ -351,7 +388,9 @@ export async function updateMaterialAction(
         } as never)}
       )
     `;
+    return true;
   });
+  if (!saved) return { ok: false, message: STALE_SAVE_MESSAGE };
 
   revalidatePathsForMaterial();
   return {

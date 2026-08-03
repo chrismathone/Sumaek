@@ -118,6 +118,9 @@ interface MaterialDetail {
   derived_from_material_id: string | null;
   source_ref: unknown;
   updated_at: Date;
+  /** 낙관적 동시성 토큰 — updated_at의 ::text 원문. Date를 거치면 마이크로초가
+   * 잘려 서버 대조가 영영 실패하므로 문자열 그대로 폼에 싣는다 */
+  updated_at_token: string;
   created_at: Date;
   author_name: string | null;
 }
@@ -156,7 +159,8 @@ export default async function MaterialDetailPage({
            m.video_url, m.video_seconds, m.question_ids, m.sort_order,
            m.status::text as status, m.disclosure, m.source_job_id,
            m.derived_from_material_id::text as derived_from_material_id,
-           m.source_ref, m.updated_at, m.created_at, u.display_name as author_name
+           m.source_ref, m.updated_at, m.updated_at::text as updated_at_token,
+           m.created_at, u.display_name as author_name
     from learning_materials m
     join canonical_concepts c on c.id = m.concept_id
     left join users u on u.id = m.created_by
@@ -471,6 +475,7 @@ export default async function MaterialDetailPage({
               disclosure: material.disclosure ?? "",
               sourceJobId: material.source_job_id ?? "",
               questionIds,
+              updatedAtToken: material.updated_at_token,
             }}
             concepts={concepts}
             conceptQuery={conceptQuery}
