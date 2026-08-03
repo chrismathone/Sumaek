@@ -41,3 +41,10 @@ export function todayIso(): string {
 export function futureIso(days: number): string {
   return isoAddDays(todayIso(), days);
 }
+
+/** 두 ISO 날짜 사이의 일수 (b - a) */
+export function isoDiffDays(a: string, b: string): number {
+  return Math.round(
+    (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000,
+  );
+}

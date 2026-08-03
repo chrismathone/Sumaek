@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { futureIso, isoAddDays, nthIsoDate, todayIso } from "../lib/dates";
+import { futureIso, isoDiffDays, nthIsoDate, todayIso } from "../lib/dates";
 import { gotoTableRow } from "../lib/table";
 import { TEACHER } from "../lib/accounts";
 
@@ -79,8 +79,12 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
   expect(baseline).toContain("미래 수업 2건");
   const firstLesson = nthIsoDate(baseline, 0);
   const secondLesson = nthIsoDate(baseline, 1);
-  // 주 1회(월요일) 반이므로 두 수업은 정확히 7일 간격이다
-  expect(secondLesson).toBe(isoAddDays(firstLesson, 7));
+  // 주 1회(월요일) 반 — 간격은 7일의 배수다. 정확히 7일이라고 못 박지
+  // 않는 이유: 사이 월요일이 공휴일이면 한 주를 건너뛴다 (특일 동기화가
+  // 넣은 대체공휴일이 실제로 그렇게 만든다 — 2026-08-17 실측)
+  const baselineGap = isoDiffDays(firstLesson, secondLesson);
+  expect(baselineGap % 7).toBe(0);
+  expect(baselineGap).toBeGreaterThanOrEqual(7);
   // 과거를 만들지 않는다 — 실체화는 오늘 이후만 배치한다
   expect(firstLesson >= todayIso()).toBe(true);
 
@@ -104,10 +108,16 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
     availability.getByRole("status").filter({ hasText: "휴강" }),
   ).toContainText(firstLesson, { timeout: 30_000 });
 
-  // 5. 재계산 — 첫 수업일이 비고 한 주씩 밀린다
-  const shifted = `${secondLesson} ~ ${isoAddDays(secondLesson, 7)}`;
+  // 5. 재계산 — 첫 수업일이 비고 나머지가 다음 가용 월요일로 밀린다
+  //    (밀린 자리는 공휴일을 건너뛴 월요일 — 날짜를 못 박지 않고 관계로 단언)
   const cancelled = await materialize(page, routeName);
-  expect(cancelled).toContain(shifted);
+  expect(cancelled).toContain("미래 수업 2건");
+  const shiftedFirst = nthIsoDate(cancelled, 0);
+  const shiftedSecond = nthIsoDate(cancelled, 1);
+  expect(shiftedFirst).toBe(secondLesson); // 남은 첫 수업 = 원래 둘째 수업
+  const shiftedGap = isoDiffDays(shiftedFirst, shiftedSecond);
+  expect(shiftedGap % 7).toBe(0);
+  expect(shiftedGap).toBeGreaterThanOrEqual(7);
 
   await page.goto("/app/classes");
   await page.getByRole("link", { name: groupName }).click();
@@ -126,7 +136,7 @@ test("휴강 접수 → 재계산이 날짜를 비움 → 무시 후 안정", as
 
   const afterDismiss = await materialize(page, routeName);
   expect(afterDismiss).toContain("미래 수업 2건");
-  expect(afterDismiss).toContain(shifted);
+  expect(afterDismiss).toContain(`${shiftedFirst} ~ ${shiftedSecond}`);
 });
 
 /** 이 화면의 접수 이벤트 전부 무시 — 이전(실패한) 실행의 잔재 정리 (멱등) */

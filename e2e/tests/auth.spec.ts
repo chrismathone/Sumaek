@@ -59,11 +59,22 @@ test.describe("인증·앱 셸 (인수 13의 기초)", () => {
       /^\/app\/classes\//,
     );
 
-    // 수업 미생성 상태의 정직한 빈 상태와 다음 행동
-    await expect(page.getByText("오늘 예정된 수업이 없습니다.")).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "학습 루트에서 일정 생성하기" }),
-    ).toBeVisible();
+    // 오늘 수업 표시는 요일에 달렸다 — 시드 반은 월·수·금 수업이라 그 요일에
+    // 돌리면 실제 수업 행이 있고, 그 밖의 요일이면 빈 상태다. 어느 쪽이든
+    // 정직한 상태를 단언한다 (일요일에만 통과하는 하드코딩 금지 — 실측 실패).
+    const sessionSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "시간순 수업" }) });
+    const emptyToday = sessionSection.getByText("오늘 예정된 수업이 없습니다.");
+    if ((await emptyToday.count()) > 0) {
+      await expect(emptyToday).toBeVisible();
+      await expect(
+        sessionSection.getByRole("link", { name: "학습 루트에서 일정 생성하기" }),
+      ).toBeVisible();
+    } else {
+      // 수업 행 최소 1건 — 행 전체가 반 상세로 이어진다
+      await expect(sessionSection.locator("tbody tr").first()).toBeVisible();
+    }
 
     // 로그아웃 → 보호 경로 재차단.
     // lg 미만에서는 로그아웃이 접힌 <details> 안에 있어 접근성 트리에 없다.
