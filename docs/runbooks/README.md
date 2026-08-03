@@ -24,6 +24,12 @@
 | RB-13 | [알림 제공자 장애](./13-notification-provider-outage.md) | SEV3 | `external_notification` |
 | RB-14 | [배포 실패와 마이그레이션 롤백](./14-deploy-migration-rollback.md) | SEV1 | 없음 |
 
+### 1.1 평시 절차 (장애 아님)
+
+| # | 절차 | 주 kill switch |
+|---|---|---|
+| RB-15 | [교육과정 릴리스 발행·원문 대조·차이 계산](./15-curriculum-release-publish.md) | `curriculum_release` |
+
 ---
 
 ## 2. 심각도 정의
