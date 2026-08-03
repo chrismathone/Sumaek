@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ScrollableRegion } from "@/components/ScrollableRegion";
+import { SumaekLogo } from "@/components/brand/SumaekLogo";
 import { FlowTabs } from "@/components/marketing/FlowTabs";
 import { OrbitBoard } from "@/components/marketing/OrbitBoard";
 
@@ -12,17 +13,26 @@ export default function LandingPage() {
       {/* ── 히어로 ── */}
       <section className="mx-auto grid max-w-[1280px] items-center gap-10 px-4 py-14 lg:grid-cols-12 lg:px-6 lg:py-20">
         <div className="lg:col-span-5">
-          <p className="font-mono text-sm text-pen">
+          <SumaekLogo
+            variant="inkWash"
+            className="-ml-3 h-auto w-full max-w-[410px]"
+            preload
+            sizes="(max-width: 442px) calc(100vw - 2rem), (max-width: 1024px) 410px, 38vw"
+          />
+          <p className="-mt-2 font-mono text-[11px] tracking-[0.16em] text-ink-soft">
+            THE CONTEXT OF MATHEMATICS
+          </p>
+          <p className="mt-7 font-mono text-sm text-pen">
             수학 선생님을 위한 수업 운영 시스템
           </p>
-          <h1 className="mt-4 font-[MaruBuri] text-4xl leading-snug font-semibold lg:text-[2.75rem]">
+          <h1 className="mt-4 break-keep font-[MaruBuri] text-4xl leading-snug font-semibold lg:text-[2.75rem]">
             수업이 시작되기 전에,
             <br />
             오늘의 진도와 테스트는
             <br />
             이미 준비되어 있습니다.
           </h1>
-          <p className="mt-5 max-w-md leading-relaxed text-ink-soft">
+          <p className="mt-5 max-w-md break-keep leading-relaxed text-ink-soft">
             반 공통 진도부터 학생별 분기, 자동 출제·채점, 학습 불참 이후 일정
             재계산까지. 선생님은 오늘 판단할 것만 확인합니다.
           </p>

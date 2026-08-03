@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SumaekLogo } from "@/components/brand/SumaekLogo";
 
 const NAV_ITEMS = [
   { href: "/#operations", label: "운영 방식" },
@@ -20,12 +21,13 @@ export default function MarketingLayout({
         본문으로 건너뛰기
       </a>
       <header className="sticky top-0 z-40 border-b border-rule-soft bg-paper/95 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-between gap-4 px-4 lg:px-6">
-          <Link href="/" className="text-lg font-bold tracking-tight">
-            수맥
-            <span className="ml-1.5 font-mono text-[11px] font-normal text-ink-soft">
-              Su-Maek
-            </span>
+        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-4 lg:px-6">
+          <Link href="/" aria-label="수맥 홈" className="inline-flex shrink-0 items-center">
+            <SumaekLogo
+              variant="header"
+              className="h-8 w-auto sm:h-11"
+              sizes="128px"
+            />
           </Link>
           <nav aria-label="주요 메뉴" className="hidden items-center gap-5 md:flex">
             {NAV_ITEMS.map((item) => (
@@ -38,16 +40,16 @@ export default function MarketingLayout({
               </Link>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Link
               href="/login"
-              className="rounded-[var(--radius-control)] px-3 py-1.5 text-sm text-ink-soft hover:text-ink"
+              className="whitespace-nowrap rounded-[var(--radius-control)] px-2 py-1.5 text-sm text-ink-soft hover:text-ink sm:px-3"
             >
               로그인
             </Link>
             <Link
               href="/demo"
-              className="rounded-[var(--radius-control)] bg-pen px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-ink"
+              className="whitespace-nowrap rounded-[var(--radius-control)] bg-pen px-2.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-ink sm:px-3.5"
             >
               샘플 반 체험하기
             </Link>
@@ -62,8 +64,15 @@ export default function MarketingLayout({
       <footer className="border-t border-rule-soft bg-ink text-white/80">
         <div className="mx-auto grid max-w-[1280px] gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-6">
           <div>
-            <p className="text-lg font-bold text-white">수맥</p>
-            <p className="mt-2 text-sm leading-relaxed">
+            <SumaekLogo
+              variant="reverse"
+              className="h-14 w-auto"
+              sizes="128px"
+            />
+            <p className="mt-2 font-mono text-[10px] tracking-[0.13em] text-wash">
+              THE CONTEXT OF MATHEMATICS
+            </p>
+            <p className="mt-3 text-sm leading-relaxed">
               수업 계획은 한 번.
               <br />
               오늘의 진도와 테스트는 자동으로.

@@ -4,6 +4,7 @@ import { minutesRemaining } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { visibleNavGroups } from "@/lib/nav";
 import { signOut } from "@/app/(auth)/login/actions";
+import { SumaekLogo } from "@/components/brand/SumaekLogo";
 
 /* 교사 앱 셸 (골프롬프트 8장) — 좌측 내비 5그룹 + 상단 바.
  * 진짜 인증 검증은 여기서 한다 (프록시는 쿠키 존재만 확인).
@@ -41,10 +42,18 @@ export default async function AppLayout({
        * 붙어 있고 가운데 메뉴만 움직인다. */}
       <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-rule bg-ink text-white/85 lg:flex">
         <div className="px-4 py-4">
-          <Link href="/app/today" className="text-lg font-bold text-white">
-            수맥
+          <Link
+            href="/app/today"
+            aria-label="수맥 오늘의 수업"
+            className="inline-flex items-center"
+          >
+            <SumaekLogo
+              variant="reverse"
+              className="h-12 w-auto"
+              sizes="120px"
+            />
           </Link>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-white/60">
+          <p className="mt-1.5 truncate font-mono text-[11px] text-white/60">
             {user.organizationName}
           </p>
         </div>
@@ -91,9 +100,22 @@ export default async function AppLayout({
       {/* 본문 */}
       <div className="min-w-0 flex-1">
         <header className="flex h-12 items-center justify-between border-b border-rule-soft bg-surface px-4 lg:px-6">
-          <p className="font-mono text-xs text-ink-soft">
-            2026학년도 2학기 · {user.organizationName}
-          </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href="/app/today"
+              aria-label="수맥 오늘의 수업"
+              className="shrink-0 lg:hidden"
+            >
+              <SumaekLogo
+                variant="header"
+                className="h-8 w-auto"
+                sizes="72px"
+              />
+            </Link>
+            <p className="hidden truncate font-mono text-xs text-ink-soft sm:block">
+              2026학년도 2학기 · {user.organizationName}
+            </p>
+          </div>
           {/* 모바일 내비 (인수 15) — details 기반: JS 없이 키보드 접근 가능 */}
           <details className="relative lg:hidden">
             <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-control)] border border-rule px-3 py-1.5 text-sm [&::-webkit-details-marker]:hidden">

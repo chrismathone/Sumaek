@@ -4,6 +4,7 @@ import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { firstAccessibleHref } from "@/lib/nav";
 import { signOut } from "@/app/(auth)/login/actions";
+import { SumaekLogo } from "@/components/brand/SumaekLogo";
 
 /* 학생 학습·응시 셸 (18장) — 한 화면에 한 가지 주요 행동.
  * 교사용 정보 밀도를 가져오지 않는다.
@@ -45,10 +46,23 @@ export default async function LearnLayout({
 
   return (
     <div className="group min-h-dvh bg-paper">
+      {/* 학생 셸에도 스킵 링크를 둔다 — 화면 상단에 반복 내비(LearnTabs)가
+       * 생겼으므로 키보드 사용자가 매번 두 링크를 지나게 된다. 교사 셸과
+       * 같은 마크업이다. */}
+      <a
+        href="#main-content"
+        className="sr-only z-50 focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded-[var(--radius-control)] focus:bg-ink focus:px-3 focus:py-2 focus:text-sm focus:text-white"
+      >
+        본문으로 건너뛰기
+      </a>
       <header className="sticky top-0 z-40 border-b border-rule-soft bg-surface">
         <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4 group-has-[[data-wide]]:max-w-6xl">
-          <Link href="/learn/today" className="font-bold">
-            수맥
+          <Link href="/learn/today" aria-label="수맥 오늘의 학습" className="shrink-0">
+            <SumaekLogo
+              variant="header"
+              className="h-9 w-auto"
+              sizes="80px"
+            />
           </Link>
           <div className="flex items-center gap-3 text-sm">
             <span>{learner.displayName}</span>
@@ -62,7 +76,10 @@ export default async function LearnLayout({
       </header>
       {/* 기본은 좁은 한 줄(한 화면에 한 행동). 읽기 위주 화면만 data-wide로
        * 넓힌다 — 개념 공부가 넓은 화면에서 2단으로 흐르기 위한 스위치. */}
-      <main className="mx-auto max-w-2xl px-4 py-6 has-[[data-wide]]:max-w-6xl">
+      <main
+        id="main-content"
+        className="mx-auto max-w-2xl px-4 py-6 has-[[data-wide]]:max-w-6xl"
+      >
         {children}
       </main>
     </div>

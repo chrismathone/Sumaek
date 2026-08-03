@@ -6,9 +6,9 @@
  */
 @theme {
   /* 컬러 */
-  --color-paper: #f3f6f6; /* 교사용지 — 기본 배경 */
-  --color-ink: #162338; /* 잉크 네이비 — 본문, 제목, 앱 셸 */
-  --color-pen: #2257d7; /* 볼펜 블루 — 현재 진도, 주요 CTA, 활성 경로 */
+  --color-paper: #f5f1e8; /* 수맥의 따뜻한 종이색 — 로고 기본 배경 */
+  --color-ink: #142238; /* 먹빛 네이비 — 본문, 제목, 앱 셸 */
+  --color-pen: #315fba; /* 코발트 블루 — 현재 진도, 주요 CTA, 활성 경로 */
   /*
    * 채점 레드 — 오류, 학습 지연, 검토 필요 (제한 사용).
    * 원래 #c9453d였으나 본문 색으로 쓰기에 어두움이 모자랐다.
@@ -19,14 +19,16 @@
    */
   --color-grade: #b53430;
   --color-highlight: #f1d66a; /* 형광 노랑 — 자동 추천, 변경 예정 영역 */
-  --color-rule: #aab8c2; /* 괘선 그레이 — 모눈, 경계선, 비활성 경로 */
+  --color-rule: #a7b5c0; /* 괘선 그레이 — 모눈, 경계선, 비활성 경로 */
 
   /* 파생 톤 (알파 아님 — 단색 유지) */
-  --color-ink-soft: #3d4b63;
-  --color-pen-soft: #dbe5fa;
+  --color-ink-soft: #4a586d;
+  --color-pen-soft: #d4e3ef;
+  --color-wash: #b7cfe5;
+  --color-wash-light: #e7eff6;
   --color-grade-soft: #f7e3e1;
   --color-highlight-soft: #faf3d9;
-  --color-rule-soft: #e2e8ec;
+  --color-rule-soft: #dce3e8;
   --color-surface: #ffffff;
 
   /* 타이포그래피 */

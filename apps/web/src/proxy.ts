@@ -9,6 +9,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // 정적 자산·API·SEO 파일 제외 — 요청마다 함수를 깨우지 않는다 (eywa 실측)
   matcher: [
-    "/((?!api|_next|fonts|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|css|js|map|pdf)$).*)",
+    "/((?!api|_next|fonts|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|webmanifest|woff2?|ttf|css|js|map|pdf)$).*)",
   ],
 };
