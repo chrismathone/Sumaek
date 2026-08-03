@@ -373,6 +373,7 @@ describe.skipIf(!hasDb)("아웃박스 일시 실패 (작업 삽입이 터질 때
   const POISON_TOPIC_KEY = `%:${EVENT_POISON}`;
   let firstFail: DispatchOutboxResult;
   let afterFirst: OutboxRow;
+  let dbNowAfterFirst = 0;
   let quarantineRun: DispatchOutboxResult;
   let afterQuarantine: OutboxRow;
   let reclaimAfterQuarantine: DispatchOutboxResult;
@@ -407,6 +408,12 @@ describe.skipIf(!hasDb)("아웃박스 일시 실패 (작업 삽입이 터질 때
     /* 1회차 — 한도(8) 안이라 격리되지 않고 백오프로 미뤄져야 한다 */
     firstFail = await dispatchOutbox(sql, { organizationId: ORG, limit: 10 });
     afterFirst = await outboxRow(EVENT_POISON);
+    /* 백오프 창 단언의 기준 시각 — next_attempt_at은 DB의 now()로 계산되므로
+     * 로컬 Date.now()로 재면 시계 스큐만큼 창이 밀린다 (실측: 로컬이 15초
+     * 느려 상한 15초 단언이 깨졌다). DB 시계로 잰다 (operator-access와 같은
+     * 원칙 — 절대 시각은 DB 시계). */
+    const [nowRow] = await sql<{ db_now: Date }[]>`select now() as db_now`;
+    dbNowAfterFirst = nowRow!.db_now.getTime();
 
     /* 2회차 — 한도를 1로 낮추면 같은 실패가 곧바로 격리가 된다.
      * 시도 횟수를 되돌리는 이유: 1회차로 attempts가 1이 됐는데 재집기 조건이
@@ -459,8 +466,8 @@ describe.skipIf(!hasDb)("아웃박스 일시 실패 (작업 삽입이 터질 때
      * 0초가 정상적으로 나온다(실측으로 이 스위트를 깨뜨렸다). 지터 정책
      * 자체는 packages/db/test/backoff.test.ts가 결정론적으로 덮는다. */
     const at = new Date(afterFirst.next_attempt_at).getTime();
-    expect(at).toBeLessThan(Date.now() + 15_000);
-    expect(at).toBeGreaterThan(Date.now() - 10_000);
+    expect(at).toBeLessThan(dbNowAfterFirst + 15_000);
+    expect(at).toBeGreaterThan(dbNowAfterFirst - 10_000);
   });
 
   it("터진 이벤트는 delivered로 넘어가지 않는다 — 무음 폐기 방지", async () => {
