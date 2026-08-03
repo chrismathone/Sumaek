@@ -46,6 +46,8 @@ export const KILL_SWITCH_DIRECT_ENFORCEMENT: Readonly<Record<string, string>> =
   {
     ai_model_canary:
       "AI 섀도 평가 — domain/ai-canary.ts runCanaryShadow가 카나리 호출 자체를 건너뛴다",
+    curriculum_release:
+      "릴리스 발행 게이트 — domain/curriculum-release.ts publishCurriculumRelease가 발행 전이를 차단한다 (읽기·그래프 탐색·매핑 검수는 그대로)",
   };
 
 /** 사람이 끌 수 있는 스위치 키 전체 — 설정 화면·CLI의 선택지 */
@@ -83,7 +85,8 @@ export async function loadGloballyDisabledSwitches(
  * 하나라도 있으면 false (보수적).
  */
 export async function isFeatureEnabled(
-  sql: postgres.Sql,
+  // 트랜잭션 안(발행 게이트)에서도 부른다 — 판정을 복제하지 않기 위한 확장
+  sql: postgres.Sql | postgres.TransactionSql,
   key: string,
   organizationId: string | null,
 ): Promise<boolean> {

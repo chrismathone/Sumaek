@@ -6,3 +6,4 @@ export * from "./privacy";
 export * from "./ai-usage";
 export * from "./ai-canary";
 export * from "./operator-access";
+export * from "./curriculum-release";

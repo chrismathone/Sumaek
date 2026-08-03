@@ -37,7 +37,8 @@
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "rebuild:readmodels": "node scripts/rebuild-read-models.mjs",
     "env:sync": "node scripts/sync-vercel-env.mjs",
-    "curriculum:collect": "pnpm --filter @su-maek/db exec tsx scripts/collect-curriculum.mts"
+    "curriculum:collect": "pnpm --filter @su-maek/db exec tsx scripts/collect-curriculum.mts",
+    "curriculum:release": "pnpm --filter @su-maek/db exec tsx scripts/curriculum-release.mts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

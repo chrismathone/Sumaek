@@ -329,7 +329,28 @@ async function main(): Promise<void> {
         `;
       }
 
-      /* 6b. 개념 ↔ 성취기준 매핑 (사람 큐레이션) — 대상이 없으면 보고만 */
+      /* 6b. 카탈로그가 재사용하는 기존 개념의 **빈** 근거 백필 — 발행 게이트
+       * (2L 최소 근거)가 실측으로 잡은 결함: RPM 반입이 만든 개념 5종의
+       * evidence가 비어 있었다. 카탈로그 매핑 자체가 문서 근거이므로 빈
+       * 경우에만 채운다. 이미 근거가 있으면 절대 덮지 않는다. */
+      const catalogSlugs = [
+        ...new Set(CATALOG_MAPPINGS.map((m) => m.conceptSlug)),
+      ];
+      await tx`
+        update canonical_concepts
+        set evidence = ${tx.json([
+          {
+            kind: "document",
+            source: "교육부 고시 제2022-33호 별책8",
+            note: "성취기준 사람 큐레이션 매핑 근거 (middle-math-concept-catalog.mts)",
+          },
+        ] as never)},
+            updated_at = now()
+        where slug = any(${catalogSlugs})
+          and coalesce(jsonb_array_length(evidence), 0) = 0
+      `;
+
+      /* 6c. 개념 ↔ 성취기준 매핑 (사람 큐레이션) — 대상이 없으면 보고만 */
       for (const mapping of CATALOG_MAPPINGS) {
         const [concept] = await tx<{ id: string }[]>`
           select id from canonical_concepts where slug = ${mapping.conceptSlug}

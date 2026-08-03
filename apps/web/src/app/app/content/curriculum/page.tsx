@@ -79,6 +79,28 @@ interface EdgeRow {
   total_count: number;
 }
 
+/** publish 파이프라인이 릴리스 행에 남기는 리포트 (domain/curriculum-release.ts) */
+interface ReleaseReportRow {
+  status: string;
+  published_at: Date | null;
+  validation_report: {
+    checkedAt?: string;
+    dryRun?: boolean;
+    findings?: {
+      ok: boolean;
+      sourcesNotVerified: unknown[];
+      unmappedStandardCodes: string[];
+      duplicateStandardCodes: string[];
+      prerequisiteCycles: unknown[];
+      orphanEdges: unknown[];
+      conceptsWithoutEvidence: string[];
+      aiEdgesMasqueradingAsActive: unknown[];
+      deprecatedConceptsInUse: string[];
+      killSwitchBlocked: boolean;
+    };
+  } | null;
+}
+
 interface StandardRow {
   id: string;
   code: string;
@@ -118,7 +140,7 @@ export default async function CurriculumStudioPage({
   const levelFilter = query.params.level ?? "";
   const statusFilter = query.params.status ?? "";
 
-  const [concepts, edges, authority, standards] = await Promise.all([
+  const [concepts, edges, authority, standards, releases] = await Promise.all([
     sql<ConceptRow[]>`
       with base as (
         select c.id, c.name, c.slug, c.school_level, c.grade_band, c.domain_name,
@@ -177,7 +199,37 @@ export default async function CurriculumStudioPage({
       left join curriculum_authority_sources src on src.id = s.source_id
       order by s.code
     `,
+    sql<ReleaseReportRow[]>`
+      select distinct r.status::text as status, r.published_at, r.validation_report
+      from curriculum_releases r
+      join achievement_standards s on s.release_id = r.id
+    `,
   ]);
+
+  /* 발행 게이트 리포트 — publish 파이프라인(pnpm curriculum:release)이 남긴
+   * 마지막 실행 결과. 없으면 "실행 전"을 그대로 말한다. */
+  const release = releases[0] ?? null;
+  const gateFindings = release?.validation_report?.findings ?? null;
+  const gateBlockers: string[] = [];
+  if (gateFindings) {
+    if (gateFindings.sourcesNotVerified.length > 0)
+      gateBlockers.push("원문 대조(verified) 전");
+    if (gateFindings.unmappedStandardCodes.length > 0)
+      gateBlockers.push(`미매핑 성취기준 ${gateFindings.unmappedStandardCodes.length}개`);
+    if (gateFindings.duplicateStandardCodes.length > 0)
+      gateBlockers.push(`중복 코드 ${gateFindings.duplicateStandardCodes.length}개`);
+    if (gateFindings.prerequisiteCycles.length > 0)
+      gateBlockers.push(`선수 순환 ${gateFindings.prerequisiteCycles.length}건`);
+    if (gateFindings.orphanEdges.length > 0)
+      gateBlockers.push(`고아 간선 ${gateFindings.orphanEdges.length}건`);
+    if (gateFindings.conceptsWithoutEvidence.length > 0)
+      gateBlockers.push(`근거 없는 개념 ${gateFindings.conceptsWithoutEvidence.length}개`);
+    if (gateFindings.aiEdgesMasqueradingAsActive.length > 0)
+      gateBlockers.push(`AI 위장 간선 ${gateFindings.aiEdgesMasqueradingAsActive.length}건`);
+    if (gateFindings.deprecatedConceptsInUse.length > 0)
+      gateBlockers.push(`사용 중 폐기 개념 ${gateFindings.deprecatedConceptsInUse.length}개`);
+    if (gateFindings.killSwitchBlocked) gateBlockers.push("kill switch 중지 중");
+  }
 
   const conceptTotal = concepts[0]?.total_count ?? 0;
   const edgeTotal = edges[0]?.total_count ?? 0;
@@ -442,6 +494,36 @@ export default async function CurriculumStudioPage({
               ` · sha256 ${standards[0]!.file_checksum.slice(0, 12)}…`}
             {" — 연결 개념은 사람 큐레이션 매핑(전역)만 셉니다."}
           </p>
+
+          {/* 발행 게이트 — 마지막 실행 결과를 숨기지 않는다 (인수 43) */}
+          {release && release.status !== "published" && (
+            <div className="mt-3 rounded-lg border border-rule bg-surface p-3 text-xs">
+              <p className="font-medium">
+                발행 게이트:{" "}
+                {gateFindings
+                  ? gateFindings.ok
+                    ? "통과 (전이 대기)"
+                    : "차단됨"
+                  : "아직 실행 전"}
+                {release.validation_report?.checkedAt && (
+                  <span className="ml-1 font-normal text-ink-soft">
+                    (
+                    {new Date(
+                      release.validation_report.checkedAt,
+                    ).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                    {release.validation_report.dryRun ? " · 예행" : ""})
+                  </span>
+                )}
+              </p>
+              {gateBlockers.length > 0 && (
+                <p className="mt-1 text-ink-soft">
+                  차단 사유: {gateBlockers.join(" · ")} — 절차는{" "}
+                  <span className="font-mono">pnpm curriculum:release</span>{" "}
+                  (원문 대조는 사람이 수행합니다)
+                </p>
+              )}
+            </div>
+          )}
         </section>
       )}
 
