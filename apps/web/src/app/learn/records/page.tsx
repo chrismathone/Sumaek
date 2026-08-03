@@ -272,10 +272,21 @@ export default async function LearnRecordsPage({
        * 졸업하지 않은 복습은 completed_at이 null로 되돌아가므로, 그걸로
        * 세면 복습이 화면에서 거의 다 사라진다.
        *
-       * closedBy = 'learner_review'를 반드시 함께 건다: 교사가 답안을
-       * 채점하거나 예외를 확정해도 복습이 닫히면서 last_reviewed_on이
-       * 찍힌다(closedBy가 graded_response·grading_exception이다). 그것까지
-       * 세면 학생이 손대지 않은 날에 「복습 마침」이 찍힌다.
+       * closedBy = 'learner_review'를 반드시 함께 건다: 채점이 밀린 복습을
+       * 닫으면서 last_reviewed_on을 찍는다(closedBy가 graded_response·
+       * grading_exception이다). 그것까지 세면 학생이 손대지 않은 날에
+       * 「복습 마침」이 찍힌다.
+       *
+       * 이 필터가 성립하려면 채점이 학생의 흔적을 **덮지 말아야** 한다.
+       * 예전에는 덮었다 — 학생이 복습한 뒤 같은 개념을 채점으로 맞히면
+       * outcome이 통째로 치환되면서 이 필터에서 탈락해 복습이 화면에서
+       * 아예 사라졌다. lib/domain/attempt.ts가 이제 learner_review 행의
+       * 날짜와 closedBy를 지키고 채점 정보를 gradedClose로 곁에 얹는다.
+       *
+       * **남은 한계**: 같은 항목을 두 번 복습하면 last_reviewed_on이 뒤 날짜로
+       * 밀려 첫 복습일이 사라진다. review_items가 이력이 아니라 예정 행이라
+       * 그렇다 — 진짜 수리는 복습 사건을 append-only로 빼는 것이고 스키마
+       * 변경이라 별건이다.
        *
        * last_reviewed_on은 이미 KST 기준 date라 변환하지 않는다. */
       select 'review', r.last_reviewed_on::text,

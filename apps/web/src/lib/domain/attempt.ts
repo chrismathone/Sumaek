@@ -338,16 +338,40 @@ export async function submitAndGrade(options: {
            * 학생 화면의 「복습 예정 N건」이 영원히 증가한다 (실측 결손).
            * 닫는 기준은 "그 개념을 **기한 이후에** 다시 맞혔다" — 오늘 이후로
            * 예정된 미래 복습까지 앞당겨 지우지는 않는다. */
+          /* 학생이 이미 복습한 행이면 **그 흔적을 지운 채로 닫지 않는다.**
+           *
+           * answerReview는 outbox도 audit도 쓰지 않아서 last_reviewed_on과
+           * outcome.closedBy가 「학생이 그날 복습했다」의 유일한 기록이다.
+           * 여기서 통째로 치환하면 그 날짜가 DB 어디에도 남지 않고, 지난
+           * 기록(/learn/records)의 closedBy 필터에서도 탈락해 화면에서
+           * **아예 사라진다** — 자료처럼 날짜가 옮겨 가는 것과 다르다.
+           * 그 화면이 스스로 세운 「과거를 조용히 지우지 않는다」와 어긋난다.
+           *
+           * 닫는 것 자체는 그대로 둔다. WHERE로 learner_review를 걸러 내는
+           * 단순안은 그 행이 영영 안 닫혀 위 주석의 원래 결손(「복습 예정
+           * N건」이 영원히 증가)을 되살린다. 이 행은 completed로 끝나므로
+           * 다음 간격 계산의 기준점으로 다시 쓰이지 않는다 — 재발하면
+           * 새 행이 insert된다. */
+          const gradedClose = {
+            closedBy: "graded_response",
+            gradeDecisionId: decisionId,
+            scoreRatio: ratio,
+          };
           await tx`
             update review_items
             set status = 'completed', completed_at = now(),
-                -- 다음 계산의 기준점 — 예측 기억률이 이 날짜부터 잰다
-                last_reviewed_on = ${evidenceDate}::date,
-                outcome = ${tx.json({
-                  closedBy: "graded_response",
-                  gradeDecisionId: decisionId,
-                  scoreRatio: ratio,
-                } as never)},
+                last_reviewed_on = case
+                  when outcome ->> 'closedBy' = 'learner_review'
+                    then last_reviewed_on
+                  else ${evidenceDate}::date
+                end,
+                outcome = case
+                  when outcome ->> 'closedBy' = 'learner_review'
+                    then outcome || jsonb_build_object(
+                           'gradedClose', ${tx.json(gradedClose as never)}::jsonb,
+                           'gradedOn', ${evidenceDate}::text)
+                  else ${tx.json(gradedClose as never)}
+                end,
                 updated_at = now()
             where organization_id = ${organizationId}
               and learner_id = ${learnerId}
@@ -652,16 +676,30 @@ export async function resolveGradingException(
           )
         `;
       } else {
-        // 교사가 정답으로 판정한 경우도 밀린 복습을 닫는다 (자동 채점과 같은 기준)
+        /* 교사가 정답으로 판정한 경우도 밀린 복습을 닫는다 (자동 채점과 같은
+         * 기준). 학생의 복습 흔적을 지키는 것도 같다 — 위 341행 주석 참조.
+         * 여기는 evidenceDate가 **교사가 누른 날**이라 지연이 길수록 더
+         * 많이 쓸어 가므로 오히려 더 중요하다. */
+        const exceptionClose = {
+          closedBy: "grading_exception",
+          gradeDecisionId: decisionId,
+          scoreRatio: ratio,
+        };
         await tx`
           update review_items
           set status = 'completed', completed_at = now(),
-              last_reviewed_on = ${evidenceDate}::date,
-              outcome = ${tx.json({
-                closedBy: "grading_exception",
-                gradeDecisionId: decisionId,
-                scoreRatio: ratio,
-              } as never)},
+              last_reviewed_on = case
+                when outcome ->> 'closedBy' = 'learner_review'
+                  then last_reviewed_on
+                else ${evidenceDate}::date
+              end,
+              outcome = case
+                when outcome ->> 'closedBy' = 'learner_review'
+                  then outcome || jsonb_build_object(
+                         'gradedClose', ${tx.json(exceptionClose as never)}::jsonb,
+                         'gradedOn', ${evidenceDate}::text)
+                else ${tx.json(exceptionClose as never)}
+              end,
               updated_at = now()
           where organization_id = ${input.organizationId}
             and learner_id = ${exception.learner_id}

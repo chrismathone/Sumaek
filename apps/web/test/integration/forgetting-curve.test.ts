@@ -277,4 +277,98 @@ describe.skipIf(!hasDb)("망각곡선 복습 (라이브 DB)", () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  /* ── 채점이 학생의 복습 흔적을 덮지 않는다 ──
+   *
+   * 이 저장소의 두 단언이 각각은 통과하면서 **이어 붙이면 결함**이 되던
+   * 자리다. (1) 위 「간격이 자란 항목」은 복습이 status='scheduled'로
+   * 남는다고 단언하고, (2) learner-flow는 채점이 바로 그 상태의 행을
+   * 닫는다고 단언한다. 둘을 이으면 — 학생이 복습한 뒤 같은 개념을 채점으로
+   * 맞히면 — outcome이 통째로 치환되고 last_reviewed_on이 채점일로 옮겨져
+   * 학생이 복습한 날이 DB 어디에도 남지 않았다. answerReview는 outbox도
+   * audit도 쓰지 않으므로 그 두 컬럼이 유일한 기록이다. 지난 기록 화면은
+   * closedBy='learner_review'로 거르므로 복습이 화면에서 아예 사라졌다.
+   *
+   * 「교사가 채점해야 터진다」가 아니다 — 주경로는 **학생 자신의 다음 제출**이
+   * 자동 채점되는 것이다. */
+  it("학생이 복습한 날과 closedBy는 이후 채점이 덮지 않는다", async () => {
+    const reviewedOn = isoAddDays(TODAY, -3);
+    await sql`
+      update review_items
+      set status = 'scheduled', completed_at = null,
+          due_on = ${TODAY}::date,
+          last_reviewed_on = ${reviewedOn}::date,
+          outcome = ${sql.json({ closedBy: "learner_review", correct: true } as never)}
+      where id = ${reviewItemId}
+    `;
+
+    /* 같은 개념을 채점으로 맞힌다 — 밀린 복습을 닫는 바로 그 경로.
+     * beforeAll의 응시는 이미 제출됐고 submitAndGrade는 멱등이라(같은 결과를
+     * 되돌려 줄 뿐 채점을 다시 돌지 않는다) 전용 평가를 새로 만든다. */
+    const fresh = { assessment: uuidv7(), aq: uuidv7() };
+    await sql`
+      insert into assessment_instances (id, organization_id, purpose, title, learner_id, status, scheduled_date, published_at)
+      values (${fresh.assessment}, ${ORG_ID}, 'formative', '통합테스트 복습보존', ${ids.learner}, 'published', ${TODAY}::date, now())
+    `;
+    await sql`
+      insert into assessment_questions (
+        id, organization_id, assessment_id, question_id, question_version_id,
+        content_checksum, sort_order, points, answer_snapshot, concept_weights, selection_reason
+      ) values (
+        ${fresh.aq}, ${ORG_ID}, ${fresh.assessment}, ${ids.question}, ${ids.version},
+        'itest-fc', 1, '10', ${sql.json(ANSWER as never)},
+        ${sql.json({ [ids.concept]: 1 } as never)}, 'today_concept'
+      )
+    `;
+    await sql`
+      insert into assignments (id, organization_id, assessment_id, learner_id, mode, assigned_by)
+      values (${uuidv7()}, ${ORG_ID}, ${fresh.assessment}, ${ids.learner}, 'online', ${TEACHER_ID})
+    `;
+
+    const started = await startAttempt({
+      organizationId: ORG_ID,
+      assessmentId: fresh.assessment,
+      learnerId: ids.learner,
+      today: TODAY,
+    });
+    if (!("attemptId" in started)) throw new Error("응시 시작 실패");
+    await saveResponse({
+      organizationId: ORG_ID,
+      learnerId: ids.learner,
+      attemptId: started.attemptId,
+      assessmentQuestionId: fresh.aq,
+      answer: { kind: "short_answer", rawText: "7" },
+      clientSequence: 1,
+    });
+    await submitAndGrade({
+      organizationId: ORG_ID,
+      attemptId: started.attemptId,
+      learnerId: ids.learner,
+    });
+
+    const [row] = await sql<
+      {
+        status: string;
+        last: string | null;
+        closed_by: string | null;
+        graded_close: string | null;
+        graded_on: string | null;
+      }[]
+    >`
+      select status::text as status, last_reviewed_on::text as last,
+             outcome ->> 'closedBy' as closed_by,
+             outcome -> 'gradedClose' ->> 'closedBy' as graded_close,
+             outcome ->> 'gradedOn' as graded_on
+      from review_items where id = ${reviewItemId}
+    `;
+
+    // 닫히는 것 자체는 그대로다 — 안 닫으면 「복습 예정 N건」이 영영 자란다
+    expect(row!.status).toBe("completed");
+    // 학생의 흔적은 그대로 (이 둘이 무너지면 지난 기록에서 복습이 사라진다)
+    expect(row!.last).toBe(reviewedOn);
+    expect(row!.closed_by).toBe("learner_review");
+    // 채점 정보는 지우지 않고 곁에 얹는다
+    expect(row!.graded_close).toBe("graded_response");
+    expect(row!.graded_on).toBe(TODAY);
+  });
 });

@@ -63,8 +63,10 @@ export function shiftMonth(year: number, month: number, delta: number): string {
  * 그 달의 몇 번째 날인지로 요일을 구한다.
  *
  * `new Date("2026-08-03")`을 거치지 않는 것이 요점이다 — 그 파싱은 UTC로
- * 해석되고 `getDay()`는 로컬로 답해서, 서버가 KST가 아닌 곳에 있으면 요일이
- * 하루 어긋난다. 격자를 만든 배열에서 세면 그런 일이 아예 없다.
+ * 해석되고 `getDay()`는 로컬로 답해서, 서버의 오프셋이 **음수면**(아메리카
+ * 대륙 등) 요일이 하루 앞으로 어긋난다. UTC나 KST 서버는 멀쩡하므로 로컬과
+ * CI에서는 영영 드러나지 않는다 — 그래서 테스트가 시간대 축을 따로 돈다
+ * (`test/ui/month.test.ts`). 격자를 만든 배열에서 세면 그런 일이 아예 없다.
  */
 export function weekdayIndex(view: MonthView, day: string): number {
   const i = view.days.indexOf(day);

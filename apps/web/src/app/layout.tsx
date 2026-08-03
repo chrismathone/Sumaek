@@ -8,10 +8,25 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
+/* 빈 문자열은 「값이 없다」로 본다.
+ *
+ * `??`는 undefined·null만 거르고 `""`는 그대로 통과시킨다. 그러면
+ * `new URL("")`이 TypeError를 던지고, 루트 레이아웃의 metadata 평가에서
+ * 터지므로 **전 페이지가 죽는다.** 그런데 `.env.example`은 바로 그것을
+ * 시킨다 — 「Vercel에서는 비워 두면 VERCEL_PROJECT_PRODUCTION_URL을 자동
+ * 사용한다」. 키만 남기고 값을 지우는 것이 문서가 안내하는 사용법이다.
+ * (`pnpm env:sync`는 빈 값을 건너뛰므로 이 경로로는 안 들어오지만,
+ * 로컬 .env와 Vercel 대시보드 직접 입력은 막을 것이 없다.) */
+const envValue = (raw: string | undefined) => {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
 const vercelHost =
-  process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  envValue(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
+  envValue(process.env.VERCEL_URL);
 const siteOrigin =
-  process.env.NEXT_PUBLIC_SITE_URL ??
+  envValue(process.env.NEXT_PUBLIC_SITE_URL) ??
   (vercelHost ? `https://${vercelHost}` : "http://localhost:3000");
 
 export const metadata: Metadata = {

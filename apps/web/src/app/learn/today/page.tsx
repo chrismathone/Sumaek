@@ -18,6 +18,15 @@ import { nodeIdList, nodeTitleMap, titleOf } from "@/lib/learn/node-titles";
 import { LearnTabs } from "@/components/learn/LearnTabs";
 import { OrbitStop, StepBadge } from "./OrbitRail";
 
+/** 「응시가 끝났다」의 정의. SQL 필터와 화면 분류가 **같은 목록**을 봐야 한다 —
+ *  갈리면 질의는 오래된 것을 지우는데 화면은 안 끝났다고 세는 상태가 된다. */
+const DONE_ATTEMPT_STATUSES = [
+  "submitted",
+  "auto_graded",
+  "review_required",
+  "finalized",
+];
+
 export const metadata: Metadata = { title: "오늘 학습" };
 
 /* ─────────────────────────────────────────────────────────────
@@ -223,8 +232,20 @@ export default async function LearnTodayPage() {
         and a.status in ('published', 'open', 'closed', 'grading', 'finalized')
         /* 상한이 없으면 학기가 지날수록 이 배정 스캔이 끝없이 자란다.
          * 90일보다 오래된 끝난 테스트는 「지난 기록」(/learn/records)이
-         * 달 단위로 낸다 — 여기서 다 이고 갈 필요가 없다. */
-        and (a.scheduled_date is null or a.scheduled_date >= ${today}::date - 90)
+         * 달 단위로 낸다 — 여기서 다 이고 갈 필요가 없다.
+         *
+         * **끝난 것에만 건다.** 지난 기록은 제출된 응시만 내므로
+         * (submitted_at 기준), 아직 응시하지 않은 배정을 여기서 빼면
+         * 학생 앱 어디에도 그 테스트로 가는 길이 남지 않는다 — 서버
+         * startAttempt는 여전히 허용하는데 화면만 길을 닫는 꼴이다.
+         * 게다가 그 건이 유일한 배정이면 화면이 「배정된 학습이 없습니다」
+         * 라고 말한다. */
+        and (
+          a.scheduled_date is null
+          or a.scheduled_date >= ${today}::date - 90
+          or t.status is null
+          or not (t.status = any(${DONE_ATTEMPT_STATUSES}))
+        )
       order by a.scheduled_date desc nulls last, a.created_at desc
     `,
     /* 기한이 온 복습만 — 교사 화면(app/students)과 같은 기준(due_on)이다.
@@ -322,8 +343,7 @@ export default async function LearnTodayPage() {
 
   /* ── 단계 판정 ── */
   const isDone = (s: string | null) =>
-    Boolean(s) &&
-    ["submitted", "auto_graded", "review_required", "finalized"].includes(s!);
+    Boolean(s) && DONE_ATTEMPT_STATUSES.includes(s!);
 
   const openTests = assessments.filter(
     (a) =>
