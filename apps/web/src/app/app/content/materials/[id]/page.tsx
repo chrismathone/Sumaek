@@ -192,6 +192,7 @@ export default async function MaterialDetailPage({
     select count(*)::int from questions q
     join content_rights r on r.id = q.content_right_id and r.status = 'usable'
     join question_alignments a on a.question_id = q.id and a.concept_id = c.id
+      and a.provenance <> 'ai_suggested'
     where q.organization_id = ${user.organizationId}
       and q.review_status = 'published'
   ) as usable_questions`;
@@ -233,6 +234,7 @@ export default async function MaterialDetailPage({
                    select 1 from question_alignments a
                    where a.question_id = q.id
                      and a.concept_id = ${material.concept_id}
+                     and a.provenance <> 'ai_suggested'
                  ) as aligned
           from questions q
           join question_versions v on v.id = q.current_version_id
@@ -244,6 +246,7 @@ export default async function MaterialDetailPage({
                 select 1 from question_alignments a
                 where a.question_id = q.id
                   and a.concept_id = ${material.concept_id}
+                  and a.provenance <> 'ai_suggested'
               )
               -- 빈 배열은 [null]로 — postgres.js가 빈 JS 배열의 원소 타입을 모른다
               or q.id = any(${questionIds.length > 0 ? questionIds : [null]}::uuid[])

@@ -219,6 +219,8 @@ export async function listPracticeQuestions(input: {
           and exists (
             select 1 from question_alignments a
             where a.question_id = q.id and a.concept_id = ${material.concept_id}
+              /* 미검수 AI 제안으로는 학생에게 문항을 내보내지 않는다 */
+              and a.provenance <> 'ai_suggested'
           )
         order by q.created_at
         limit ${input.limit ?? 5}

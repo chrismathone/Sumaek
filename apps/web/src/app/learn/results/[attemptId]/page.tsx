@@ -52,6 +52,8 @@ export default async function ResultsPage({
     left join grade_decisions d on d.response_id = r.id
       and d.version = (select max(version) from grade_decisions where response_id = r.id)
     left join question_alignments qa on qa.question_id = aq.question_id
+      /* 학생 화면 — 미검수 AI 제안의 개념명을 보여 주지 않는다 */
+      and qa.provenance <> 'ai_suggested'
     left join canonical_concepts c on c.id = qa.concept_id
     where aq.assessment_id = (select assessment_id from attempts where id = ${attemptId})
     group by aq.sort_order, d.is_correct, d.score, d.max_score, d.is_final
