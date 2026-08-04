@@ -117,6 +117,67 @@ function actorFields(actorUserId: string | null): {
     : { type: "automation", id: null };
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * 이미 있는 평가를 찾아 그대로 돌려주기 — 멱등의 두 얼굴.
+ *
+ * 생성은 **시작하기 전에** 한 번, **부딪힌 뒤에** 한 번 이 질문을 한다.
+ * 앞의 것만 있으면 두 요청이 동시에 들어왔을 때 둘 다 「없다」를 보고 둘 다
+ * 넣는다 — 유니크 인덱스가 뒤엣것을 막고, 그 예외가 그대로 올라간다.
+ *
+ * 워커에서 그것이 어떻게 보이는지가 요점이다: 작업이 실패로 끝나고, 재시도를
+ * 다섯 번 소진하고, DLQ로 가서 E-17이 발행된다. 교사 업무함에는 **이미 만들어져
+ * 있는** 시험을 두고 「생성 실패 — 다시 실행하세요」가 뜬다. 겹치는 경로는
+ * 드물지 않다: 여러 워커가 함께 돌고, lease가 만료된 작업은 회수돼 다시
+ * 돌며, 교사가 화면에서 생성을 누르는 순간 워커도 같은 것을 만들 수 있다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** Postgres 유니크 위반 */
+const UNIQUE_VIOLATION = "23505";
+
+function isDuplicateAssessment(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  const constraint = (error as { constraint_name?: string } | null)?.constraint_name;
+  return code === UNIQUE_VIOLATION && (constraint ?? "").includes("idempotent");
+}
+
+async function findExisting(
+  sql: ReturnType<typeof getSharedSql>,
+  input: {
+    organizationId: string;
+    learningGroupId: string;
+    targetDate: IsoDate;
+    purpose: "formative" | "confirmation";
+  },
+): Promise<{ id: string; cnt: number } | null> {
+  const [row] = await sql<{ id: string; cnt: number }[]>`
+    select a.id,
+      (select count(*)::int from assessment_questions q where q.assessment_id = a.id) as cnt
+    from assessment_instances a
+    where a.organization_id = ${input.organizationId}
+      and a.learning_group_id = ${input.learningGroupId}
+      and a.scheduled_date = ${input.targetDate}
+      and a.purpose::text = ${input.purpose}
+      and a.status <> 'cancelled'
+    limit 1
+  `;
+  return row ?? null;
+}
+
+function alreadyGenerated(
+  existing: { id: string; cnt: number },
+  label: string,
+): GenerateResult {
+  return {
+    ok: true,
+    message: `이미 생성된 ${label}가 있습니다 (${existing.cnt}문항). 같은 요청은 중복 생성하지 않습니다.`,
+    assessmentId: existing.id,
+    questionCount: existing.cnt,
+    shortfalls: [],
+    assignedLearners: 0,
+    deduplicated: true,
+  };
+}
+
 /** 무엇이 이 평가를 만들었는가 — 계획 연결 (T3.3) */
 export interface PlanningSnapshot {
   planDate: IsoDate;
@@ -181,28 +242,13 @@ export async function generateDailyTest(options: {
   const { organizationId, learningGroupId, targetDate } = options;
 
   /* 멱등 검사 — 이미 있으면 그대로 반환 (17장) */
-  const [existing] = await sql<{ id: string; cnt: number }[]>`
-    select a.id,
-      (select count(*)::int from assessment_questions q where q.assessment_id = a.id) as cnt
-    from assessment_instances a
-    where a.organization_id = ${organizationId}
-      and a.learning_group_id = ${learningGroupId}
-      and a.scheduled_date = ${targetDate}
-      and a.purpose = 'formative'
-      and a.status <> 'cancelled'
-    limit 1
-  `;
-  if (existing) {
-    return {
-      ok: true,
-      message: `이미 생성된 일일테스트가 있습니다 (${existing.cnt}문항). 같은 요청은 중복 생성하지 않습니다.`,
-      assessmentId: existing.id,
-      questionCount: existing.cnt,
-      shortfalls: [],
-      assignedLearners: 0,
-      deduplicated: true,
-    };
-  }
+  const existing = await findExisting(sql, {
+    organizationId,
+    learningGroupId,
+    targetDate,
+    purpose: "formative",
+  });
+  if (existing) return alreadyGenerated(existing, "일일테스트");
 
   /* 정책 — 반 → 조직. 준비도 게이트가 보는 것과 **같은 해석**이다
    * (assessment-policy.ts). 게이트가 통과시킨 조건과 여기서 실패하는 조건이
@@ -459,6 +505,7 @@ export async function generateDailyTest(options: {
   const planningLink = planningSnapshot(options, targetDate, policySource);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
+  try {
   await sql.begin(async (tx) => {
     /* 블루프린트 — 무엇을 왜 재려 했는지의 기록. 인스턴스보다 먼저 쓴다 */
     await tx`
@@ -593,6 +640,22 @@ export async function generateDailyTest(options: {
       )
     `;
   });
+  } catch (error) {
+    /* 겹쳐 들어온 다른 생성이 먼저 커밋했다. 트랜잭션은 통째로 되돌아갔으니
+     * 반쯤 만들어진 것은 없다 — 먼저 만든 쪽의 평가를 그대로 돌려준다.
+     * 여기서 던지면 워커가 이것을 「생성 실패」로 다섯 번 재시도한 뒤 DLQ로
+     * 보내고, 교사는 **이미 있는** 시험을 두고 실패 알림을 받는다. */
+    if (!isDuplicateAssessment(error)) throw error;
+    const raced = await findExisting(sql, {
+      organizationId,
+      learningGroupId,
+      targetDate,
+      purpose: "formative",
+    });
+    /* 유니크 위반인데 그 행이 없다 = 상대가 롤백했다. 그때는 진짜 실패다. */
+    if (!raced) throw error;
+    return alreadyGenerated(raced, "일일테스트");
+  }
 
   return {
     ok: true,
@@ -626,28 +689,13 @@ export async function generateConfirmationTest(options: {
   const sql = getSharedSql();
   const { organizationId, learningGroupId, targetDate } = options;
 
-  const [existing] = await sql<{ id: string; cnt: number }[]>`
-    select a.id,
-      (select count(*)::int from assessment_questions q where q.assessment_id = a.id) as cnt
-    from assessment_instances a
-    where a.organization_id = ${organizationId}
-      and a.learning_group_id = ${learningGroupId}
-      and a.scheduled_date = ${targetDate}
-      and a.purpose = 'confirmation'
-      and a.status <> 'cancelled'
-    limit 1
-  `;
-  if (existing) {
-    return {
-      ok: true,
-      message: `이미 생성된 확인테스트가 있습니다 (${existing.cnt}문항).`,
-      assessmentId: existing.id,
-      questionCount: existing.cnt,
-      shortfalls: [],
-      assignedLearners: 0,
-      deduplicated: true,
-    };
-  }
+  const existing = await findExisting(sql, {
+    organizationId,
+    learningGroupId,
+    targetDate,
+    purpose: "confirmation",
+  });
+  if (existing) return alreadyGenerated(existing, "확인테스트");
 
   /* 정책 — 일일테스트와 같은 해석(반 → 조직). 준비도 게이트가 보는 것과 같다 */
   const resolved = await resolveAssessmentPolicy(sql, {
@@ -756,6 +804,7 @@ export async function generateConfirmationTest(options: {
   const planningLink = planningSnapshot(options, targetDate, policySource);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
+  try {
   await sql.begin(async (tx) => {
     await tx`
       insert into assessment_blueprints (
@@ -869,6 +918,18 @@ export async function generateConfirmationTest(options: {
       )
     `;
   });
+  } catch (error) {
+    /* 일일테스트와 같은 이유·같은 처방 (findExisting 위 주석 참고) */
+    if (!isDuplicateAssessment(error)) throw error;
+    const raced = await findExisting(sql, {
+      organizationId,
+      learningGroupId,
+      targetDate,
+      purpose: "confirmation",
+    });
+    if (!raced) throw error;
+    return alreadyGenerated(raced, "확인테스트");
+  }
 
   return {
     ok: true,
