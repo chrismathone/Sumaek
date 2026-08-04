@@ -129,11 +129,21 @@ export default async function PracticePage({
         </ul>
       )}
 
-      {/* 흐름을 잇는다 — 풀고 나면 다음 개념으로. 개념 범위로 들어온 학생만
-          이 줄을 본다(전체 보기는 어느 개념의 다음인지 정할 수 없다). */}
-      {scoped && (
-        <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-rule-soft pt-4">
-          {nextConcept ? (
+      {/* 이동 바는 개념 학습 쪽과 **같은 모양으로 화면 아래에 붙인다** —
+          문항이 많으면 화면이 길어져, 다음으로 가려고 끝까지 스크롤해야
+          하는 것은 같은 불편이다. 배경은 불투명하게: 반투명이면 밑을 지나는
+          수식이 글자 사이로 비친다. */}
+      <div className="sticky bottom-0 z-30 mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-t-lg border border-b-0 border-rule bg-surface px-4 py-3">
+        <Link
+          href="/learn/today"
+          className="text-sm text-pen underline underline-offset-4"
+        >
+          오늘 학습으로
+        </Link>
+        {/* 다음 목적지는 개념 범위로 들어온 학생에게만 낸다 — 전체 보기는
+            어느 개념의 다음인지 정할 수 없다. */}
+        {scoped &&
+          (nextConcept ? (
             <Link
               href={`/learn/study?p=${nextConcept}`}
               className="rounded-[var(--radius-control)] border border-pen bg-pen px-4 py-2 text-sm font-medium text-white"
@@ -147,16 +157,8 @@ export default async function PracticePage({
             >
               오늘 학습으로 →
             </Link>
-          )}
-        </div>
-      )}
-
-      <Link
-        href="/learn/today"
-        className="mt-6 inline-block text-sm text-pen underline underline-offset-4"
-      >
-        오늘 학습으로 돌아가기
-      </Link>
+          ))}
+      </div>
     </div>
   );
 }

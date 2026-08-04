@@ -306,8 +306,11 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
   await expect(videoCard.getByRole("button", { name: "다 봤어요" })).toHaveCount(0);
 
   /* 그래서 다음으로 가는 길은 **잠겨 있다** — 이 개념의 인강을 아직 안 봤다.
-   * 잠금이 풀리는 조건이 「시청 완료」임을 문구로도 못 박는다. */
-  await expect(card.getByText(/인강 \d+건을 끝까지 보면 열립니다/)).toBeVisible();
+   * 잠금이 풀리는 조건이 「시청 완료」임을 문구로도 못 박는다.
+   * 이동 바는 섹션 밖(화면 아래 고정)이라 페이지 범위로 본다. */
+  await expect(
+    student.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
+  ).toBeVisible();
   await studentCtx.close();
 });
 
@@ -378,12 +381,13 @@ test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 �
   ).toHaveCount(0);
 
   /* 인강을 아직 안 봤으므로 다음 쪽은 **잠겨 있다** — 이것이 시청 강제의
-   * 실제 모습이다. 링크가 아니라 잠긴 표시와 이유만 있다. */
+   * 실제 모습이다. 링크가 아니라 잠긴 표시와 이유만 있다.
+   * 이동 바는 섹션 **밖**(화면 아래 고정)이라 page 범위로 본다. */
   await expect(
-    conceptPage.getByRole("link", { name: "연습문제 풀러 가기 →" }),
+    page.getByRole("link", { name: "연습문제 풀러 가기 →" }),
   ).toHaveCount(0);
   await expect(
-    conceptPage.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
+    page.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
   ).toBeVisible();
 
   /* 연습 쪽 자체는 개념 id로 직접 연다 — 잠금은 위에서 확인했고, 여기서

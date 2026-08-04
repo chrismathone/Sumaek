@@ -194,6 +194,14 @@ export default async function StudyPage({
             {scope.hasSession &&
               "선생님이 자료를 올리면 여기에 표시됩니다. 그동안 테스트와 복습은 그대로 할 수 있습니다."}
           </p>
+          {/* 돌아가는 길 — 이 갈래에는 아래 이동 바가 없다(이동할 개념이
+              없으므로). 길 없이 두면 학생이 갇힌다. */}
+          <Link
+            href="/learn/today"
+            className="mt-4 inline-block text-sm text-pen underline underline-offset-4"
+          >
+            오늘 학습으로 돌아가기
+          </Link>
         </div>
       ) : (
         <LectureGate
@@ -310,46 +318,57 @@ export default async function StudyPage({
             })}
           </div>
 
-          {/* 아래 이동 — 설명·인강을 마쳤으면 **쪽을 넘겨** 연습으로 간다.
-              연습 자료가 없는 개념은 곧장 다음 개념으로 — 없는 곳으로 보내
-              「연습문제가 없습니다」를 읽히는 것은 한 번 더 걷게 하는 일이다. */}
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-rule-soft pt-4">
-            {page > 1 ? (
+        </section>
+
+        {/* 이동 바는 **화면 아래에 붙는다**(sticky bottom-0).
+            셸의 머리글은 이미 위에 붙어 있으므로, 이 줄까지 붙이면 가운데
+            본문만 흐르고 「지금 어디서 어디로」는 늘 제자리에 있다. 설명이
+            길어 한참 내려간 학생이 다음으로 가려고 끝까지 스크롤할 필요가
+            없어진다.
+
+            섹션 **밖**에 두는 이유: 안에 두면 카드 테두리 안에서만 붙어
+            폭이 어긋나고, 카드 배경 위에 겹쳐 읽기 어렵다.
+            배경을 불투명하게 두는 것도 같은 이유다 — 반투명이면 밑을 지나는
+            수식이 글자 사이로 비친다. */}
+        <div className="sticky bottom-0 z-30 mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-t-lg border border-b-0 border-rule bg-surface px-4 py-3">
+          <div className="flex items-center gap-3">
+            {page > 1 && (
               <Link
                 href={`/learn/study?p=${page - 1}`}
                 className="rounded-[var(--radius-control)] border border-rule px-3 py-1.5 text-sm"
               >
                 ← 이전 개념
               </Link>
-            ) : (
-              <span />
             )}
-            {/* 인강을 끝까지 봐야 열린다 — 남아 있으면 잠긴 버튼과 이유를
-                낸다(GatedNextLink). 영상이 0건인 개념은 잠기지 않는다. */}
-            {hasPractice ? (
-              <GatedNextLink
-                href={`/learn/practice?c=${current.conceptId}`}
-                label="연습문제 풀러 가기 →"
-              />
-            ) : page < pages.length ? (
-              <GatedNextLink
-                href={`/learn/study?p=${page + 1}`}
-                label="다음 개념 →"
-              />
-            ) : (
-              <GatedNextLink href="/learn/today" label="오늘 학습으로 →" />
-            )}
+            {/* 돌아가는 길은 이 바 안에 둔다 — 바 아래에 링크를 따로 두면
+                붙어 있는 바에 가려 영영 안 보인다 */}
+            <Link
+              href="/learn/today"
+              className="text-sm text-pen underline underline-offset-4"
+            >
+              오늘 학습으로
+            </Link>
           </div>
-        </section>
+          {/* 인강을 끝까지 봐야 열린다 — 남아 있으면 잠긴 버튼과 이유를
+              낸다(GatedNextLink). 영상이 0건인 개념은 잠기지 않는다.
+              연습 자료가 없는 개념은 곧장 다음 개념으로 — 없는 곳으로 보내
+              「연습문제가 없습니다」를 읽히는 것은 한 번 더 걷게 하는 일이다. */}
+          {hasPractice ? (
+            <GatedNextLink
+              href={`/learn/practice?c=${current.conceptId}`}
+              label="연습문제 풀러 가기 →"
+            />
+          ) : page < pages.length ? (
+            <GatedNextLink
+              href={`/learn/study?p=${page + 1}`}
+              label="다음 개념 →"
+            />
+          ) : (
+            <GatedNextLink href="/learn/today" label="오늘 학습으로 →" />
+          )}
+        </div>
         </LectureGate>
       )}
-
-      <Link
-        href="/learn/today"
-        className="mt-6 inline-block text-sm text-pen underline underline-offset-4"
-      >
-        오늘 학습으로 돌아가기
-      </Link>
     </div>
   );
 }
