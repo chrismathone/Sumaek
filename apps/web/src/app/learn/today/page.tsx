@@ -9,6 +9,7 @@ import {
   type MaterialRow,
 } from "@/lib/domain/learning-material";
 import { listDueReviewConcepts } from "@/lib/domain/review";
+import { projectToday } from "@/lib/domain/day-plan";
 import {
   badgeLabel,
   conceptSpan,
@@ -203,86 +204,48 @@ export default async function LearnTodayPage() {
   const sql = getSharedSql();
   const today = todayInKst();
 
-  const [assessments, dueConcepts, learnerItems] = await Promise.all([
-    sql<
-      {
-        id: string;
-        title: string;
-        scheduled_date: string | null;
-        time_limit_minutes: number | null;
-        question_count: number;
-        attempt_id: string | null;
-        attempt_status: string | null;
-        total_score: string | null;
-        max_score: string | null;
-      }[]
-    >`
-      select a.id, a.title, a.scheduled_date::text as scheduled_date,
-             a.time_limit_minutes,
-             (select count(*)::int from assessment_questions q
-               where q.assessment_id = a.id) as question_count,
-             t.id as attempt_id, t.status as attempt_status,
-             t.total_score, t.max_score
-      from assignments s
-      join assessment_instances a on a.id = s.assessment_id
-      /* 재응시가 생기면 한 평가에 attempts 행이 여럿이다(고유 키가
-       * assessment·learner·attempt_no다). 그냥 join하면 같은 테스트가
-       * 목록에 두 줄로 나온다 — 최신 응시 한 건만 붙인다. */
-      left join lateral (
-        select at.id::text as id, at.status::text as status,
-               at.total_score::text as total_score,
-               at.max_score::text as max_score
-        from attempts at
-        where at.assessment_id = a.id and at.learner_id = s.learner_id
-        order by at.attempt_no desc
-        limit 1
-      ) t on true
-      where s.organization_id = ${learner.user.organizationId}
-        and s.learner_id = ${learner.learnerId}
-        and s.status <> 'cancelled'
-        and a.status in ('published', 'open', 'closed', 'grading', 'finalized')
-        /* 상한이 없으면 학기가 지날수록 이 배정 스캔이 끝없이 자란다.
-         * 90일보다 오래된 끝난 테스트는 「지난 기록」(/learn/records)이
-         * 달 단위로 낸다 — 여기서 다 이고 갈 필요가 없다.
-         *
-         * **끝난 것에만 건다.** 지난 기록은 제출된 응시만 내므로
-         * (submitted_at 기준), 아직 응시하지 않은 배정을 여기서 빼면
-         * 학생 앱 어디에도 그 테스트로 가는 길이 남지 않는다 — 서버
-         * startAttempt는 여전히 허용하는데 화면만 길을 닫는 꼴이다.
-         * 게다가 그 건이 유일한 배정이면 화면이 「배정된 학습이 없습니다」
-         * 라고 말한다. */
-        and (
-          a.scheduled_date is null
-          or a.scheduled_date >= ${today}::date - 90
-          or t.status is null
-          or not (t.status = any(${DONE_ATTEMPT_STATUSES}))
-        )
-      order by a.scheduled_date desc nulls last, a.created_at desc
-    `,
+  /* 오늘의 계획은 투영기가 만든다 (lib/domain/day-plan.ts).
+   *
+   * 예전에는 이 화면이 배정을 직접 훑으면서 `scheduled_date >= today - 90`
+   * 으로 최근 90일을 통째로 긁어 왔다. 두 달 전에 끝낸 테스트가 「끝남」으로
+   * 목록에 앉으면, 오늘 할 일이 하나도 없는 날에도 화면이 완주한 것처럼
+   * 보인다. 날짜 규칙을 화면에 두는 한 그 규칙은 화면마다 갈린다 —
+   * 그래서 규칙과 질의를 통째로 투영기로 옮겼다.
+   *
+   * 투영기는 계산만 하는 것이 아니라 learner_day_plans에 **확정**까지 한다.
+   * 학생이 그날 처음 이 화면을 여는 순간이 스냅샷 시점이다 (ADR-0017 §4). */
+  const view = await projectToday({
+    learner: {
+      organizationId: learner.user.organizationId,
+      learnerId: learner.learnerId,
+    },
+    today,
+  });
+  const assessments = view.assignments;
+
+  const [dueConcepts, learnerItems] = await Promise.all([
     /* 기한이 온 복습 — 교사 화면(app/students)과 같은 기준(due_on)이다.
      * 개념별로 묶어서 받는다: 히어로가 「몇 건」이 아니라 **무엇을** 복습할지
-     * 말해야 하고, 총건수·기한 지난 수는 이 묶음을 더하면 나온다. 집계 질의를
-     * 따로 두면 두 정의가 갈릴 자리가 하나 더 생긴다. */
+     * 말해야 하고, 총건수·기한 지난 수는 이 묶음을 더하면 나온다. */
     listDueReviewConcepts({
       organizationId: learner.user.organizationId,
       learnerId: learner.learnerId,
       today,
     }),
-    sql<ScheduleRow[]>`
-      select li.starts_at, li.ends_at, li.planned_node_ids,
-             li.matches_group, li.is_rejoin
-      from learner_schedule_items li
-      where li.organization_id = ${learner.user.organizationId}
-        and li.learner_id = ${learner.learnerId}
-        and li.item_date = ${today}::date
-      order by li.starts_at
-    `,
-  ]);
-
-  const groupItems =
-    learnerItems.length > 0
-      ? []
-      : await sql<ScheduleRow[]>`
+    /* 차시의 시각·재합류 표시는 계획 항목에 없다 — 화면 전용 값이라
+     * 여기서만 읽는다. 어느 쪽(개별/반 공통)을 읽을지는 투영기가 이미
+     * 정했으므로 그 판단(view.source)을 그대로 따른다. */
+    view.source === "learner_schedule"
+      ? sql<ScheduleRow[]>`
+          select li.starts_at, li.ends_at, li.planned_node_ids,
+                 li.matches_group, li.is_rejoin
+          from learner_schedule_items li
+          where li.organization_id = ${learner.user.organizationId}
+            and li.learner_id = ${learner.learnerId}
+            and li.item_date = ${today}::date
+          order by li.starts_at
+        `
+      : sql<ScheduleRow[]>`
           select s.starts_at, s.ends_at, s.planned_node_ids,
                  null::boolean as matches_group, null::boolean as is_rejoin
           from sessions s
@@ -294,13 +257,15 @@ export default async function LearnTodayPage() {
             and s.session_date = ${today}::date
             and s.status <> 'cancelled'
           order by s.starts_at
-        `;
-  const schedule = learnerItems.length > 0 ? learnerItems : groupItems;
+        `,
+  ]);
+  const schedule = learnerItems;
+
 
   /* 차시 노드 이름 — 지난 기록의 하루 상세와 **같은 규칙**을 써야 해서
    * lib/learn/node-titles.ts에 있다. 두 화면이 각자 풀면 보충 차시 이름이
    * 한쪽에서만 뭉개지는 식으로 갈린다. */
-  const nodeIds = schedule.flatMap((s) => nodeIdList(s.planned_node_ids));
+  const nodeIds = view.scope.nodeIds;
   const nodeTitle = await nodeTitleMap({
     organizationId: learner.user.organizationId,
     learnerId: learner.learnerId,

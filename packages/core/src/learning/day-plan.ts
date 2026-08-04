@@ -66,12 +66,26 @@ export interface DayPlanItemInput {
   blockedReason?: string | null;
   /** 화면 표시 순서. 없으면 `key` 사전순으로 안정 정렬한다. */
   ordinal?: number | null;
+
+  /* 아래 넷은 판정에 쓰이지 않고 **그대로 실려 나간다.** 투영기(apps/web)와
+   * 저장소(packages/db)가 같은 항목 모양을 쓰게 하려고 여기 둔다 — 두 벌로
+   * 나누면 필드가 하나 늘 때마다 세 곳을 고쳐야 하고, 한 곳을 놓치면
+   * 화면에는 있고 DB에는 없는 값이 생긴다. */
+  /** 그날 학생이 본 문구. 원본 제목이 나중에 바뀌어도 기록은 그대로 (I-08 성질) */
+  titleSnapshot?: string | null;
+  routeNodeId?: string | null;
+  refType?: string | null;
+  refId?: string | null;
 }
 
 export interface DayPlanItem extends DayPlanItemInput {
   scheduledDate: IsoDate | null;
   blockedReason: string | null;
   ordinal: number | null;
+  titleSnapshot: string | null;
+  routeNodeId: string | null;
+  refType: string | null;
+  refId: string | null;
 }
 
 export interface RequiredTally {
@@ -109,6 +123,10 @@ function normalize(input: DayPlanItemInput): DayPlanItem {
     scheduledDate: input.scheduledDate ?? null,
     blockedReason: input.blockedReason ?? null,
     ordinal: input.ordinal ?? null,
+    titleSnapshot: input.titleSnapshot ?? null,
+    routeNodeId: input.routeNodeId ?? null,
+    refType: input.refType ?? null,
+    refId: input.refId ?? null,
   };
 }
 

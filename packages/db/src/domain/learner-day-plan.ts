@@ -92,6 +92,19 @@ export interface LearnerDayPlanRow {
   }[];
 }
 
+/**
+ * 완료 상태면 완료 시각을 함께 준다.
+ *
+ * 투영기가 내는 항목은 이미 `completed`일 수 있다 — 학생이 어제 끝낸 자료,
+ * 방금 제출한 시험처럼 다른 테이블이 진실을 갖고 있는 것들이다. 상태만
+ * 넣고 시각을 비우면 `learner_day_plan_items_completed_pair` 체크 제약에
+ * 걸린다. 「완료인데 언제인지 모른다」를 애초에 만들지 않겠다는 제약이라
+ * 우회하지 않고 시각을 채운다.
+ */
+function completionStamp(status: DayPlanItemStatus): Date | null {
+  return status === "completed" ? new Date() : null;
+}
+
 /** 학생이 이미 손댄 항목 — 재투영이 상태를 덮어쓰지 않는다. */
 const PRESERVED: ReadonlySet<string> = new Set([
   "completed",
@@ -215,13 +228,14 @@ export async function projectLearnerDayPlan(
           insert into learner_day_plan_items
             (id, organization_id, learner_day_plan_id, item_key, ordinal, kind,
              required, route_node_id, ref_type, ref_id, title_snapshot, status,
-             blocked_reason, added_after_materialization)
+             blocked_reason, completed_at, added_after_materialization)
           values (${uuidv7()}, ${input.organizationId}, ${planId}, ${spec.key},
                   ${spec.ordinal}, ${spec.kind},
                   ${afterMaterialization ? false : spec.required},
                   ${spec.routeNodeId ?? null}, ${spec.refType ?? null},
                   ${spec.refId ?? null}, ${spec.titleSnapshot}, ${spec.status},
-                  ${spec.blockedReason ?? null}, ${afterMaterialization})
+                  ${spec.blockedReason ?? null}, ${completionStamp(spec.status)},
+                  ${afterMaterialization})
         `;
         inserted += 1;
         continue;
@@ -241,6 +255,7 @@ export async function projectLearnerDayPlan(
             title_snapshot = ${spec.titleSnapshot},
             status = ${spec.status},
             blocked_reason = ${spec.blockedReason ?? null},
+            completed_at = ${completionStamp(spec.status)},
             required = ${prior.added_after_materialization ? false : spec.required},
             updated_at = now()
         where id = ${prior.id}

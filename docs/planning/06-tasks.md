@@ -316,7 +316,9 @@ Set-Location ..\Su-Maek-t1-3-day-projection
    pnpm --filter @su-maek/web exec vitest run test/integration/day-plan-projection.test.ts
    # Expected: PASSED
    ```
-3. **REFACTOR**: `/learn/today`, `/learn/study`, `/learn/watch`, `/learn/practice`, `/learn/tests`, `/learn/review`가 같은 TodayScope를 사용하도록 중복 질의를 정리한다. `/learn/records`·`/learn/results`는 이력 화면이라 T0.2가 정한 방침을 따른다(하루 계획 기반 전환 또는 응시 이력 유지).
+3. **REFACTOR**: `/learn/today`, `/learn/study`, `/learn/watch`, `/learn/practice`가 같은 TodayScope를 사용하도록 중복 질의를 정리한다.
+
+   > **정정(T1.3 착수 후)**: 원안은 `/learn/tests`·`/learn/review`까지 여섯을 들었으나 착수해 보니 틀렸다. `/learn/tests`에는 `page.tsx`가 없고(`[id]`뿐), `/learn/review`는 오늘의 노드·개념 범위가 아니라 `review_items.due_on`을 기준으로 도는 다른 축이다. 억지로 묶으면 복습 화면이 오늘 수업이 없는 날 비게 된다. 대상은 **넷**이다. `/learn/records`·`/learn/results`는 이력 화면이라 ADR-0018 §7대로 응시 이력 기반을 유지한다.
 
 **산출물**:
 - `apps/web/src/lib/domain/day-plan.ts`
@@ -332,7 +334,7 @@ Set-Location ..\Su-Maek-t1-3-day-projection
 - [ ] 미래 평가는 예정으로만 보이고 필수 완료 분모에 들어가지 않음
 - [ ] 개별 일정이 있으면 반 공통 노드가 섞이지 않음 (`learner_schedule_items` 우선 → `sessions` fallback)
 - [ ] 같은 날짜 재조회 결과가 결정론적임
-- [ ] TodayScope를 쓰는 학생 화면 6개가 같은 완료 상태를 보여 줌
+- [ ] TodayScope를 쓰는 학생 화면 **4개**가 같은 범위를 씀 (위 정정 참조)
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
