@@ -13,6 +13,7 @@
     "extract": "tsx src/cli/extract.mts",
     "glyph-census": "tsx src/cli/glyph-census.mts",
     "concept-coverage": "tsx src/cli/concept-coverage.mts",
+    "concept-page-scan": "tsx src/cli/concept-page-scan.mts",
     "answers": "tsx src/cli/answers.mts",
     "load": "tsx src/cli/load.mts",
     "load-concepts": "tsx src/cli/load-concepts.mts",

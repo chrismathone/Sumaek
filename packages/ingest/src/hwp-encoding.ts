@@ -673,8 +673,49 @@ export function tidyBodyText(text: string): string {
  */
 export function joinLatex(left: string, right: string): string {
   if (left === "") return right;
+  /* **잇달아 붙는 위·아래첨자는 한 덩어리다.**
+   *
+   * 별책은 `2¹¹`을 span 여럿으로 쪼개 보낸다 — `Ú`가 EHsang-Plain 혼자,
+   * 뒤이어 `` `ß` ``가 EHsang-Italic로 온다. 각 조각은 제대로 `^{1}`·`^{6}`이
+   * 되지만 그대로 이으면 `^{1}^{6}`이고, KaTeX는 이것을 「double superscript」로
+   * 보고 파싱에 실패한다. 화면에는 빨간 글자가, 채점에는 없는 수가 나간다
+   * (중2-1 별책 해설 259건이 이 꼴이었다). 한 글자 안에서 묶는 일은
+   * decodeHwpMath가 이미 하고, 조각을 넘나드는 자리는 여기가 마지막이다. */
+  for (const mark of ["^", "_"] as const) {
+    /* **간단한 조각일 때만 잇는다.** 숫자·글자·부호로만 된 것은 한 지수가
+     * 쪼개진 것이다 — `2^{2}` + `^{+}` + `^{3}` + `^{a}`가 2^{2+3+a}다
+     * (별책 p.13 문항 0193). 안에 중괄호나 LaTeX 명령이 든 것은 구조가
+     * 있다는 뜻이라 손대지 않는다. 이 함수는 **좌표가 맞닿은 조각**끼리만
+     * 부르므로, 여기서 만나는 두 지수는 원래 하나였다고 볼 근거가 있다. */
+    const tail = new RegExp(`\\${mark}\\{([0-9A-Za-z+\\-]+)\\}$`).exec(left);
+    const head = new RegExp(`^\\${mark}\\{([0-9A-Za-z+\\-]+)\\}`).exec(right);
+    if (tail && head) {
+      return (
+        left.slice(0, -tail[0].length) +
+        `${mark}{${tail[1]}${head[1]}}` +
+        right.slice(head[0].length)
+      );
+    }
+  }
   const needsSpace = /\\[a-zA-Z]+$/.test(left) && /^[a-zA-Z]/.test(right);
   return left + (needsSpace ? " " : "") + right;
+}
+
+/**
+ * **좌표가 「이것도 위첨자」라고 말해 준 조각**을 앞의 지수 안에 넣는다.
+ *
+ * 조판기는 지수 `2+3+a`를 네 조각으로 쪼개 보낸다(`2` · `+` · `3` · `+a`).
+ * 조각마다 따로 `^{}`를 씌우면 `2^{2}^{+}^{3}^{+}^{a}`가 되고, KaTeX는
+ * 이것을 「double superscript」로 보고 파싱에 실패한다(중2-1 별책 해설).
+ *
+ * joinLatex의 숫자 규칙과 나누어 둔 이유: 이쪽은 **글자 상자가 위첨자라고
+ * 말해 준** 조각들이라 한 지수임이 구조로 확실하다. 그쪽은 글리프표만 보고
+ * 판단하는 자리라 숫자일 때만 잇는다.
+ */
+export function mergeRaised(latex: string, inner: string): string {
+  const tail = /\^\{([^{}]*)\}$/.exec(latex);
+  if (tail) return `${latex.slice(0, -tail[0].length)}^{${tail[1]}${inner}}`;
+  return `${latex}^{${inner}}`;
 }
 
 /**

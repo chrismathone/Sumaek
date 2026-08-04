@@ -23,13 +23,26 @@ import {
   KWR_M11_CH2_TARGETS,
   KWR_M11_CH3_TARGETS,
   KWR_M11_CH4_TARGETS,
+  KWR_M21_CH1_TARGETS,
+  KWR_M21_CH2_TARGETS,
+  KWR_M21_CH3_TARGETS,
+  KWR_M21_CH4_TARGETS,
+  KWR_M21_CH5_TARGETS,
 } from "../profiles/kwr-2022";
 import {
   RPM_M1_CH1_CONCEPTS,
   RPM_M1_CH2_CONCEPTS,
   RPM_M1_CH3_CONCEPTS,
   RPM_M1_CH4_CONCEPTS,
+  type ConceptDefinition,
 } from "../profiles/rpm-2022-concepts";
+import {
+  RPM_M21_CH1_CONCEPTS,
+  RPM_M21_CH2_CONCEPTS,
+  RPM_M21_CH3_CONCEPTS,
+  RPM_M21_CH4_CONCEPTS,
+  RPM_M21_CH5_CONCEPTS,
+} from "../profiles/rpm-2022-concepts-m21";
 import type { SourceDump } from "../types";
 
 const args = process.argv.slice(2);
@@ -45,7 +58,16 @@ const arg = (name: string): string | undefined =>
  * 「…는가?」+핵심문제로 이어지는 쪽을 훑어 뽑은 뒤, 1단원 결과가 사람이
  * 손으로 확인해 둔 10,11,17,30,35와 정확히 같은지 대조했다.
  */
-const CHAPTERS = {
+interface ConceptChapter {
+  number: string;
+  title: string;
+  dumpRange: string;
+  pages: number[];
+  concepts: ConceptDefinition[];
+  targets: ReadonlyMap<string, string>;
+}
+
+const M1_1: Record<string, ConceptChapter> = {
   I: {
     number: "I",
     title: "소인수분해",
@@ -78,27 +100,105 @@ const CHAPTERS = {
     concepts: RPM_M1_CH4_CONCEPTS,
     targets: KWR_M11_CH4_TARGETS,
   },
-} as const;
+};
+
+/** 개념원리 중2-1 (교사용 224쪽) — 쪽 목록은 concept-page-scan으로 뽑았다 */
+const M2_1: Record<string, ConceptChapter> = {
+  I: {
+    number: "I",
+    title: "유리수와 순환소수",
+    dumpRange: "8-33",
+    pages: [10, 15, 21],
+    concepts: RPM_M21_CH1_CONCEPTS,
+    targets: KWR_M21_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "식의 계산",
+    dumpRange: "34-79",
+    pages: [36, 37, 46, 60, 66, 67],
+    concepts: RPM_M21_CH2_CONCEPTS,
+    targets: KWR_M21_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "일차부등식",
+    dumpRange: "80-121",
+    pages: [82, 83, 89, 106, 113],
+    concepts: RPM_M21_CH3_CONCEPTS,
+    targets: KWR_M21_CH3_TARGETS,
+  },
+  IV: {
+    number: "IV",
+    title: "연립일차방정식",
+    dumpRange: "122-165",
+    pages: [124, 130, 131, 150, 157],
+    concepts: RPM_M21_CH4_CONCEPTS,
+    targets: KWR_M21_CH4_TARGETS,
+  },
+  V: {
+    number: "V",
+    title: "일차함수",
+    dumpRange: "166-224",
+    pages: [168, 169, 178, 179, 185, 190, 195, 208, 214],
+    concepts: RPM_M21_CH5_CONCEPTS,
+    targets: KWR_M21_CH5_TARGETS,
+  },
+};
+
+/**
+ * 개념서 등록부.
+ *
+ * **권 이름을 여기서 가져온다.** 예전에는 「개념원리 중학 수학 1-1」이 아래
+ * 적재 호출에 박혀 있었다. 중2-1 개념서를 넣었더니 자료 58개가 중1-1 책에
+ * 매달렸고 — 오류는 하나도 나지 않았다 — 중1-1에 없는 V단원이 생겨서야
+ * 드러났다.
+ */
+interface ConceptBook {
+  title: string;
+  gradeBand: "middle-1" | "middle-2" | "middle-3";
+  chapters: Record<string, ConceptChapter>;
+}
+
+const BOOKS: Record<string, ConceptBook> = {
+  "m1-1": {
+    title: "개념원리 중학 수학 1-1 (2022 개정)",
+    gradeBand: "middle-1",
+    chapters: M1_1,
+  },
+  "m2-1": {
+    title: "개념원리 중학 수학 2-1 (2022 개정)",
+    gradeBand: "middle-2",
+    chapters: M2_1,
+  },
+};
 
 const dumpPath = arg("dump");
 const organizationId = arg("org");
 const actorUserId = arg("actor");
 const dryRun = args.includes("--dry-run");
 const verbose = args.includes("--verbose");
+const textbookKey = arg("textbook");
 const chapterKey = arg("chapter");
-const target = chapterKey ? CHAPTERS[chapterKey as keyof typeof CHAPTERS] : undefined;
+const book = textbookKey ? BOOKS[textbookKey] : undefined;
+const target = book && chapterKey ? book.chapters[chapterKey] : undefined;
 
-if (!dumpPath || !target || (!dryRun && (!organizationId || !actorUserId))) {
+if (!dumpPath || !book || !target || (!dryRun && (!organizationId || !actorUserId))) {
   console.error(
-    "사용법: load-concepts --chapter=<I|II|III|IV> --dump=<덤프.json> \\\n" +
+    "사용법: load-concepts --textbook=<m1-1|m2-1|…> --chapter=<I|II|…> --dump=<덤프.json> \\\n" +
       "                     --org=<uuid> --actor=<uuid> [--pages=50,51] [--dry-run] [--verbose]",
   );
-  if (chapterKey && !target) console.error(`\n  --chapter=${chapterKey} 는 없는 대단원입니다.`);
-  for (const [key, c] of Object.entries(CHAPTERS)) {
-    console.error(
-      `  --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(12)} ` +
-        `덤프 p.${c.dumpRange} · 개념 쪽 ${c.pages.join(",")}`,
-    );
+  if (textbookKey && !book) {
+    console.error(`\n  --textbook=${textbookKey} 는 등록되지 않은 개념서입니다.`);
+  }
+  for (const [bookKey, spec] of Object.entries(BOOKS)) {
+    console.error(`\n  --textbook=${bookKey}  ${spec.title}`);
+    for (const [key, c] of Object.entries(spec.chapters)) {
+      console.error(
+        `    --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(14)} ` +
+          `덤프 p.${c.dumpRange} · 개념 쪽 ${c.pages.join(",")}`,
+      );
+    }
   }
   process.exit(1);
 }
@@ -169,9 +269,9 @@ const result = await loadConceptMaterials(sql, {
   actorUserId: actorUserId!,
   book: {
     publisherName: "개념원리",
-    title: "개념원리 중학 수학 1-1 (2022 개정)",
+    title: book.title,
     schoolLevel: "middle",
-    gradeBand: "middle-1",
+    gradeBand: book.gradeBand,
     editionLabel: "2022 개정 교사용",
     publishedYear: 2025,
   },

@@ -292,3 +292,91 @@ export const KWR_M11_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
   ["208|반비례|2", "m1-proportionality"],
   ["208|반비례|3", "m1-proportionality"],
 ]);
+
+/* ── 개념원리 중2-1 (교사용 224쪽) ──────────────────────────────
+ *
+ * 쪽 목록은 `concept-page-scan`으로 뽑고 제목을 눈으로 확인한 값이다.
+ * 이어지는 쪽(37·67·83·131·169·179)은 개념 하나가 다음 쪽까지 흐르는
+ * 자리라 홀로 스캔하면 잡히지 않는다 — 짝으로 돌려야 나온다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** I. 유리수와 순환소수 — 개념서 p.10·15·21 */
+export const KWR_M21_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["10|유리수와 소수|1", "m2-repeating-decimals"],
+  ["10|유리수와 소수|2", "m2-repeating-decimals"],
+  ["10|유리수와 소수|3", "m2-repeating-decimals"],
+  ["15|유한소수로 나타낼 수 있는 분수|1", "m2-repeating-decimals"],
+  ["15|유한소수로 나타낼 수 있는 분수|2", "m2-repeating-decimals"],
+  ["21|순환소수를 분수로 나타내기|1", "m2-repeating-decimals"],
+  ["21|순환소수를 분수로 나타내기|2", "m2-repeating-decimals"],
+]);
+
+/** II. 식의 계산 — 개념서 p.36·37·46·60·66·67 */
+export const KWR_M21_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["36|지수법칙|1", "m2-exponent-laws"],
+  ["36|지수법칙|2", "m2-exponent-laws"],
+  ["36|지수법칙|3", "m2-exponent-laws"],
+  ["37|지수법칙|4", "m2-exponent-laws"],
+  ["37|지수법칙|5", "m2-exponent-laws"],
+  ["46|단항식의 곱셈과 나눗셈|1", "m2-monomial-polynomial-ops"],
+  ["46|단항식의 곱셈과 나눗셈|2", "m2-monomial-polynomial-ops"],
+  ["46|단항식의 곱셈과 나눗셈|3", "m2-monomial-polynomial-ops"],
+  ["60|다항식의 덧셈과 뺄셈|1", "m2-polynomial-add-sub"],
+  ["60|다항식의 덧셈과 뺄셈|2", "m2-polynomial-add-sub"],
+  ["66|단항식과 다항식의 곱셈과 나눗셈|1", "m2-monomial-polynomial-ops"],
+  ["66|단항식과 다항식의 곱셈과 나눗셈|2", "m2-monomial-polynomial-ops"],
+  ["67|단항식과 다항식의 곱셈과 나눗셈|3", "m2-monomial-polynomial-ops"],
+]);
+
+/** III. 일차부등식 — 개념서 p.82·83·89·106·113 */
+export const KWR_M21_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["82|부등식과 그 성질|1", "m2-inequality-basics"],
+  ["82|부등식과 그 성질|2", "m2-inequality-basics"],
+  ["83|부등식과 그 성질|3", "m2-inequality-basics"],
+  ["89|일차부등식의 풀이|1", "m2-linear-inequality"],
+  ["89|일차부등식의 풀이|2", "m2-linear-inequality"],
+  ["89|일차부등식의 풀이|3", "m2-linear-inequality"],
+  /* 106과 113은 소단원 제목이 「일차부등식의 활용 ⑴·⑵」로 같은데
+   * 원문자가 다른 글꼴이라 제목에서 빠진다 — 쪽이 열쇠에 있어 갈린다 */
+  ["106|일차부등식의 활용|1", "m2-linear-inequality"],
+  ["106|일차부등식의 활용|2", "m2-linear-inequality"],
+  ["113|일차부등식의 활용|1", "m2-linear-inequality"],
+  ["113|일차부등식의 활용|2", "m2-linear-inequality"],
+]);
+
+/** IV. 연립일차방정식 — 개념서 p.124·130·131·150·157 */
+export const KWR_M21_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["124|연립방정식과 그 해|1", "m2-simeq-intro"],
+  ["124|연립방정식과 그 해|2", "m2-simeq-intro"],
+  ["130|연립일차방정식의 풀이|1", "m2-simeq-substitution"], // 대입법
+  ["130|연립일차방정식의 풀이|2", "m2-simeq-elimination"], // 가감법
+  /* 복잡한 연립·A=B=C 꼴·해가 특수한 경우는 전부 가감법으로 푼다 */
+  ["131|연립일차방정식의 풀이|3", "m2-simeq-elimination"],
+  ["131|연립일차방정식의 풀이|4", "m2-simeq-elimination"],
+  ["131|연립일차방정식의 풀이|5", "m2-simeq-elimination"],
+  ["150|연립일차방정식의 활용|1", "m2-simeq-application"],
+  ["150|연립일차방정식의 활용|2", "m2-simeq-application"],
+  ["157|연립일차방정식의 활용|1", "m2-simeq-application"],
+  ["157|연립일차방정식의 활용|2", "m2-simeq-application"],
+]);
+
+/** V. 일차함수 — 개념서 p.168·169·178·179·185·190·195·208·214 */
+export const KWR_M21_CH5_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["168|일차함수와 그 그래프|1", "m2-function-concept"], // 함수란 무엇인가
+  ["168|일차함수와 그 그래프|2", "m2-function-concept"], // 함숫값이란 무엇인가
+  ["169|일차함수와 그 그래프|3", "m2-linear-fn-intro"], // 일차함수란 무엇인가
+  ["169|일차함수와 그 그래프|4", "m2-linear-fn-graph"], // 그래프는 어떻게 그리는가
+  ["178|일차함수의 그래프의 절편과 기울기|1", "m2-linear-fn-graph"],
+  ["178|일차함수의 그래프의 절편과 기울기|2", "m2-linear-fn-graph"],
+  ["179|일차함수의 그래프의 절편과 기울기|3", "m2-linear-fn-graph"],
+  ["179|일차함수의 그래프의 절편과 기울기|4", "m2-linear-fn-graph"],
+  ["185|일차함수의 그래프의 성질|1", "m2-linear-fn-properties"],
+  ["185|일차함수의 그래프의 성질|2", "m2-linear-fn-properties"],
+  ["190|일차함수의 식 구하기|1", "m2-linear-fn-properties"],
+  ["195|일차함수의 활용|1", "m2-linear-fn-properties"],
+  ["195|일차함수의 활용|2", "m2-linear-fn-properties"],
+  ["208|일차함수와 일차방정식|1", "m2-linear-fn-vs-equation"],
+  ["208|일차함수와 일차방정식|2", "m2-linear-fn-vs-equation"],
+  ["214|일차방정식의 그래프와 연립방정식의 해|1", "m2-linear-fn-vs-simeq"],
+  ["214|일차방정식의 그래프와 연립방정식의 해|2", "m2-linear-fn-vs-simeq"],
+]);

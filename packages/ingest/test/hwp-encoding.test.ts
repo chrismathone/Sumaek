@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cleanBodyText,
   decodeHwpMath,
+  joinLatex,
   markSuperscripts,
   mergeUnbalancedMath,
 } from "../src/hwp-encoding";
@@ -100,6 +101,28 @@ describe("아래첨자 — 윗자리 글꼴과 아랫자리 글꼴", () => {
 
   it("글꼴을 모르면 아래첨자로 옮기지 않는다 — 짐작하지 않는다", () => {
     expect(decodeHwpMath("xÁ").unknown).toContain("Á");
+  });
+});
+
+describe("조각으로 온 지수를 이어 붙인다", () => {
+  /* 별책은 2¹¹을 span 여럿으로 쪼갠다 — `Ú`가 EHsang-Plain 혼자,
+   * 뒤이어 `` `ß` ``가 EHsang-Italic로 온다. 중2-1 별책 해설 259건. */
+  it("잇달은 위첨자 숫자는 한 지수다", () => {
+    expect(joinLatex("a^{1}", "^{6}")).toBe("a^{16}");
+  });
+
+  it("부호 조각도 같은 지수다 (별책 p.13 문항 0193 「2^{2+3+a}」)", () => {
+    expect(joinLatex(joinLatex("2^{2}", "^{+}"), "^{3}")).toBe("2^{2+3}");
+  });
+
+  it("구조가 든 지수는 잇지 않는다 — 손대면 없는 식이 만들어진다", () => {
+    expect(joinLatex("a^{\\frac{1}{2}}", "^{n}")).toBe("a^{\\frac{1}{2}}^{n}");
+  });
+
+  it("한 span 안이면 해독기가 이미 묶는다", () => {
+    expect(decodeHwpMath("=2Ú`Ú`_3Û`_5_7", "EHsang-Italic").latex).toBe(
+      "=2^{11}\\times 3^{2}\\times 5\\times 7",
+    );
   });
 });
 

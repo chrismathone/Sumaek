@@ -3,6 +3,7 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  mergeRaised,
   markSuperscripts,
   mergeUnbalancedMath,
 } from "./hwp-encoding";
@@ -504,7 +505,11 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         if (decoded.latex === "") continue;
         const raised =
           span.size < baseSize * 0.8 && span.y1 < baseY1 - baseSize * 0.1;
-        latex = joinLatex(latex, raised ? `^{${decoded.latex}}` : decoded.latex);
+        /* 위첨자 조각은 앞의 지수 안으로 넣는다 — 조각마다 `^{}`를 씌우면
+         * `^{2}^{+}^{3}`이 되어 KaTeX가 이중 위첨자로 실패한다 */
+        latex = raised
+          ? mergeRaised(latex, decoded.latex)
+          : joinLatex(latex, decoded.latex);
       }
       if (latex !== "") runs.push({ kind: "math", raw, latex, unknown });
       i = j;
