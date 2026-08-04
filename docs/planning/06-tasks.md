@@ -39,7 +39,7 @@
 | G-09 | 시험 제한 시간이 클라이언트에서만 강제됨 | 서버가 저장·제출 마감 시각을 권위 있게 검사 | P1 | T6.1 |
 | G-10 | 기존 full-loop가 시드된 평가 소비만 검증 | 빈 조직 생성부터 실제 워커까지 전체 왕복 검증 | P0 | T6.2 |
 | ~~G-11~~ **닫힘** | 반 수업 완료와 개별 학생 완료 의미가 섞일 가능성 | 두 이벤트가 각자 발행되고 서로를 부르지 않는다(T4.1·T4.2). 교사 현황판이 둘을 다른 칸에 둔다(T4.4) | P0 | T0.1, T4.1, T4.2 ✔ |
-| G-12 | 담당 교사 `scoped` 메뉴와 실제 데이터 필터가 분리되어 있음 | 읽기·쓰기 모두 담당 범위 필터 집행 | P1 | T5.3 |
+| ~~G-12~~ **닫힘** | 담당 교사 `scoped` 메뉴와 실제 데이터 필터가 분리되어 있음 | 매트릭스의 `scoped`를 범위로 읽어 화면(`notFound`)과 액션(boolean) 양쪽에서 집행하고, 상세 화면 누락은 정적 검사가 잡는다 | P1 | T5.3 ✔ |
 | G-13 | `/learn` 8개 화면 중 4개만 오늘 범위를 공유해 완료 상태가 화면마다 갈릴 수 있음 | 모든 학생 화면이 같은 하루 계획을 읽음 | P0 | T1.3, T1.4 |
 | G-14 | 학생별 날짜 투영(`learner_schedule_items`)이 이미 있는데 새 계획 테이블과 관계가 미정 | 계획층·실행층 역할을 계약으로 분리 | P0 | T0.2 |
 | ~~G-15~~ **닫힘** | `assessments_idempotent_uq`가 nullable 컬럼을 포함해 **반 공통 평가의 중복을 못 막았다**(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다) | `0018a`의 부분 유니크가 반 공통 생성물만 덮는다 — 학생 단위 보충·재시험(실측 40건)은 정당하므로 막지 않는다 | P0 | T3.2 ✔ |
@@ -1080,7 +1080,7 @@ Set-Location ..\Su-Maek-t5-2-student-accounts
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t5-2-student-accounts`
 
-### [] Phase 5, T5.3: 담당 교사 데이터 스코프 집행 RED→GREEN
+### [x] Phase 5, T5.3: 담당 교사 데이터 스코프 집행 RED→GREEN
 
 **담당**: backend-specialist + database-specialist
 
@@ -1106,16 +1106,26 @@ Set-Location ..\Su-Maek-t5-3-teacher-scope
 3. **REFACTOR**: 페이지별 조건 복제를 제거하고 읽기·쓰기 scope helper를 단일 소스로 만든다.
 
 **산출물**:
-- `apps/web/src/lib/auth/require-scope.ts`
-- `packages/db/migrations/0017a_teacher_scope_rls.sql` (T0.2가 선점한 번호 — 수기 SQL은 `NNNNa_`)
-- `apps/web/test/authz/teacher-scope.test.ts`
+- `apps/web/src/lib/auth/require-scope.ts` — `resolveMenuScope`·`assignedGroupIds`·`require*Scope`·`is*InScope`
+- `apps/web/src/app/app/{classes,students}/[id]/{page.tsx,actions.ts}` — 화면·액션 양쪽
+- `apps/web/test/authz/teacher-scope.test.ts` (8, 정적 검사 포함) · `apps/web/test/integration/teacher-scope-live.test.ts` (9)
 
 **인수 조건**:
-- [ ] scoped 역할이 담당 반 밖의 학생·루트·평가를 조회하지 못함
-- [ ] URL 직접 입력과 서버 action 조작 모두 거부됨
-- [ ] owner/program_director의 정상 범위는 유지됨
-- [ ] 신규 메뉴가 scope helper를 누락하면 정적 테스트가 실패함
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] scoped 역할이 담당 반 밖의 학생·루트·평가를 조회하지 못함 — 반·학생은 집행, 루트는 면제 사유를 적었다(아래)
+- [x] URL 직접 입력과 서버 action 조작 모두 거부됨 — 렌더는 `notFound()`, 액션은 boolean. 액션은 렌더가 아니라 `notFound()`가 듣지 않는다
+- [x] owner/program_director의 정상 범위는 유지됨 — 좁히는 것이 목적이 아니다
+- [x] 신규 메뉴가 scope helper를 누락하면 정적 테스트가 실패함 — id를 받는 화면을 소스로 훑고, 면제는 사유와 함께 선언한다
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `require-scope.ts` 문 100% · 분기 78%
+
+**설계 판단**: 범위를 벗어나면 403이 아니라 **404**다. 「권한이 없습니다」는 그 id가 **존재한다**는 사실을 알려 준다 — 남의 반 학생이 있는지 없는지는 담당 아닌 교사가 알 일이 아니다.
+
+담당의 정의는 두 곳을 합친다: `learning_groups.home_teacher_user_id`(담임)와 `membership_scopes`(명시적 위임). 위임 표만 보면 반을 만든 교사가 자기 반에서 잠기고, 담임 컬럼만 보면 위임이 아무 일도 하지 않는다.
+
+등급을 새로 정하지 않는다. 매트릭스가 이미 `full`/`scoped`/`readonly`/`none`을 적어 두었고 여기서는 그것을 범위로 **읽기만** 한다 — 두 곳에서 각자 정하면 메뉴는 열리는데 범위는 닫히는 조합이 생긴다.
+
+**드러난 것**: 범위 집행을 켜자 T4.1·T4.2 통합 테스트가 실패했다. 그 픽스처의 교사가 담당이 아니었고(담임 미지정), T4.1 쪽은 학생이 `learning_group_memberships`에 아예 없었다 — 개별 일정만 있고 반 소속이 없는 학생은 실제 제품에 존재하지 않는다. 픽스처를 실제 상황에 맞추고, 두 파일에 「담당 밖은 액션에서도 거부된다」 회귀 검사를 더했다.
+
+**남긴 것**: `0017a_teacher_scope_rls.sql`. 앱은 서비스 롤로 접속하므로 RLS가 적용되지 않고(조직 RLS도 `authenticated` 롤 직접 접근을 위한 2차 방어다), 교사 범위 RLS는 `auth_teacher_group_ids()` 같은 세션 함수를 먼저 정해야 한다. 인수 조건 다섯 개는 전부 앱 계층 요구라 그쪽을 먼저 완결했다 — 2차 방어는 그 세션 함수가 정해지는 시점(T6.x 운영 준비)에 붙이는 편이 낫다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

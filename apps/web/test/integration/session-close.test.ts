@@ -89,9 +89,12 @@ beforeAll(async () => {
     values (${PERIOD}, ${ORG}, '마감 액션 기간', 2026, ${isoAddDays(-30)},
             ${isoAddDays(30)}, 'active')
   `;
+  /* 담임을 지정한다 — T5.3 이후 담당 밖 반은 액션에서도 거부되므로,
+   * 「교사가 자기 반을 마감한다」가 정확한 상황이다. */
   await sql`
-    insert into learning_groups (id, organization_id, course_period_id, name, status)
-    values (${GROUP}, ${ORG}, ${PERIOD}, '마감 액션반', 'operating')
+    insert into learning_groups
+      (id, organization_id, course_period_id, name, status, home_teacher_user_id)
+    values (${GROUP}, ${ORG}, ${PERIOD}, '마감 액션반', 'operating', ${TEACHER_USER})
   `;
   await sql`
     insert into sessions (
@@ -166,5 +169,30 @@ describe.skipIf(!hasDb)("마감 액션의 권한과 입력", () => {
     expect(p.note).toBe("예제 15번까지만");
     expect(p.progressSummary.partialNodeIds).toEqual([NODE_A]);
     claims.sub = null;
+  });
+});
+
+describe.skipIf(!hasDb)("담당 밖 반은 마감할 수 없다 (T5.3)", () => {
+  it("담임이 아닌 교사의 마감은 거부된다", async () => {
+    /* URL을 막아도 폼 POST는 직접 올 수 있다. 액션이 조용히 통과하면
+     * 남의 반 진도가 남의 손으로 확정된다. */
+    const otherTeacher = uuidv7();
+    await sql`
+      insert into users (id, email, display_name, default_organization_id)
+      values (${otherTeacher}, ${`ot-${otherTeacher}@su-maek.test`}, '남의 교사', ${ORG})
+    `;
+    await sql`
+      insert into memberships (id, organization_id, user_id, role, status)
+      values (${uuidv7()}, ${ORG}, ${otherTeacher}, 'teacher', 'active')
+    `;
+
+    claims.sub = otherTeacher;
+    const r = await closeSessionAction(null, form());
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("담당");
+    claims.sub = null;
+
+    await sql`delete from memberships where user_id = ${otherTeacher}`;
+    await sql`delete from users where id = ${otherTeacher}`;
   });
 });

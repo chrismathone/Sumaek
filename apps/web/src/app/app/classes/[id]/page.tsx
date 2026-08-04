@@ -6,6 +6,7 @@ import { listSessionsAwaitingClose } from "@su-maek/db/domain";
 import { listGroupDayProgress } from "@/lib/domain/day-progress";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { requireAccess } from "@/lib/auth/require-access";
+import { requireGroupScope } from "@/lib/auth/require-scope";
 import {
   ASSESSMENT_STATUS_LABEL,
   SESSION_STATUS_LABEL,
@@ -51,6 +52,9 @@ export default async function ClassDetailPage({
 }) {
   const { id } = await params;
   const user = await requireAccess("groups");
+  /* 메뉴가 열렸다고 이 반이 열리는 것은 아니다 (T5.3 · G-12). 담당 밖이면
+   * notFound다 — 「권한이 없습니다」는 그 반이 존재한다는 사실을 알려 준다. */
+  await requireGroupScope(user, "groups", id);
   const sql = getSharedSql();
   const today = todayInKst();
 

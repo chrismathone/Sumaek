@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { listLearnerDayPlans } from "@su-maek/db/domain";
 import { requireAccess } from "@/lib/auth/require-access";
+import { requireLearnerScope } from "@/lib/auth/require-scope";
 import {
   ATTEMPT_STATUS_LABEL,
   MASTERY_STATE_LABEL,
@@ -151,6 +152,9 @@ export default async function StudentDetailPage({
 }) {
   const { id } = await params;
   const user = await requireAccess("learners");
+  /* 담당 반에 속하지 않은 학생은 열리지 않는다 (T5.3 · G-12). 목록과 같은
+   * 정의를 쓰므로, 화면에 안 보이는 학생은 URL로도 열리지 않는다. */
+  await requireLearnerScope(user, "learners", id);
   const sql = getSharedSql();
   const today = todayInKst();
 

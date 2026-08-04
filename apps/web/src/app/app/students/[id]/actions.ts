@@ -8,6 +8,7 @@ import { executeLearnerErasure, reopenLearnerDay } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import type { IsoDate } from "@su-maek/core/shared";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { isLearnerInScope } from "@/lib/auth/require-scope";
 import { todayInKst } from "@/lib/format";
 import { materializeLearnerSchedule } from "@/lib/domain/schedule";
 import {
@@ -536,6 +537,12 @@ export async function reopenLearnerDayAction(
       ok: false,
       message: "취소 사유를 적어 주세요 — 완료 기록을 되돌리는 유일한 근거입니다.",
     };
+  }
+
+  /* 담당 밖 학생의 완료 기록을 되돌릴 수 없다 (T5.3). 화면은 notFound로
+   * 막히지만 액션은 폼 POST로 직접 올 수 있다. */
+  if (!(await isLearnerInScope(user, "learners", parsed.data.learnerId))) {
+    return { ok: false, message: "담당 학생이 아닙니다." };
   }
 
   const result = await reopenLearnerDay(getSharedSql(), {

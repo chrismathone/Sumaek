@@ -144,9 +144,13 @@ beforeAll(async () => {
     values (${PERIOD}, ${ORG}, '완주 테스트 기간', 2026, ${isoAddDays(-30)},
             ${isoAddDays(30)}, 'active')
   `;
+  /* 담임을 지정한다 — T5.3 이후 담당 밖 학생의 완료 기록은 액션에서
+   * 되돌릴 수 없다. 「담당 교사가 자기 반 학생의 완료를 취소한다」가
+   * 정확한 상황이다. */
   await sql`
-    insert into learning_groups (id, organization_id, course_period_id, name, status)
-    values (${GROUP}, ${ORG}, ${PERIOD}, '완주 테스트 반', 'operating')
+    insert into learning_groups
+      (id, organization_id, course_period_id, name, status, home_teacher_user_id)
+    values (${GROUP}, ${ORG}, ${PERIOD}, '완주 테스트 반', 'operating', ${TEACHER_USER})
   `;
   await sql`
     insert into route_plans (id, organization_id, kind, name, status)
@@ -175,6 +179,17 @@ beforeAll(async () => {
             ${sql.json({ mode: "book_pages" })})
   `;
 
+  /* 반 소속 — 실제 학생에게는 반드시 있는 행이다. 개별 일정만 있고 소속이
+   * 없으면 담당 교사에게 「내 학생」이 아니고(T5.3), 반 화면 목록에도 안
+   * 나온다. 픽스처가 그 행을 빠뜨리고 있었다. */
+  for (const learner of [FINISHER, HALFWAY]) {
+    await sql`
+      insert into learning_group_memberships
+        (id, organization_id, learning_group_id, learner_id, status, joined_on)
+      values (${uuidv7()}, ${ORG}, ${GROUP}, ${learner}, 'active', ${isoAddDays(-30)})
+    `;
+  }
+
   await scheduleFor(FINISHER, 13);
   await scheduleFor(HALFWAY, 15);
 });
@@ -191,6 +206,7 @@ afterAll(async () => {
   await sql`alter table learner_day_plans disable trigger learner_day_plans_completion_immutable`;
   await sql`delete from learner_day_plans where learner_id in (${FINISHER}, ${HALFWAY})`;
   await sql`alter table learner_day_plans enable trigger learner_day_plans_completion_immutable`;
+  await sql`delete from learning_group_memberships where learner_id in (${FINISHER}, ${HALFWAY})`;
   await sql`delete from learner_schedule_items where learner_id in (${FINISHER}, ${HALFWAY})`;
   await sql`delete from route_nodes where route_version_id = ${VERSION}`;
   await sql`delete from route_versions where id = ${VERSION}`;
@@ -341,5 +357,33 @@ describe.skipIf(!hasDb)("교사의 하루 완료 취소", () => {
     /* 취소가 있었다는 사실은 지워지지 않는다 */
     expect(row!.reopened_at).not.toBeNull();
     expect(await completionEvents(FINISHER)).toHaveLength(1);
+  });
+});
+
+describe.skipIf(!hasDb)("담당 밖 학생은 되돌릴 수 없다 (T5.3)", () => {
+  it("담임이 아닌 교사의 완료 취소는 거부된다", async () => {
+    const stranger = uuidv7();
+    await sql`
+      insert into users (id, email, display_name, default_organization_id)
+      values (${stranger}, ${`sg-${stranger}@su-maek.test`}, '남의 교사', ${ORG})
+    `;
+    await sql`
+      insert into memberships (id, organization_id, user_id, role, status)
+      values (${uuidv7()}, ${ORG}, ${stranger}, 'teacher', 'active')
+    `;
+
+    claims.sub = stranger;
+    const f = new FormData();
+    f.set("learnerId", FINISHER);
+    f.set("planDate", TODAY);
+    f.set("reason", "남의 반 되돌리기 시도");
+    const r = await reopenLearnerDayAction(null, f);
+
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("담당");
+    claims.sub = null;
+
+    await sql`delete from memberships where user_id = ${stranger}`;
+    await sql`delete from users where id = ${stranger}`;
   });
 });

@@ -7,6 +7,7 @@ import { getSharedSql } from "@su-maek/db";
 import { closeSession, type NodeProgress } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { isGroupInScope } from "@/lib/auth/require-scope";
 
 /* 불참·휴강 입력 (10장) — 전자출결이 아니다. 이미 확정된 사실을 수신해
  * 일정 재계산의 입력으로 만든다. 같은 트랜잭션에서 Outbox로
@@ -211,6 +212,15 @@ export async function closeSessionAction(
   const learningGroupId = String(formData.get("learningGroupId") ?? "");
   if (!/^[0-9a-fA-F-]{36}$/.test(sessionId)) {
     return { ok: false, message: "마감할 수업을 찾을 수 없습니다." };
+  }
+  /* URL만 막고 POST를 열어 두면 반쪽이다 (T5.3 인수: 「URL 직접 입력과
+   * 서버 action 조작 **모두**」). 액션은 렌더가 아니라 notFound가 듣지
+   * 않으므로 boolean 판정을 쓴다. */
+  if (
+    learningGroupId &&
+    !(await isGroupInScope(user, "groups", learningGroupId))
+  ) {
+    return { ok: false, message: "담당 반이 아닙니다." };
   }
 
   /* 노드별 진행은 `node:<uuid>` 키로 온다 — 폼이 계획된 노드마다 한 줄을
