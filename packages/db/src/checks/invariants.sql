@@ -592,9 +592,15 @@ where s.status = 'completed'
 -- CHECK: I-22 하루 완료가 불변이고 이벤트가 1회인가
 -- 근거: state-machines.md I-22, ADR-0017 §6. completed_at을 지우고 다시 채우는
 -- 설계는 소비자(숙련도·일정 엔진)에게 같은 날을 두 번 흘려보낸다.
+-- payload가 아니라 **컬럼**(aggregate_id)으로 묶는다. 예전에는
+-- payload->>'learner_day_plan_id'로 묶었는데, 코드가 내는 키는 camelCase
+-- (learnerDayPlanId)라 그 표현식이 모든 행에서 NULL이었다. 발행부가 없던
+-- 동안에는 0행이라 조용했고, T4.1이 발행을 붙이자 전 이벤트가 NULL 한
+-- 바구니로 묶여 **정상 이벤트 2건이 위반으로 보고**됐다. 컬럼으로 묶으면
+-- payload 키 표기가 어떻게 바뀌든 이 검사는 계속 맞다.
 select
   '완료 계획 1건에 LearnerDayCompleted 2회 이상'::text as issue,
-  (payload->>'learner_day_plan_id')::text as plan_id,
+  aggregate_id::text as plan_id,
   count(*)::text as occurrences
 from outbox_events
 where event_type = 'LearnerDayCompleted'
@@ -867,7 +873,11 @@ with consumers(event_type, topic) as (
 no_consumer(event_type) as (
   values
     ('RenderArtifactValidated'),
-    ('CurriculumReleasePublished')
+    ('CurriculumReleasePublished'),
+    -- E-16(T4.1). 소비자 넷이 전부 미구현이고, 지금 넣을 수 있는
+    -- schedule.recalculate는 학생 한 명의 완료마다 반 전체를 재실체화한다.
+    -- 근거 전문은 EVENT_WITHOUT_CONSUMER(queue.ts).
+    ('LearnerDayCompleted')
 )
 select
   e.id::text         as event_id,

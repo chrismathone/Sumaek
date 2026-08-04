@@ -60,7 +60,7 @@
 
 각 항목의 `발행 시점`은 **어느 트랜잭션의 커밋과 함께인지**를 뜻한다.
 
-> E-01~E-15는 골프롬프트 2C 원안. **E-16·E-17은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 추가했다. E-17은 T3.4가 구현했고, E-16은 아직 구현 전이다**(T4.1). 새 소비자는 없다 — §1.2 등록부의 `planning-engine`·`assessment-generator`·`read-model`·`notifier`·`analytics`를 그대로 쓴다.
+> E-01~E-15는 골프롬프트 2C 원안. **E-16·E-17은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 추가했다. E-17은 T3.4가, E-16은 T4.1이 구현했다.** 새 소비자는 없다 — §1.2 등록부의 `planning-engine`·`assessment-generator`·`read-model`·`notifier`·`analytics`를 그대로 쓴다.
 
 ---
 
@@ -663,6 +663,14 @@
 **멱등성**: `learner_day_plans`의 `UNIQUE (organization_id, learner_id, plan_date)`와 완료 CAS 전이로 계획 1건당 **최대 1회** 발행된다(`I-22`). 교사가 완료를 취소했다가 다시 완료돼도 **재발행하지 않는다** — `completed_at`이 이미 있기 때문이다.
 
 `planning-engine`은 `required_completed < required_total`인 완료(면제가 섞인 날)를 진도 계산에서 구분한다. 면제는 "했다"가 아니다.
+
+> **T4.1 구현 시 정정 ① — payload 키는 camelCase다.** 위 예시는 snake_case로 적혀 있지만 코드가 내는 키는 `learnerDayPlanId`·`timezoneId`·`routeNodeIds`다. 이 문서의 다른 이벤트도 전부 그렇다(E-17의 `job_id`는 실제로 `jobId`). 정의처는 `packages/contracts/src/events/index.ts`이고, 이 문서의 JSON은 **모양을 보이는 예시**다.
+>
+> 표기가 어긋난 것 자체보다, 그 표기가 실행되는 코드로 새어 들어간 것이 문제였다: `invariants.sql`의 I-22 검사가 `payload->>'learner_day_plan_id'`로 묶고 있어서 모든 행이 NULL 한 바구니에 들어갔다. 발행부가 없던 동안에는 0행이라 조용했고, T4.1이 발행을 붙이자 **정상 이벤트 2건이 곧바로 위반으로 보고**됐다. 지금은 payload가 아니라 컬럼(`aggregate_id`)으로 묶는다.
+>
+> **T4.1 구현 시 정정 ② — 지금은 소비자가 없다.** 위 표의 소비자 넷이 전부 미구현이다. 붙일 수 있는 유일한 기존 토픽인 `schedule.recalculate`는 학생이 속한 반의 일정을 통째로 다시 실체화하므로, 서른 명 반에서 하루 서른 번 돈다. 그래서 `EVENT_WITHOUT_CONSUMER`에 근거와 함께 무소비를 **선언**한다 — 선언 없는 소비자 0건은 디스패처가 격리한다(무음 폐기 방지). 적응 재계획(T4.3)이 「무엇을 다시 계획할지」를 정하면 그때 소비자를 넣는다.
+>
+> 이벤트를 아예 만들지 않는 선택지는 없다. 완료는 불변 기록이고(I-22), 그 기록이 outbox에 남아야 나중에 붙는 소비자가 볼 근거가 생긴다.
 
 ---
 

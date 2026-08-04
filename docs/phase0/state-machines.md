@@ -544,7 +544,9 @@ WHERE s.status = 'completed'
   AND NOT EXISTS (SELECT 1 FROM progress_events pe WHERE pe.session_id = s.id);
 
 -- I-22: 완료 계획 1건에 LearnerDayCompleted가 2회 이상 발행된 경우
-SELECT (payload->>'learnerDayPlanId') AS plan_id, count(*)
+-- payload가 아니라 컬럼으로 묶는다 — invariants.sql이 payload 키로 묶다가
+-- 표기가 어긋나 전 행이 NULL 한 바구니에 들어간 적이 있다 (T4.1).
+SELECT aggregate_id AS plan_id, count(*)
 FROM outbox_events
 WHERE event_type = 'LearnerDayCompleted'
 GROUP BY 1 HAVING count(*) > 1;

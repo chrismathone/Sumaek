@@ -185,8 +185,17 @@ export function decideDayStatus(
   return "not_started";
 }
 
-/** 오늘 필수 항목의 집계 — 완료 판정과 E-16 payload가 같은 값을 쓴다. */
-export function tallyRequired(items: readonly DayPlanItem[]): RequiredTally {
+/**
+ * 오늘 필수 항목의 집계 — 완료 판정과 E-16 payload가 같은 값을 쓴다.
+ *
+ * `decideDayStatus`와 같은 최소 모양만 받는다. 저장소(packages/db)의 완료
+ * 명령이 DB 행으로 직접 부를 수 있어야 그 주석이 사실이 된다 — 전체
+ * `DayPlanItem`을 요구하면 db 쪽이 자기 셈법을 따로 쓰게 되고, 그 순간
+ * 화면의 「3/4」와 이벤트의 required_total이 갈린다.
+ */
+export function tallyRequired(
+  items: readonly Pick<DayPlanItem, "required" | "status">[],
+): RequiredTally {
   const required = items.filter((i) => i.required);
   const completed = required.filter((i) => i.status === "completed").length;
   const exempted = required.filter((i) => i.status === "exempted").length;

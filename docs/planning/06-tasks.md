@@ -29,7 +29,7 @@
 | ID | 현재 결손 | 목표 상태 | 우선순위 | 연결 태스크 |
 |---|---|---|---|---|
 | G-01 | 최근 90일의 완료 테스트가 오늘 완료로 오인될 수 있음 | 오늘 날짜·오늘 계획 항목만으로 완료 판정 | P0 | T1.1, T1.3, T1.4 |
-| G-02 | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 학습자별 날짜 계획과 완료 시각을 영속화 | P0 | T1.2, T4.1 |
+| ~~G-02~~ **닫힘** | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 계획·항목 테이블이 생기고(T1.2), 필수를 전부 마친 순간 `completed_at`과 `LearnerDayCompleted`(E-16)가 같은 트랜잭션에 남는다 — 계획 1건당 최대 1회(I-22), 재투영·완료 취소가 지우지 못한다(T4.1) | P0 | T1.2, T4.1 ✔ |
 | G-03 | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사 마감 또는 정책 기반 집계로 원자적 발행 | P0 | T4.2 |
 | ~~G-04~~ **닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정하고(T3.1·T3.2), 평가 노드가 실제 평가가 되며(T3.3), 실패는 사유·조치와 함께 교사 업무함에 닿고 같은 멱등 키로 재실행된다(T3.4) | P0 | T3.1~T3.4 ✔ |
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
@@ -779,7 +779,7 @@ Set-Location ..\Su-Maek-t3-4-assessment-recovery
 
 ## M4: 학생 완료를 수업과 미래 일정까지 연결
 
-### [] Phase 4, T4.1: 학습자 하루 완료 명령·이벤트 RED→GREEN
+### [x] Phase 4, T4.1: 학습자 하루 완료 명령·이벤트 RED→GREEN
 
 **담당**: backend-specialist + database-specialist
 
@@ -805,16 +805,24 @@ Set-Location ..\Su-Maek-t4-1-learner-complete
 3. **REFACTOR**: 이벤트 payload 최소화, 감사·상관관계 ID, 재처리 멱등성을 정리한다.
 
 **산출물**:
-- `packages/contracts/src/events/index.ts`
-- `packages/db/src/domain/learner-day-plan.ts`
-- `packages/db/test/learner-day-completion.test.ts`
+- `packages/contracts/src/events/index.ts` — `LearnerDayCompleted` payload 스키마
+- `packages/core/src/learning/day-plan.ts` — `tallyRequired`가 최소 모양을 받게(저장소가 DB 행으로 직접 부른다)
+- `packages/db/src/domain/learner-day-plan.ts` — `completeLearnerDay` (CAS + outbox 한 트랜잭션)
+- `packages/db/src/queue.ts` · `packages/db/src/checks/invariants.sql` — 무소비 선언 한 쌍, I-22 검사 정정
+- `apps/web/src/lib/domain/day-plan.ts` — 재투영 **한 곳**에서만 완료를 부른다
+- `apps/web/src/app/learn/today/page.tsx` — 확정된 완료 시각 표시
+- `packages/db/test/learner-day-completion.test.ts` (16) · `apps/web/test/integration/learner-day-complete.test.ts` (5)
 
 **인수 조건**:
-- [ ] 한 학생·한 날짜 완료 이벤트가 정확히 1회 발행됨
-- [ ] 한 학생 완료가 반 session을 직접 완료시키지 않음
-- [ ] 차단·미완료 필수 항목이 있으면 완료 전이가 거부됨
-- [ ] 완료 이력이 재계산으로 삭제되지 않음
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 한 학생·한 날짜 완료 이벤트가 정확히 1회 발행됨 — 중복 호출·동시 호출·완료 취소 후 재완료 셋 다 두 번째를 만들지 않는다
+- [x] 한 학생 완료가 반 session을 직접 완료시키지 않음 (I-21)
+- [x] 차단·미완료 필수 항목이 있으면 완료 전이가 거부됨 — 판정은 core의 `decideDayStatus` 하나
+- [x] 완료 이력이 재계산으로 삭제되지 않음 — 재투영은 `skippedCompleted`, 삭제·`completed_at` 변경은 DB 트리거가 막는다
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `learner-day-plan.ts` 문 87% · 분기 94% (남은 미커버는 행 잠금을 우회해야만 닿는 CAS 실패 재조회)
+
+**남긴 것**:
+- **교사의 「하루 완료 취소」 도구는 T4.4로.** ADR-0017 §6의 재개방 정책은 여기서 집행된다(`completed_at`이 있으면 재완료해도 재발행하지 않는다). 버튼이 놓일 화면이 교사 현황판이고, 그것을 T4.4가 만든다 — 화면 없는 명령을 미리 만들면 아무도 부르지 않는 코드가 하나 는다.
+- **E-16 소비자는 T4.3에서.** 지금은 무소비를 근거와 함께 선언한다 — 붙일 수 있는 유일한 기존 토픽(`schedule.recalculate`)이 학생 한 명의 완료마다 반 전체를 재실체화하기 때문이다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

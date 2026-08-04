@@ -1,6 +1,7 @@
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
 import {
+  completeLearnerDay,
   getLearnerDayPlan,
   projectLearnerDayPlan,
   type DayPlanItemSpec,
@@ -76,8 +77,17 @@ export interface TodayPlanView {
   source: DayPlanSourceKind;
   /** `persist: false`면 null — 미리보기는 계획 행을 만들지 않는다 */
   planId: string | null;
-  /** 필수가 전부 충족돼 완료 전이가 가능한가 (전이 자체는 T4.1) */
+  /** 필수가 전부 충족돼 완료 전이가 가능한가 */
   completable: boolean;
+  /**
+   * 서버에 확정된 완료 시각 (T4.1 · G-02).
+   *
+   * `completable`과 다른 값이다. 저것은 지금 계산하면 완료라는 뜻이고,
+   * 이것은 **기록됐다**는 뜻이다. 화면이 계산만 보고 「다 마쳤습니다」를
+   * 말하던 것이 G-02였다 — 새로 고치면 사라질 수 있는 말이었다.
+   * `persist: false`(교사 미리보기)면 언제나 null.
+   */
+  completedAt: string | null;
   /** 배정을 어느 날짜 범위에서 긁었는가 — 상한이 살아 있음을 밖에서 볼 수 있게 */
   assignmentWindow: { from: IsoDate; to: IsoDate };
   /**
@@ -491,6 +501,7 @@ export async function projectToday(input: {
 
   let planId: string | null = null;
   let completable = false;
+  let completedAt: string | null = null;
 
   if (persist) {
     const result = await projectLearnerDayPlan(sql, {
@@ -538,6 +549,26 @@ export async function projectToday(input: {
       });
       plan = { ...plan, deferred: deferredItems, overdue: overdueItems };
     }
+    completedAt = persisted?.completedAt ?? null;
+
+    /* 필수를 전부 마친 순간을 **기록**으로 굳힌다 (T4.1 · E-16).
+     *
+     * 여기서 하는 이유: 항목 상태를 바꿀 수 있는 경로는 결국 이 재투영을
+     * 지난다(자료·응시·복습은 원본 테이블에서 다시 읽히고, 숙제는
+     * completeDayPlanItem 뒤에 곧바로 재투영한다). 완료를 각 화면에서
+     * 부르면 여섯 군데가 되고, 한 곳을 빠뜨리면 그 경로로 끝낸 학생만
+     * 하루가 영영 미완료로 남는다.
+     *
+     * 명령 자체가 멱등이라(계획 1건당 최대 1회) 새로 고칠 때마다 불러도
+     * 이벤트는 하나다. 완료가 불가능한 날은 아예 트랜잭션을 열지 않는다. */
+    if (result.completable && completedAt === null) {
+      const done = await completeLearnerDay(sql, {
+        organizationId: learner.organizationId,
+        learnerId: learner.learnerId,
+        planDate: today,
+      });
+      completedAt = done.completedAt;
+    }
   } else {
     completable = plan.status === "completed";
   }
@@ -548,6 +579,7 @@ export async function projectToday(input: {
     source: scope.source,
     planId,
     completable,
+    completedAt,
     assignmentWindow: window,
     assignments,
   };

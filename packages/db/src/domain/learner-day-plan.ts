@@ -3,10 +3,14 @@ import { v7 as uuidv7 } from "uuid";
 import type { Sql } from "postgres";
 import {
   decideDayStatus,
+  tallyRequired,
   type DayPlanItemKind,
   type DayPlanItemStatus,
+  type DayPlanStatus,
+  type RequiredTally,
 } from "@su-maek/core/learning";
 import type { IsoDate } from "@su-maek/core/shared";
+import { appendOutboxEvent } from "../queue";
 
 /* ─────────────────────────────────────────────────────────────
  * 학생 하루 실행 계획 저장소 (ADR-0018).
@@ -460,4 +464,203 @@ export async function completeDayPlanItem(
     };
   }
   return { ok: false, message: "완료할 수 없는 항목입니다.", alreadyDone: false };
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 하루 완료 명령 (T4.1 · E-16).
+ *
+ * 여기까지 「오늘 다 했다」는 화면의 계산이었다. 투영기는 필수가 전부
+ * 충족돼도 `in_progress`에 멈춰 `completable: true`만 돌려주고(위 참조),
+ * 완료를 기록하는 코드는 없었다 — 어제 하루를 끝냈는지 서버는 모른다(G-02).
+ *
+ * 왜 투영기가 아니라 별도 명령인가: 완료는 `completed_at` 설정과 이벤트
+ * 발행이 **같은 트랜잭션**이어야 하는 사건이고, `completed_at`은 그 뒤로
+ * 불변이다(I-22). 재투영은 하루에 수십 번 돌 수 있는 계산이다. 둘을 한
+ * 함수에 두면 「계산」이 「불변 사실」을 만들게 되고, 그 경계가 흐려지는
+ * 순간 되돌릴 수 없는 기록이 실수로 생긴다.
+ * ───────────────────────────────────────────────────────────── */
+
+export type DayCompletionOutcome =
+  | "completed"
+  | "already"
+  | "not_completable"
+  | "not_found";
+
+export interface CompleteLearnerDayResult {
+  outcome: DayCompletionOutcome;
+  planId: string | null;
+  /** `already`도 함께 준다 — 「이미 했다」는 실패가 아니다. */
+  completedAt: string | null;
+  /** `not_completable`일 때 왜 안 되는지. core의 판정 그대로다. */
+  derived: DayPlanStatus | null;
+  /** 이번 호출이 발행한 이벤트. 발행하지 않았으면 null. */
+  eventId: string | null;
+  required: RequiredTally | null;
+}
+
+interface DayPlanHeadRow {
+  id: string;
+  status: string;
+  completed_at: string | null;
+  timezone: string;
+  learning_group_id: string | null;
+  source: string;
+}
+
+interface CompletionItemRow {
+  required: boolean;
+  status: DayPlanItemStatus;
+  kind: DayPlanItemKind;
+  route_node_id: string | null;
+}
+
+function noCompletion(
+  outcome: DayCompletionOutcome,
+  over: Partial<CompleteLearnerDayResult> = {},
+): CompleteLearnerDayResult {
+  return {
+    outcome,
+    planId: null,
+    completedAt: null,
+    derived: null,
+    eventId: null,
+    required: null,
+    ...over,
+  };
+}
+
+/**
+ * 오늘 진도로 셈할 노드 — 복습 항목은 뺀다.
+ *
+ * 복습은 오늘 노드에서 나온 것이 아니라 과거에 틀린 개념에서 나온다.
+ * 오늘 진도에 섞으면 학생이 오늘 배우지 않은 단원을 배운 것으로 읽히고,
+ * 그 수치가 일정 엔진까지 흘러간다 (E-16 「복습 항목은 빠짐」).
+ */
+function progressNodeIds(items: readonly CompletionItemRow[]): string[] {
+  const ids = new Set<string>();
+  for (const i of items) {
+    if (i.kind === "review") continue;
+    if (i.route_node_id) ids.add(i.route_node_id);
+  }
+  return [...ids].sort();
+}
+
+/**
+ * 하루를 완료로 확정하고 `LearnerDayCompleted`(E-16)를 발행한다.
+ *
+ * 계획 1건당 **최대 1회**다(I-22). 판정 기준은 `completed_at`이지 상태가
+ * 아니다 — 교사가 완료를 취소하면 상태는 `completed`에서 벗어나지만
+ * `completed_at`은 남는다(ADR-0017 §6). 상태로 판정하면 재개방된 하루가
+ * 다시 완료될 때 이벤트가 한 번 더 나가고, 숙련도·일정 엔진은 같은 날을
+ * 두 번 센다.
+ *
+ * 반 `sessions`를 건드리지 않는다(I-21). 반 마감은 교사의 별도 명령이고
+ * `SessionCompleted`(E-02)가 나른다 — 한 학생의 완료가 반 30명의 미래
+ * 일정을 잠그면 안 된다.
+ */
+export async function completeLearnerDay(
+  sql: Sql,
+  input: {
+    organizationId: string;
+    learnerId: string;
+    planDate: IsoDate;
+  },
+): Promise<CompleteLearnerDayResult> {
+  return sql.begin(async (tx) => {
+    const [plan] = await tx<DayPlanHeadRow[]>`
+      select id::text, status::text, completed_at::text, timezone,
+             learning_group_id::text, source::text
+      from learner_day_plans
+      where organization_id = ${input.organizationId}
+        and learner_id = ${input.learnerId}
+        and plan_date = ${input.planDate}
+      for update
+    `;
+    /* 계획을 만들어 주지 않는다. 여기서 만들면 완료 명령이 투영기가 되고,
+     * 확정 시점(= 필수 분모의 기준)을 정하는 곳이 둘이 된다. */
+    if (!plan) return noCompletion("not_found");
+
+    if (plan.completed_at !== null) {
+      return noCompletion("already", {
+        planId: plan.id,
+        completedAt: plan.completed_at,
+      });
+    }
+
+    const items = await tx<CompletionItemRow[]>`
+      select required, status::text as status, kind::text as kind,
+             route_node_id::text
+      from learner_day_plan_items
+      where learner_day_plan_id = ${plan.id}
+    `;
+
+    /* 완료 판정은 core 하나뿐이다 — 화면·서버·워커가 갈리지 않는다. */
+    const derived = decideDayStatus(items);
+    const required = tallyRequired(items);
+    if (derived !== "completed") {
+      return noCompletion("not_completable", {
+        planId: plan.id,
+        derived,
+        required,
+      });
+    }
+
+    /* 행 잠금이 이미 직렬화하지만 CAS 조건을 함께 둔다 — 잠금을 우회하는
+     * 경로가 나중에 생기더라도 두 번째 완료가 이벤트를 만들지 못한다. */
+    const [updated] = await tx<{ completed_at: string }[]>`
+      update learner_day_plans
+      set status = 'completed', completed_at = now(), updated_at = now()
+      where id = ${plan.id} and completed_at is null
+      returning completed_at::text
+    `;
+    if (!updated) {
+      const [current] = await tx<{ completed_at: string | null }[]>`
+        select completed_at::text from learner_day_plans where id = ${plan.id}
+      `;
+      return noCompletion("already", {
+        planId: plan.id,
+        completedAt: current?.completed_at ?? null,
+      });
+    }
+
+    const eventId = uuidv7();
+    await appendOutboxEvent(tx, {
+      eventId,
+      organizationId: input.organizationId,
+      aggregateType: "learner_day_plan",
+      aggregateId: plan.id,
+      aggregateVersion: 1,
+      eventType: "LearnerDayCompleted",
+      occurredAt: new Date(),
+      payload: {
+        learnerDayPlanId: plan.id,
+        learnerId: input.learnerId,
+        learningGroupId: plan.learning_group_id,
+        planDate: input.planDate,
+        timezoneId: plan.timezone,
+        completedAt: updated.completed_at,
+        source: plan.source,
+        /* 면제를 완료와 합치지 않는다. 합치면 자료를 안 올린 날이 학생이
+         * 다 한 날과 같아 보이고, planning-engine은 그 둘을 구분해야 한다. */
+        items: {
+          requiredTotal: required.total,
+          requiredCompleted: required.completed,
+          requiredExempted: required.exempted,
+          optionalCompleted: items.filter(
+            (i) => !i.required && i.status === "completed",
+          ).length,
+        },
+        routeNodeIds: progressNodeIds(items),
+      },
+    });
+
+    return {
+      outcome: "completed" as const,
+      planId: plan.id,
+      completedAt: updated.completed_at,
+      derived: "completed" as const,
+      eventId,
+      required,
+    };
+  }) as Promise<CompleteLearnerDayResult>;
 }

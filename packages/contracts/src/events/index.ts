@@ -44,6 +44,28 @@ const payloads = {
       })
       .optional(),
   }),
+  /* E-16. 학습자 ③층(하루 실행 계획)의 완료를 나르는 **유일한** 경로다.
+   * 반 수업 완료(SessionCompleted)와 섞지 않는다 — 한 학생의 완료가 반
+   * 30명의 미래 일정을 잠그면 안 된다 (I-21 · ADR-0017 §1). */
+  LearnerDayCompleted: z.object({
+    learnerDayPlanId: z.uuid(),
+    learnerId: z.uuid(),
+    /** 복습만 있는 날이면 null */
+    learningGroupId: z.uuid().nullable(),
+    planDate: z.iso.date(),
+    timezoneId: z.string(),
+    completedAt: z.iso.datetime({ offset: true }),
+    source: z.enum(["learner_schedule", "group_session", "review_only"]),
+    /** 면제는 「했다」가 아니다 — planning-engine이 진도 계산에서 구분한다 */
+    items: z.object({
+      requiredTotal: z.number().int().nonnegative(),
+      requiredCompleted: z.number().int().nonnegative(),
+      requiredExempted: z.number().int().nonnegative(),
+      optionalCompleted: z.number().int().nonnegative(),
+    }),
+    /** 오늘 항목이 나온 노드 — 복습 항목은 빠진다 */
+    routeNodeIds: z.array(z.uuid()),
+  }),
   LearningAvailabilityChanged: z.object({
     availabilityEventId: z.uuid(),
     kind: z.enum(["learner_absence", "learner_unavailable", "group_cancelled"]),

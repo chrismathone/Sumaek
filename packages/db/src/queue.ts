@@ -247,10 +247,14 @@ export interface OutboxEventInput {
 
 /**
  * 상태 변경과 **같은 트랜잭션** 안에서 호출해야 한다.
- * tx는 호출자의 postgres.Sql 트랜잭션 핸들.
+ *
+ * `TransactionSql`을 함께 받는다 — 이 함수의 계약이 「트랜잭션 안에서만
+ * 부른다」인데 트랜잭션 핸들을 넘길 때 캐스팅이 필요하면, 규약을 지키는
+ * 쪽이 타입을 우회하게 된다. 그러면 `as never`가 붙은 자리마다 정말
+ * 트랜잭션인지 눈으로 확인해야 한다.
  */
 export async function appendOutboxEvent(
-  tx: postgres.Sql,
+  tx: postgres.TransactionSql | postgres.Sql,
   event: OutboxEventInput,
 ): Promise<void> {
   await tx`
@@ -267,7 +271,10 @@ export async function appendOutboxEvent(
   `;
 }
 
-function sql_json(tx: postgres.Sql, value: unknown) {
+function sql_json(
+  tx: postgres.TransactionSql | postgres.Sql,
+  value: unknown,
+) {
   return tx.json(value as never);
 }
 
@@ -339,6 +346,22 @@ export const EVENT_WITHOUT_CONSUMER: Readonly<Record<string, string>> = {
    * 소비자를 만들 때 EVENT_CONSUMERS에 토픽을 넣고 이 항목을 지운다. */
   CurriculumReleasePublished:
     "개정 영향 분석 소비자 미구현 (발행부도 0건) — 구현 시 라우팅 복원",
+  /* E-16(T4.1). 카탈로그가 적은 소비자 넷이 지금 전부 없다:
+   *   planning-engine  → 적응 재계획(T4.3) 미구현
+   *   read-model       → 교사 현황판(T4.4)은 learner_day_plans를 직접 읽는다
+   *   notifier         → 반이 서른이면 알림도 서른이다. 학생이 하루를 마친
+   *                      것은 사고가 아니라 정상이고, 정상을 알리면 알림이
+   *                      신호가 아니라 소음이 된다
+   *   analytics        → 미구현
+   * 그래서 지금 넣을 수 있는 것은 schedule.recalculate뿐인데, 그 핸들러는
+   * 학생이 속한 반의 일정을 통째로 다시 실체화한다 — 학생 한 명이 하루를
+   * 마칠 때마다 반 전체 재계산이 돌면 서른 명 반에서 하루 서른 번이다.
+   * T4.3이 「무엇을 다시 계획할지」를 정하면 그때 소비자를 넣는다.
+   *
+   * 이벤트를 안 만드는 선택지는 없다: 완료는 불변 기록이고(I-22), 그
+   * 기록이 outbox에 남아야 나중에 붙는 소비자가 볼 근거가 생긴다. */
+  LearnerDayCompleted:
+    "적응 재계획(T4.3) 미구현 — 현황판(T4.4)은 learner_day_plans를 직접 읽고, 매일 정상적으로 발생하는 사건이라 알림 대상이 아니다",
 };
 
 export type ConsumerResolution =

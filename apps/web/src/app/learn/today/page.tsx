@@ -479,7 +479,17 @@ export default async function LearnTodayPage() {
        * 배타적이므로(완주면 활성 단계가 없다) 1회 한도가 코드로 보장된다. */}
       {verdict === "finished" && (
         <section className="mt-4 rounded-lg bg-ink p-4 text-white">
-          <p className="font-medium break-keep">오늘 할 일을 모두 마쳤습니다.</p>
+          <p className="font-medium break-keep">
+            오늘 할 일을 모두 마쳤습니다.
+            {/* 확정된 완료 시각을 함께 낸다 (T4.1). 이 화면은 오래 「계산」만
+                말했고, 계산은 새로 고치면 달라질 수 있다 — 시각이 붙어야
+                학생이 보는 문장과 선생님이 보는 기록이 같은 것이 된다. */}
+            {view.completedAt && (
+              <span className="ml-2 font-mono text-sm font-normal text-wash">
+                {formatTime(view.completedAt)} 기록됨
+              </span>
+            )}
+          </p>
           {/* 다음이 언제인지 아는 날에는 말해 준다 — 「생기면 표시됩니다」는
               이미 잡혀 있는 테스트를 모르는 척하는 말이 된다.
               (upcomingTests는 가까운 것부터라 [0]이 다음 것이다) */}
