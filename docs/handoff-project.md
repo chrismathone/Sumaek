@@ -2,7 +2,8 @@
 
 > **다른 컴퓨터에서 이어서 작업하기 위한 문서.**
 > 작성 2026-08-03 · 저장소 `https://github.com/chrismathone/Sumaek` (main 직푸시)
-> 범위: 저장소 전체. 교재 반입(ingest) 한 갈래만 필요하면 [handoff.md](handoff.md)로.
+> 범위: 저장소 전체. 갈래별 문서 — 교재 반입(ingest)은 [handoff.md](handoff.md),
+> 학생 학습 화면(`/learn`)은 [handoff-learn.md](handoff-learn.md).
 > 관련: [acceptance-status.md](acceptance-status.md) · [phase0/decisions.md](phase0/decisions.md) · [../README.md](../README.md)
 
 여기 적은 수치·경로·명령은 작성 시점에 **이 저장소와 이 DB에서 실측한 것**이다.
@@ -130,7 +131,10 @@ docs              Phase 0 설계, ADR 16, 런북 15, 인수 회계
 | `/app/settings/**` | 반·학습자 등록, 외부 연동, break-glass |
 | `/learn/today` | 학생 — 오늘 할 일 (궤도 레일) |
 | `/learn/records` | 학생 — **지난 기록 월간 달력** (2026-08-03 신규) |
-| `/learn/study` · `/learn/practice` · `/learn/tests/[id]` · `/learn/review` | 개념 공부·연습·응시·복습 |
+| `/learn/study` · `/learn/watch` · `/learn/practice` · `/learn/tests/[id]` · `/learn/review` | 개념 공부·인강·연습·응시·복습 |
+
+학생 화면 갈래를 이어받는다면 [handoff-learn.md](handoff-learn.md) — 화면 구조,
+개념 중심 통합 설계(미구현), 그리고 연습문제가 하나도 안 나오는 이유의 실측.
 
 ### 2.3 자주 쓰는 명령
 
@@ -342,6 +346,19 @@ select id, item_date, starts_at, ends_at, reason_codes
 데모 세팅이 22시까지 잡는 것이 과한지는 판단이 필요해 손대지 않았다 —
 돌리려면 지금은 위 행을 지워야 한다.
 
+### 4.5 학생 오늘 학습 고도화 (2026-08-04 · `5843cd2`)
+
+머리 주석을 **사양으로 읽고 코드와 대조해** 나온 다섯을 고쳤다. 다섯 다 타입 검사·
+린트·렌더 어디에도 안 걸린다 — 화면이 멀쩡히 그려지면서 틀린 말을 한다.
+
+가장 배울 것이 많은 하나: 상태 배지는 구조상 **활성이 아닌 단계에만** 렌더되는데
+라벨이 「할 차례 N건」이었다. 그래서 화면에 뜨는 모든 「할 차례」가 할 차례가 아닌
+단계의 것이었다 — 파일 머리에 「한 번에 한 단계만 할 차례다」라고 적어 두고 그 불변이
+가장 잘 보이는 자리에서 깨져 있었다.
+
+나머지 넷과 미구현으로 남은 **개념 중심 통합** 설계는
+[handoff-learn.md](handoff-learn.md) 1·3절.
+
 ---
 
 ## 5. 검증과 배포
@@ -357,7 +374,7 @@ select id, item_date, starts_at, ends_at, reason_codes
 | `pnpm boundary:check` | 통과 — 비범위 모듈·문구 0건 |
 | KST 가드 | 7/7 (좌변 규칙은 변이 검증 통과 — `::timestamp`를 지우면 실패한다) |
 | `packages/core` | 537/537 |
-| `apps/web` 단위 | 157/157 (24 파일, **단독 실행**) |
+| `apps/web` 단위 | **177/177** (25 파일, **단독 실행**) — 2026-08-04 갱신 |
 | E2E `a11y`+`full-loop` (desktop·mobile) | 18/18 |
 | E2E `auth` (mobile 412px) | 3/3 |
 | `pnpm db:seed` | 완주 · 연속 2회 멱등 |
@@ -409,9 +426,17 @@ docker run -d --env-file .env --restart unless-stopped su-maek-worker
    pnpm curriculum:release publish --dry-run
    ```
    절차는 [runbooks/15-curriculum-release-publish.md](runbooks/15-curriculum-release-publish.md).
-2. **RPM 213문항 권한 개방.** 전부 `is_auto_assignable=false`,
+2. **RPM 213문항 권한 개방 — 사람 판단이 필요하다.** 전부 `is_auto_assignable=false`,
    `content_rights.status='under_review'`라 **출제 풀에 0건**이다. 사람이 저작권을
    확인해 `usable`로 올려야 연습·테스트 검증을 할 수 있다(원칙 9).
+
+   2026-08-04 실측: 213건이 **오늘 배우는 1단원 개념 5개에 전부 정렬되어 있다.**
+   추출은 끝났고 게이트만 닫혀 있다는 뜻이다 — `review_status`는 `review_required`
+   210 / `layout_review_required` 3, `content_rights.status`는 213 전부
+   `under_review`. 그래서 학생 화면의 연습문제 단계가 언제나 「없음」이다.
+   **연습문제만 열려면 `is_auto_assignable`은 필요 없다** —
+   `listPracticeQuestions`는 그 플래그를 보지 않는다(검수 + 사용권만 본다).
+   수치를 다시 뽑는 SQL과 여는 절차는 [handoff-learn.md](handoff-learn.md) 4절.
 3. **[handoff.md](handoff.md) 7절의 반입 결함 4건** — 개념 매핑표 키 충돌(지금
    조용히 틀리고 있다), 그림 문항 3건, 변형 저장 경로 부재, 파서 단위 테스트 부재.
 4. **🟡 32건 승격** — 근거란에 각각 무엇이 모자란지 적혀 있다.
