@@ -1128,8 +1128,8 @@ Set-Location ..\Su-Maek-t5-3-teacher-scope
 **남긴 것**: `0017a_teacher_scope_rls.sql`. 앱은 서비스 롤로 접속하므로 RLS가 적용되지 않고(조직 RLS도 `authenticated` 롤 직접 접근을 위한 2차 방어다), 교사 범위 RLS는 `auth_teacher_group_ids()` 같은 세션 함수를 먼저 정해야 한다. 인수 조건 다섯 개는 전부 앱 계층 요구라 그쪽을 먼저 완결했다 — 2차 방어는 그 세션 함수가 정해지는 시점(T6.x 운영 준비)에 붙이는 편이 낫다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t5-3-teacher-scope`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t5-3-teacher-scope`
 
 ### [] Phase 5, T5.4: 날짜별 준비도 현황·학생 화면 미리보기 RED→GREEN
 
