@@ -927,8 +927,8 @@ Set-Location ..\Su-Maek-t4-3-adaptive-plan
 **남긴 것**: E-16(학생 하루 완료) 소비자는 여전히 무소비 선언이다. 이번에 넓힌 것은 **반 진도**의 입력이고, 그 근거는 교사의 마감 기록이다. 학생 한 명의 하루 완료가 반 일정을 움직여서는 안 된다(I-21) — 학습자 스코프 재계산에 쓸지는 T5.4·T4.4에서 학생별 화면이 생긴 뒤 판단한다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t4-3-adaptive-plan`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t4-3-adaptive-plan`
 
 ### [] Phase 4, T4.4: 교사 완료·막힘·변경안 현황판 RED→GREEN
 
