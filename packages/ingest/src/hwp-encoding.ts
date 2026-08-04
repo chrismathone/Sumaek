@@ -91,6 +91,62 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
+ * 분수 안의 분자 글리프 — **자릿수가 다를 때 쓰는 두 번째 벌.**
+ *
+ * 조판기는 분자와 분모의 자릿수가 같으면 shift 행(`;1#2%;` = 35/12)을 쓰고,
+ * 다르면 이쪽 벌을 쓴다. 가운데 맞춤을 위해 좌우 여백이 다른 글자가 필요해서다.
+ * 그래서 `;1¢2;`(4/12)와 `;1#2%;`(35/12)가 같은 책에 함께 나온다.
+ *
+ * **아홉 자리를 전부 지면에서 확인했다** (중1-1 II·III단원):
+ *   ¼ p.38 「20/4」 · Á p.38 「12/3」 · ª p.39 「12/6」 · £ p.36 「3/12」
+ *   ¢ p.36 「4/12」 · ° p.46 「15/5」 · ¤ p.39 「16/4」 · ¦ p.53 「7/15」
+ *   » p.60 「9/14」
+ * 여러 자리가 서로 맞물려 확인됐다 — p.39 「42/7」이 ¢=4와 ª=2를 동시에,
+ * p.49 「54/9」가 °=5와 ¢=4를 동시에 건다.
+ *
+ * **8에 해당하는 글리프는 이 단원들에 나오지 않아 넣지 않았다.** 코드가
+ * 연속 배치가 아니므로(¼=BC·Á=C1·ª=AA) 빈자리를 추론으로 메울 수 없다.
+ */
+const FRACTION_NUMERATOR: ReadonlyMap<string, string> = new Map([
+  ["¼", "0"],
+  ["Á", "1"],
+  ["ª", "2"],
+  ["£", "3"],
+  ["¢", "4"],
+  ["°", "5"],
+  ["¤", "6"],
+  ["¦", "7"],
+  ["»", "9"],
+]);
+
+/**
+ * 분수 안의 **문자**. 정비례·반비례(IV단원)의 `y=a/x` 꼴이 전부 이 표기다.
+ *
+ * 분자 자리 문자와 분모 자리 문자가 **서로 다른 코드**로 온다. 분모의
+ * a·b는 평문 그대로인데 x만 `[`로 오고, 분자는 전부 다른 벌이다.
+ * 그래서 글자만 보고 위아래를 정할 수 없다 — 코드가 자리를 말해 준다.
+ *
+ * 지면 대조 (본책 IV단원):
+ *   p.128 문항 0953 「a/b」=`;bA;` · 「b/a」=`;aB;`
+ *   p.135 문항 0989 「x/2」=`;2{;` · 0990 「3/x」=`;[#;` · 0991 「y/x」=`;[};`
+ */
+const FRACTION_NUMERATOR_LETTER: ReadonlyMap<string, string> = new Map([
+  ["A", "a"],
+  ["B", "b"],
+  ["{", "x"],
+  ["}", "y"],
+]);
+
+/**
+ * 분모 자리의 x·y. a·b는 평문으로 오므로 표에 넣을 것이 없다.
+ * `[`·`]`가 짝을 이룬다 — p.88 문항 0667 「x/y」=`;]{;` · p.83 문항 0630 「2/y」=`;]@;`.
+ */
+const FRACTION_DENOMINATOR_LETTER: ReadonlyMap<string, string> = new Map([
+  ["[", "x"],
+  ["]", "y"],
+]);
+
+/**
  * 연산 기호 — 지면에서 ×, ÷로 보이는 것들.
  *
  * 뒤에 공백을 붙이는 이유: LaTeX의 제어 낱말은 글자가 아닌 것에서 끝난다.
@@ -139,6 +195,17 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       /* 개념원리 중1-1 p.17 「A=aµ`_bÇ`」 — 지면은 A=a^m×b^n
        * (a, b는 서로 다른 소수, m, n은 자연수). Ç(^n)와 짝을 이룬다. */
       ["µ", "^{m}"],
+      /* 본책 p.81 「ùF」 — 지면은 °F(화씨)다. ¾(℃)와 짝을 이루는 글리프로,
+       * 도 기호만 담당하고 단위 글자는 뒤에 따로 온다. */
+      ["ù", "\\degree "],
+      /* 본책 p.34 「~후, ~전」 — 지면은 물결표(∼)다. **그냥 통과시키면 안 된다** —
+       * LaTeX에서 `~`는 줄바꿈 없는 공백이라 아무 오류 없이 사라진다.
+       * 「출발 ∼후」가 「출발  후」가 되고 화면에는 표시가 남지 않는다. */
+      ["~", "\\sim "],
+      /* 본책 p.75 문항 0528 「x %」·0529 「a %」 — 백분율이다.
+       * 분수 안에서는 같은 `%`가 분자 5지만(SHIFT_ROW), 그 표는 분수 안에서만
+       * 본다. 밖에서 만난 `%`는 그대로 백분율이다. */
+      ["%", "\\%"],
     ]),
   },
 ];
@@ -164,8 +231,21 @@ const WIDE_SPACE = new RegExp(
   "g",
 );
 
-/** 분수: `;` 또는 `:`로 감싸이고 안쪽이 분모·분자 교대 */
-const FRACTION = /;([^;:\s]{2,8});|:([^;:\s]{2,8}):/g;
+/**
+ * 분수 한 덩어리.
+ *
+ * **여는 기호와 닫는 기호가 짝을 이루지 않는다.** 실측한 꼴은 넷이다
+ * (중1-1 전 단원 761건):
+ *   `;…;` 730 · `;;…;;` 15 · `:…:` 14 · **`:…;;` 2** (p.53 문항 0397)
+ * 그래서 양쪽을 각각 `[;:]{1,2}`로 받는다. 짝을 맞춰 읽으려 했더니
+ * `;;ª4¼;;`(20/4)와 `:Á3¼;;`가 통째로 안 풀렸다.
+ *
+ * 닫는 기호의 뒤보기는 **바로 뒤에 또 분수가 오는 경우**를 위한 것이다.
+ * `;2!;;3!;`에서 닫는 기호가 `;;`를 삼키면 뒤 분수의 여는 기호가 사라져
+ * 1/2만 남고 1/3이 조용히 없어진다. 이 교재에는 그런 자리가 없지만
+ * (위 실측에 `;`…`;;` 꼴이 0건), 다른 교재에서 나면 알 길이 없는 손실이다.
+ */
+const FRACTION = /[;:]{1,2}([^;:\s]{2,8})[;:]{1,2}(?![^;:\s]{2,8}[;:])/g;
 
 /** 분수 자리표시자 — 사설 사용 영역이라 본문·수식과 충돌하지 않는다 */
 const PH_OPEN = "\uE000";
@@ -224,25 +304,49 @@ export function markSuperscripts(
 /**
  * 분수 한 덩어리를 푼다.
  *
- * 안쪽 글자는 **분모·분자 교대**로 놓여 있다 — 지면에서 분모가 먼저 오는
- * 자리에 찍히기 때문이다. `;2!;`는 분모 2 · 분자 1 → 1/2,
- * `;1#2%;`는 분모 "12" · 분자 "35" → 35/12. (셋 다 지면 대조)
+ * **가르는 것은 자리가 아니라 글자의 종류다.** 평문 숫자는 분모로, 분자
+ * 전용 글리프(shift 행·FRACTION_NUMERATOR)는 분자로 간다. 각자 나온 순서를
+ * 지킨다. `;2!;`는 분모 2·분자 1 → 1/2, `;1#2%;`는 분모 "12"·분자 "35"
+ * → 35/12, `;ª4¼;`는 분모 "4"·분자 "20" → 20/4.
+ *
+ * 처음에는 **교대**로 읽었다(짝수 번째가 분모, 홀수 번째가 분자). 자릿수가
+ * 같은 동안은 그 규칙과 결과가 같아서 1단원 전체가 통과했지만, 자릿수가
+ * 다른 분수(`;1¢2;`=4/12 · `;ª4¼;`=20/4)에서 길이가 홀수가 되어 전부
+ * 못 푼 채 unknown으로 나갔다. 지면 여덟 자리를 대조해 보니 조판기는
+ * 자릿수가 다를 때 글리프 벌을 바꿀 뿐 순서 규칙은 없었다
+ * (p.36 3/12·4/12 · p.38 12/3·20/4 · p.39 12/6·16/4·42/7 · p.46 21/3·15/2
+ *  · p.49 54/9 · p.53 7/15 · p.60 9/14·30/7·35/3).
  *
  * 규칙에 맞지 않으면 null을 돌려 원문을 그대로 남긴다. 억지로 푸는 것보다
  * 못 풀었다고 말하는 편이 낫다.
  */
 function decodeFraction(inner: string): string | null {
   const chars = [...inner];
-  if (chars.length < 2 || chars.length % 2 !== 0) return null;
+  if (chars.length < 2) return null;
   let denominator = "";
   let numerator = "";
-  for (let i = 0; i < chars.length; i += 2) {
-    const d = chars[i]!;
-    const n = SHIFT_ROW.get(chars[i + 1]!);
-    if (!/[0-9]/.test(d) || n === undefined) return null;
-    denominator += d;
+  for (const ch of chars) {
+    /* 평문 숫자·소문자는 그 자리에서 자기 자신이다 — 분모로 간다
+     * (p.128 「a/b」의 b, 「b/a」의 a). */
+    if (/[0-9a-z]/.test(ch)) {
+      denominator += ch;
+      continue;
+    }
+    const d = FRACTION_DENOMINATOR_LETTER.get(ch);
+    if (d !== undefined) {
+      denominator += d;
+      continue;
+    }
+    const n =
+      SHIFT_ROW.get(ch) ??
+      FRACTION_NUMERATOR.get(ch) ??
+      FRACTION_NUMERATOR_LETTER.get(ch);
+    if (n === undefined) return null;
     numerator += n;
   }
+  /* 한쪽이 비면 분수가 아니다 — 8에 해당하는 글리프처럼 표에 없는 글자가
+   * 섞였을 때 조용히 반쪽짜리 분수를 만들지 않게 막는다. */
+  if (denominator === "" || numerator === "") return null;
   return `\\frac{${numerator}}{${denominator}}`;
 }
 
@@ -267,8 +371,8 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
 
   /* 1) 분수를 먼저 걷어내 자리표시자로 바꾼다. 분수 안에 지수·곱셈이
    *    섞이는 경우가 없음을 지면에서 확인했으므로 순서상 안전하다. */
-  let work = raw.replace(FRACTION, (whole, a?: string, b?: string) => {
-    const latex = decodeFraction(a ?? b ?? "");
+  let work = raw.replace(FRACTION, (whole: string, inner: string) => {
+    const latex = decodeFraction(inner);
     if (latex === null) {
       unknown.push(whole);
       return whole;
@@ -420,6 +524,9 @@ export function isKnownGlyph(ch: string): boolean {
     OPERATOR.has(ch) ||
     BY_FONT.some((f) => f.map.has(ch)) ||
     SHIFT_ROW.has(ch) ||
+    FRACTION_NUMERATOR.has(ch) ||
+    FRACTION_NUMERATOR_LETTER.has(ch) ||
+    FRACTION_DENOMINATOR_LETTER.has(ch) ||
     PASSTHROUGH.test(ch) ||
     DROPPABLE_ONE.test(ch)
   );
