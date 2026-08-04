@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
 import { requireAccess } from "@/lib/auth/require-access";
+import { listGroupDayProgress } from "@/lib/domain/day-progress";
+import { DayProgress } from "./DayProgress";
 import { DataTable, type Column } from "@/components/DataTable";
-import { formatTime, label, SESSION_STATUS_LABEL } from "@/lib/format";
+import { formatTime, label, SESSION_STATUS_LABEL, todayInKst } from "@/lib/format";
 import { parseTableQuery, type RawSearchParams, type TableQuery } from "@/lib/table";
 import { KST } from "@su-maek/core/shared";
 
@@ -83,7 +85,8 @@ export default async function TodayPage({
     ? query
     : { ...query, sort: "g_name", dir: "asc", page: 1, offset: 0 };
 
-  const [sessionRows, groupRows, exceptions, proposals] = await Promise.all([
+  const [sessionRows, groupRows, exceptions, proposals, dayProgress] =
+    await Promise.all([
     sql<SessionRow[]>`
       with base as (
         select s.id,
@@ -129,6 +132,12 @@ export default async function TodayPage({
       select count(*)::int as cnt from schedule_change_proposals
       where organization_id = ${user.organizationId} and status = 'proposed'
     `,
+    /* 반별 학생 진행 (T4.4). 이 화면이 생기기 전까지 학생의 하루 완료
+     * 기록은 교사에게 보이지 않았다 — 서른 명을 한 명씩 눌러 봐야 했다. */
+    listGroupDayProgress({
+      organizationId: user.organizationId,
+      date: todayInKst(),
+    }),
   ]);
 
   // 요약 카드는 한 쪽 분량이 아니라 전체 건수를 보여준다.
@@ -207,6 +216,11 @@ export default async function TodayPage({
 
       {/* 시간순 수업 목록 — 수업 상세 라우트가 없으므로 가장 가까운 상세인
           반 상세로 잇는다. */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">반별 오늘 진행</h2>
+        <DayProgress groups={dayProgress} />
+      </section>
+
       <section className="mt-8">
         <h2 className="text-lg font-semibold">시간순 수업</h2>
         <DataTable

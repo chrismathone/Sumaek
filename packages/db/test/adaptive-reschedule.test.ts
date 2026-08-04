@@ -204,3 +204,46 @@ describe.skipIf(!hasDb)("못 나간 진도가 다음 일정으로 이월된다",
     expect(await futureNodeIds()).not.toContain(legacyNode);
   });
 });
+
+describe.skipIf(!hasDb)("자동 실행의 승인 게이트 (T4.3)", () => {
+  it("고위험 변경은 적용하지 않고 변경안으로 남긴다 — 세션은 그대로다", async () => {
+    /* 교사가 버튼을 누른 실행은 그 클릭이 곧 승인이라 그대로 적용한다.
+     * 이벤트가 부른 자동 실행은 아무도 보고 있지 않으므로, 되돌리기 어려운
+     * 변경은 승인함으로 보낸다. */
+    await materializeGroupSchedule({
+      organizationId: ORG,
+      learningGroupId: GROUP,
+      actorUserId: TEACHER,
+      today: TODAY,
+    });
+    const before = await futureNodeIds();
+    expect(before.length).toBeGreaterThan(0);
+
+    /* 루트에서 노드를 빼면 이미 잡힌 항목이 일정에서 사라진다 —
+     * classifyScheduleChange의 item_removed. */
+    await sql`delete from route_nodes where id = ${NODE_B}`;
+
+    const auto = await materializeGroupSchedule({
+      organizationId: ORG,
+      learningGroupId: GROUP,
+      actorUserId: null,
+      today: TODAY,
+      automatic: true,
+    });
+
+    expect(auto.pendingApproval).toContain("item_removed");
+    expect(auto.createdSessions).toBe(0);
+    /* 승인 전에는 세션이 바뀌지 않는다 — 이 한 줄이 게이트의 전부다 */
+    expect(await futureNodeIds()).toEqual(before);
+
+    const [proposal] = await sql<{ status: string; failure_reason: string | null }[]>`
+      select status::text as status, failure_reason
+      from schedule_change_proposals
+      where scope_id = ${GROUP} order by created_at desc limit 1
+    `;
+    /* 교사 화면(/app/today)이 세는 상태와 같아야 한다 — 다르면 승인 대기가
+     * 화면 어디에도 나타나지 않는다. */
+    expect(proposal!.status).toBe("proposed");
+    expect(proposal!.failure_reason).toContain("item_removed");
+  });
+});

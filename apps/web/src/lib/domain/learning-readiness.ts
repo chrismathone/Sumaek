@@ -96,6 +96,20 @@ export function studentBlockText(code: string): string {
   );
 }
 
+/**
+ * 교사 화면의 사유 문구 — 학생 문구와 **다른 말**을 쓴다.
+ *
+ * 학생에게는 「지금 열 수 없다」가 전부이고 조치가 없다. 교사에게는 무엇이
+ * 비어 있는지가 곧 할 일이다. 같은 코드를 두 문구로 나눠 두는 이유가 그것이고,
+ * 두 문구가 같은 레지스트리에 있어야 코드를 늘릴 때 한쪽만 빠뜨리지 않는다.
+ */
+export function teacherBlockText(code: string): string {
+  return (
+    READINESS_CODES[code as ReadinessCode]?.teacher ??
+    READINESS_CODES[BLOCK_REASONS.unknownNodeKind].teacher
+  );
+}
+
 export interface ReadinessFinding {
   code: ReadinessCode;
   /** `blocking`이면 게시를 막는다. `warning`은 남기되 막지 않는다. */

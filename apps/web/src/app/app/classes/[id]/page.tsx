@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
 import { listSessionsAwaitingClose } from "@su-maek/db/domain";
+import { listGroupDayProgress } from "@/lib/domain/day-progress";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { requireAccess } from "@/lib/auth/require-access";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/lib/format";
 import { AvailabilityForm, DismissButton } from "./AvailabilityForm";
 import { SessionCloseList } from "./SessionCloseForm";
+import { DayProgress } from "@/app/app/today/DayProgress";
 
 const AVAILABILITY_KIND_LABEL: Record<string, string> = {
   learner_absence: "학습 불참",
@@ -75,8 +77,14 @@ export default async function ClassDetailPage({
   `;
   if (!group) notFound();
 
-  const [learners, assessments, upcoming, availabilityEvents, awaitingClose] =
-    await Promise.all([
+  const [
+    learners,
+    assessments,
+    upcoming,
+    availabilityEvents,
+    awaitingClose,
+    dayProgress,
+  ] = await Promise.all([
     sql<
       {
         id: string;
@@ -185,6 +193,13 @@ export default async function ClassDetailPage({
       organizationId: user.organizationId,
       learningGroupId: id,
       today,
+    }),
+    /* 같은 읽기 모델을 /app/today와 나눠 쓴다 (T4.4). 각자 세면 같은 반이
+     * 두 화면에서 다른 수를 갖는다. */
+    listGroupDayProgress({
+      organizationId: user.organizationId,
+      date: today,
+      learningGroupId: id,
     }),
   ]);
   const canCloseSession = canWrite(DEFAULT_MATRIX, user.role, "groups");
@@ -346,6 +361,11 @@ export default async function ClassDetailPage({
             </ul>
           )}
         </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">오늘 학생 진행</h2>
+        <DayProgress groups={dayProgress} />
       </section>
 
       <section className="mt-8">

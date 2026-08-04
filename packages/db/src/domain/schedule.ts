@@ -353,7 +353,10 @@ export async function materializeGroupSchedule(options: {
           diff, reason_codes, conflicts, output_hash, failure_reason
         ) values (
           ${pendingId}, ${organizationId}, 'learning_group', ${learningGroupId},
-          'auto', 'pending',
+          /* 'pending'이 아니다 — proposal_status enum에 그런 값이 없고,
+           * /app/today의 승인 대기 건수도 'proposed'를 센다. 두 곳이 갈리면
+           * 승인 대기가 화면 어디에도 나타나지 않는다. */
+          'auto', 'proposed',
           ${tx.json({ summary: result.summary, itemCount: result.items.length } as never)},
           ${result.inputHash}, ${input.engineVersion}, ${input.seed}, ${new Date()},
           ${tx.json(result.diff as never)}, ${tx.json(result.reasonCodes as never)},

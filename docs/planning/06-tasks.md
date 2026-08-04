@@ -930,7 +930,7 @@ Set-Location ..\Su-Maek-t4-3-adaptive-plan
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t4-3-adaptive-plan`
 
-### [] Phase 4, T4.4: 교사 완료·막힘·변경안 현황판 RED→GREEN
+### [x] Phase 4, T4.4: 교사 완료·막힘·변경안 현황판 RED→GREEN
 
 **담당**: frontend-specialist
 
@@ -956,17 +956,25 @@ Set-Location ..\Su-Maek-t4-4-teacher-progress
 3. **REFACTOR**: 요약과 상세 read-model을 분리하고 대량 반에서 페이지네이션한다.
 
 **산출물**:
-- `apps/web/src/app/app/today/page.tsx`
-- `apps/web/src/app/app/classes/[id]/page.tsx`
-- `apps/web/test/ui/teacher-day-progress.test.ts`
-- `e2e/tests/teacher-day-progress.spec.ts`
+- `apps/web/src/lib/domain/day-progress.ts` — 순수 판정(`summarizeDayProgress`·`blockCategory`) + 읽기 모델
+- `apps/web/src/lib/domain/learning-readiness.ts` — `teacherBlockText` (학생 문구와 짝)
+- `apps/web/src/app/app/today/{page.tsx,DayProgress.tsx}` · `apps/web/src/app/app/classes/[id]/page.tsx`
+- `apps/web/test/ui/teacher-day-progress.test.ts` (10) · `apps/web/test/integration/teacher-day-progress.test.ts` (5)
 
 **인수 조건**:
-- [ ] 교사가 학생별 하루 완료 여부를 DB 근거로 확인함
-- [ ] 막힘 사유가 자료·문항·계정·워커 등으로 구분됨
-- [ ] 반 수업 마감과 학생 완료가 다른 상태로 표시됨
-- [ ] 360px·키보드·axe 검사 통과
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 교사가 학생별 하루 완료 여부를 DB 근거로 확인함 — `learner_day_plans.completed_at`이 근거다
+- [x] 막힘 사유가 자료·문항·계정·워커 등으로 구분됨 — 갈래마다 고치러 갈 화면이 다르다
+- [x] 반 수업 마감과 학생 완료가 다른 상태로 표시됨 (I-21)
+- [ ] 360px·키보드·axe 검사 통과 — **E2E와 함께 T6.2로** (아래)
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `day-progress.ts` 문 96% · 분기 77%
+
+**설계 판단**: 질의는 `learning_group_memberships`에서 시작한다. `learner_day_plans`에서 시작하면 **오늘 화면을 한 번도 열지 않은 학생이 목록에서 통째로 빠진다** — 그리고 그 학생은 화면에 없으므로 아무도 그가 로그인하지 못했다는 것을 모른다. 그래서 `no_record`가 `not_started`와 별개의 상태다: 미시작은 계획이 있는데 안 한 것이고, 기록 없음은 대개 계정 문제다. 합치면 계정이 안 열린 학생이 「게으른 학생」이 된다.
+
+막힘은 **학생 수**로 센다. 항목 수로 세면 같은 학생이 두 항목 막혔을 때 「막힘 2명」이 반 인원보다 커지는 날이 오고, 그 순간 교사는 이 수를 믿지 않는다.
+
+**함께 고친 것**: T4.3의 승인 게이트가 `schedule_change_proposals.status`에 `'pending'`을 썼는데 그 enum에 없는 값이다 — 실행되면 그 자리에서 터진다. T4.3의 테스트가 `automatic: true` 경로를 한 번도 지나지 않아 드러나지 않았다. `'proposed'`로 고치고(=`/app/today`가 세는 값), 자동 경로를 실제로 지나는 회귀 테스트를 더했다.
+
+**남긴 것**: `e2e/tests/teacher-day-progress.spec.ts`와 360px·키보드·axe 검사. 이 화면의 E2E는 학생 셋의 서로 다른 하루 상태를 만들어야 하고(완주·막힘·무기록), 그 픽스처는 T6.2의 자율 E2E가 세우는 것과 그대로 겹친다. T1.4의 `learner-day.spec.ts`도 같은 이유로 남아 있다 — 두 건을 T6.2에서 한 픽스처 위에 함께 쓴다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합
