@@ -112,15 +112,48 @@ export async function saveResponse(options: {
    * 응시에 답안을 써 넣을 수 있고, 그 답안은 피해 학생의 채점·점수·숙련도로
    * 그대로 흘러간다. 제출 경로(submitAndGrade)는 처음부터 learner_id를
    * 검사했는데 저장 경로만 빠져 있었다 — 둘은 같은 기준이어야 한다. */
-  const [attempt] = await sql<{ status: string }[]>`
-    select status from attempts
-    where id = ${options.attemptId}
-      and organization_id = ${options.organizationId}
-      and learner_id = ${options.learnerId}
+  /* 마감 판정은 **DB 시계**로 한다 (T6.1 · G-09).
+   *
+   * 제한 시간은 여기까지 클라이언트 카운트다운뿐이었다. 서버는 상태만 보고
+   * 저장을 받았으므로, 탭을 열어 둔 채 기기 시계를 되돌리거나 카운트다운
+   * 스크립트를 멈추면 시간이 지나도 계속 쓸 수 있었다 — 시험의 공정성이
+   * 브라우저 한 줄에 달려 있었다.
+   *
+   * `now()`와 `started_at`을 같은 질의에서 비교하므로 클라이언트가 보낼 수
+   * 있는 시간 값이 이 경로에 아예 없다. 제한이 없는 시험은 `expired`가
+   * 언제나 false다. */
+  const [attempt] = await sql<{ status: string; expired: boolean }[]>`
+    select a.status,
+           (ai.time_limit_minutes is not null
+            and now() > a.started_at
+                        + make_interval(mins => ai.time_limit_minutes)) as expired
+    from attempts a
+    join assessment_instances ai on ai.id = a.assessment_id
+    where a.id = ${options.attemptId}
+      and a.organization_id = ${options.organizationId}
+      and a.learner_id = ${options.learnerId}
   `;
   if (!attempt) return { ok: false, message: "응시를 찾을 수 없습니다." };
   if (attempt.status !== "in_progress") {
     return { ok: false, message: "이미 제출된 응시입니다. 답안을 수정할 수 없습니다." };
+  }
+  if (attempt.expired) {
+    /* 거부만 하고 열어 두면 응시가 in_progress로 영영 남는다 — 학생은
+     * 「제출됨」을 못 보고 교사 현황판에는 미제출로 남는다. 그래서 그
+     * 자리에서 제출까지 한다. 이 답안은 저장하지 않으므로 **마지막 정상
+     * 저장분**이 그대로 채점된다: 마감은 더 쓰지 못하게 하는 것이지 낸 것을
+     * 버리는 것이 아니다. */
+    const auto = await submitAndGrade({
+      organizationId: options.organizationId,
+      attemptId: options.attemptId,
+      learnerId: options.learnerId,
+    });
+    return {
+      ok: false,
+      message: auto.ok
+        ? "제한 시간이 지나 자동으로 제출되었습니다."
+        : "제한 시간이 지났습니다. 답안을 저장할 수 없습니다.",
+    };
   }
 
   const rows = await sql<{ saved_sequence: number }[]>`
