@@ -172,8 +172,20 @@ export function radicalPiece(
   if (firstWidth === undefined) return null;
   const first = [...text][0];
   if (first === undefined) return null;
+  /* **어느 글꼴이든 `\sqrt{…}`로 묶지 않는다.**
+   *
+   * EHRoot에는 마감 조각이 있어 한동안 `\sqrt{289}`로 옮겼는데, 여는 조각과
+   * 닫는 조각이 **한 span에 함께 오는 자리**(`!%`·`14`)가 있어서 짝이
+   * 어긋났다 — `\sqrt{}(-9a)^{2}}`처럼 빈 근호와 떠도는 중괄호가 생기고
+   * 렌더가 깨진다(다섯 권 합쳐 358건). 중괄호를 쓰는 한 조각이 흩어질 때마다
+   * 균형이 무너지고, 그 균형을 파서가 추측으로 맞추면 **근호 안의 범위를
+   * 지어내는 것**이다.
+   *
+   * 그래서 √ 기호만 남기고(`\surd`) 범위는 비워 둔 채 미해독으로 올린다.
+   * 화면에는 지면과 비슷하게 나가고, 문항은 검수함으로 가고, 무엇을 못
+   * 읽었는지가 밖으로 드러난다. */
   if (RADICAL_FONT.test(font)) {
-    return { latex: firstWidth > 2 ? "\\sqrt{" : "}", certain: true };
+    return { latex: firstWidth > 2 ? "\\surd " : "", certain: false };
   }
   if (!/^EHboNA/.test(font)) return null;
   if (RADICAL_BONA_OPEN.has(first)) return { latex: "\\surd ", certain: false };
