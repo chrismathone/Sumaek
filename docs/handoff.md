@@ -14,20 +14,27 @@
 
 ## 1. 지금 어디까지 됐나
 
-개념원리 RPM 중학 수학 1-1 **I. 소인수분해** 단원 213문항이 문제은행에 들어가
-있고, 화면에 나가는 모든 자리가 지면과 일치한다.
+개념원리 RPM 중학 수학 1-1 **네 대단원 전부** 1123문항이 문제은행에 들어가
+있다(2026-08-05). 개념서(개념원리 본책)의 개념 블록 55개도 함께 들어갔다.
+
+> **2026-08-05 이전 기록을 읽는 사람에게.** 그때까지는 1단원 213문항뿐이었고
+> 검수가 끝나 197건이 published였다. II~IV단원을 뽑으면서 **1단원에도 영향을
+> 주는 결함 여섯**을 찾아 고쳤고(개념 정렬 두 가지·정답 두 건·분수 해독·큰 괄호),
+> 소유자 승인을 받아 1단원을 지우고 네 단원을 다시 넣었다. 그래서 지금 검수
+> 상태는 전부 `review_required`다 — 사람이 매긴 published 197건은 사라졌다.
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| 반입 문항 | **213** (0001~0213) | `select count(*) from questions where source_ref is not null` |
-| 정답이 있는 문항 | 211 (0166·0184는 그림 문항이라 별책에서 답을 못 읽음) | `count(qv.answer)` |
-| 해설 / 채점기준 | 180 / 19 | 같은 쿼리 |
-| 수식 렌더 실패 | **0 / 940면** (발문 213·해설 180·정답 133·선택지 395·채점기준 19) | `pnpm --filter @su-maek/ingest audit-katex` |
-| 내용 이상 징후 | **12건** — 전부 2단원(0214~) 미해독 글리프 9건 + 빈 정답 3건 | `audit-content` (아래 3절) |
-| 개념 미지정 | **0** | `load` 출력 |
-| 수식 검수 격리 | **0건** (`formula_review_required`) | `select review_status, count(*)` |
-| 레이아웃 검수 격리 | 3건 (그림 문항) | 같은 쿼리 |
-| 권한 | `is_auto_assignable`은 여전히 전부 `false` · 사용권은 **2026-08-04 `usable`로 확정** | 아래 6절 |
+| 반입 문항 | **1123** (0001~1123) | `select count(*) from questions where source_ref is not null` |
+| 대단원 | I 213 · II 310 · III 391 · IV 209 | `source_ref->'chapter'->>'title'` |
+| 답이 있는 문항 | 1116 (7건은 배지를 못 읽어 비워 둠) | `load` 출력의 「답 없음」 |
+| 개념 미지정 | **0** (네 단원 모두) | `load` 출력 |
+| 수식 렌더 실패 | **38** / 약 4600면 | `pnpm --filter @su-maek/ingest audit-katex` |
+| 내용 이상 징후 | 130건 · 문항 82개 (**1단원은 0건**) | `audit-content` (아래 3절) |
+| 수식 검수 격리 | II 23 · III 9 · IV 11 (`formula_review_required`) | `select review_status, count(*)` |
+| 레이아웃 검수 격리 | **55건** (그림 문항) | [figure-svg-plan.md](figure-svg-plan.md) |
+| 개념서 자료 | 55블록 (I 9 · II 16 · III 18 · IV 12) · 전부 draft | `learning_materials` |
+| 권한 | `is_auto_assignable`은 전부 `false` · 사용권은 2026-08-04 `usable`로 확정 | 아래 6절 |
 
 > **2026-08-04 소유자 판단으로 사용권이 `usable`로 확정됐고 검수도 일괄 통과했다**
 > (published 197 · 추출 결함 격리 13 · 절단 지시문 v2 복원 12 · 그림 3건은 layout
@@ -73,15 +80,21 @@ clone만으로는 반입 작업을 이어갈 수 없다. 아래는 저장소에 
 
 ### 2.2 원본 PDF 위치
 
-작업에 쓴 파일은 `N:\개인\강아\교재자료\RPM\22\` 아래에 있었다.
+**`N:\개인\강아\교재자료\RPM\22\`는 이제 없다.** 2026-08-05 기준 같은 파일이
+`D:\mathlab\data\` 아래에 있다 — 이름만 다르고 내용은 같다(본책 184쪽·평균
+995자/쪽으로 예전 실측과 일치).
 
-| 역할 | 파일명 | 뽑은 쪽 범위 | 그 안에 든 문항 |
-|---|---|---|---|
-| 본책 | `22개정 RPM 중 1-1 학생용.pdf` | p.2–33 | 0001~0213 (1단원 전체) |
-| 별책(정답·해설) | `개념원리 RPM 중 1-1 - 정답 및 해설.pdf` | p.1–20 | 0001~**0275** — 2단원 앞부분까지 딸려 온다 |
+| 역할 | 파일 | 뽑은 쪽 범위 |
+|---|---|---|
+| 본책 | `D:\mathlab\data\RPM\RPM 중학 1-1 학생용.pdf` (184쪽) | I p.2–33 · II p.34–73 · III p.74–123 · IV p.124–155 |
+| 별책 | `D:\mathlab\data\RPM\RPM 중학 1-1 정답.pdf` (104쪽) | p.2–93 (0001~1123 전부) |
+| 개념서 | `D:\mathlab\data\개념원리\개념원리 중학 1-1 교사용.pdf` (224쪽) | I p.6–47 · II p.48–101 · III p.102–173 · IV p.174–224 |
 
-별책 p.1–20에 2단원(0214~) 답이 섞여 들어오는 것이 1절의 「12건」 중 9건의
-출처다. 범위를 좁히면 그 9건은 사라진다 — 숫자를 비교할 때 이 점을 기억할 것.
+같은 폴더에 중1-2~중3-2 여섯 권이 다 있다(본책·정답·개념서 각각).
+
+본책 p.156–184는 「다시 풀기」 부록이다. 본문 문항을 번호로 되짚는 쪽이라
+**반입하지 않았다** — 넣으면 같은 문항이 두 번 들어간다. 별책 p.94–104가
+그 부록의 답이다.
 
 `source_files.storage_path`에는 `local:22개정 RPM 중 1-1 학생용.pdf`만 남아 있다
 — **원본은 객체 스토리지에 올리지 않았다.** 체크섬(sha256)은 덤프의
@@ -104,35 +117,43 @@ pnpm install
 pnpm db:migrate && pnpm db:seed    # 6)의 --org·--actor가 시드가 만드는 조직·교사다
 python -m pip install pymupdf
 
-# 1) 본책 → 기하 덤프 (해석 없음, 좌표만)
-python packages/ingest/python/extract.py \
-  "N:/개인/강아/교재자료/RPM/22/22개정 RPM 중 1-1 학생용.pdf" \
-  -o book-dump.json --from 2 --to 33
+# 1) 본책 → 기하 덤프 (해석 없음, 좌표만). 대단원마다 따로 뽑는다
+BOOK="D:/mathlab/data/RPM/RPM 중학 1-1 학생용.pdf"
+python packages/ingest/python/extract.py "$BOOK" -o u1.json --from 2   --to 33
+python packages/ingest/python/extract.py "$BOOK" -o u2.json --from 34  --to 73
+python packages/ingest/python/extract.py "$BOOK" -o u3.json --from 74  --to 123
+python packages/ingest/python/extract.py "$BOOK" -o u4.json --from 124 --to 155
 
-# 2) 별책 → 기하 덤프 (p.1-20에 2단원 답까지 딸려 온다 — 2.2절 참조)
+# 2) 별책 → 기하 덤프 (한 번에 1123문항 전부)
 python packages/ingest/python/extract.py \
-  "N:/개인/강아/교재자료/RPM/22/개념원리 RPM 중 1-1 - 정답 및 해설.pdf" \
-  -o answers-dump.json --from 1 --to 20
+  "D:/mathlab/data/RPM/RPM 중학 1-1 정답.pdf" -o ans.json --from 2 --to 93
 
 # 3) 추출 + 자가채점 (--expect가 없으면 통째로 빠진 문항이 채점표에 안 나온다)
-pnpm --filter @su-maek/ingest extract book-dump.json --expect=1-213 --verbose
-pnpm --filter @su-maek/ingest extract book-dump.json --outline   # 유형 구조만 훑기
+pnpm --filter @su-maek/ingest extract u2.json --expect=214-523 --verbose
+pnpm --filter @su-maek/ingest extract u2.json --outline   # 유형 구조 — 개념 표를 쓸 때 본다
 
 # 4) 정답 대조
-pnpm --filter @su-maek/ingest answers answers-dump.json --range=1-213 --verbose
+pnpm --filter @su-maek/ingest answers ans.json --range=1-1123 --verbose
 
 # 5) 내용 전수검사 — 렌더가 아니라 「지면과 같은가」
-#    발견이 1건이라도 있으면 **종료 코드 1**이다. 12건이 정상이므로 && 체인에 넣지 말 것
+#    발견이 1건이라도 있으면 **종료 코드 1**이다. && 체인에 넣지 말 것.
+#    별책 덤프가 1123문항 전부를 담으므로 **해설 쪽 발견은 단원마다 되풀이된다** —
+#    네 번 돌린 결과를 그냥 더하면 안 된다 (문항 번호로 중복을 걷어낼 것)
 pnpm --filter @su-maek/ingest audit-content \
-  --book=book-dump.json --answers=answers-dump.json --md=audit-dump.md
-pnpm --filter @su-maek/ingest audit-content \
-  --book=book-dump.json --answers=answers-dump.json --kind=위첨자-소실
+  --book=u2.json --answers=ans.json --md=audit-u2.md
 
-# 6) 적재 (--dry-run은 덤프 파싱만 한다 — DB에 접속조차 하지 않는다)
-pnpm --filter @su-maek/ingest load --book=book-dump.json --answers=answers-dump.json \
-  --org=00000000-0000-7000-8000-000000000001 \
-  --actor=00000000-0000-7000-8000-0000000000a1 --range=1-213 --dry-run
+# 6) 적재 — **--chapter에 기본값이 없다.** 단원마다 개념 표가 다르다
+ORG=00000000-0000-7000-8000-000000000001
+ACTOR=00000000-0000-7000-8000-0000000000a1
+pnpm --filter @su-maek/ingest load --chapter=II \
+  --book=u2.json --answers=ans.json --org=$ORG --actor=$ACTOR --dry-run
 # --dry-run만 빼면 실제로 들어간다 (여기서부터 DATABASE_URL이 필요하다)
+
+# 6-1) 개념서 (개념 블록 → learning_materials). 개념 쪽 허용목록은 CLI가 안다
+KWR="D:/mathlab/data/개념원리/개념원리 중학 1-1 교사용.pdf"
+python packages/ingest/python/extract.py "$KWR" -o kwr2.json --from 48 --to 101
+pnpm --filter @su-maek/ingest load-concepts --chapter=II \
+  --dump=kwr2.json --org=$ORG --actor=$ACTOR
 
 # 7) 적재 후 DB 검사
 pnpm --filter @su-maek/ingest audit-katex --verbose        # 화면 문자열 그대로 렌더
@@ -159,32 +180,27 @@ python packages/ingest/python/render-page.py "교재.pdf" 12 --clip 315 275 580 
 찾으면 **건너뛴다**(`load.ts:355-364`). 갱신하지 않는다.
 
 **즉 추출 로직을 고친 뒤 그냥 다시 돌리면 아무 일도 일어나지 않는다.**
-반영하려면 기존 213문항을 지우고 다시 넣어야 한다. 2026-08-03에 실제로 그렇게 했다:
+반영하려면 지우고 다시 넣어야 한다.
 
-**`begin;`/`commit;`을 반드시 감쌀 것.** psql은 기본이 autocommit이라 그냥
-붙여 넣으면 문장마다 커밋되고, 아래에 적은 안전망이 성립하지 않는다.
-
-```sql
-begin;
--- source_ref가 있는 것(= 반입분)만. 시드 371문항은 건드리지 않는다.
-delete from question_alignments
- where question_id in (select id from questions where source_ref is not null);
-delete from math_expressions
- where question_version_id in (
-   select qv.id from question_versions qv
-   join questions q on q.id = qv.question_id
-   where q.source_ref is not null);
-delete from question_versions
- where question_id in (select id from questions where source_ref is not null);
-delete from questions where source_ref is not null;
-commit;
+```bash
+pnpm --filter @su-maek/ingest delete-ingested --yes            # 반입분 전부
+pnpm --filter @su-maek/ingest delete-ingested --yes --chapter=IV   # 한 단원만
 ```
 
-`questions`를 참조하는 외래키는 `question_alignments`·`question_versions` 둘뿐이고
-둘 다 `on delete NO ACTION`이라 **자식부터 지워야 한다.** `question_versions`를
-참조하는 `assessment_questions`가 걸려 있으면 트랜잭션이 통째로 롤백된다 —
-그것이 안전망이다(평가에 이미 쓰인 문항은 못 지운다). `begin;`을 빠뜨리면
-이 안전망이 없어져 **반쯤 지워진 상태**가 남는다.
+예전에는 이 절차가 이 문서의 SQL 조각이었다. **psql이 기본 autocommit이라
+`begin;`을 빠뜨리면 문장마다 커밋되고 안전망이 사라진다** — 그래서 CLI로
+옮겼다(2026-08-05). `--yes` 없이는 안 지우고, 지우기 전에 검수 상태를 찍는다.
+
+지우는 것은 `source_ref is not null`인 문항뿐이다(시드는 안 건드린다).
+`questions`를 참조하는 외래키는 `question_alignments`·`question_versions`
+둘뿐이고 둘 다 `on delete NO ACTION`이라 **자식부터 지운다.**
+`question_versions`를 참조하는 `assessment_questions`가 걸려 있으면
+트랜잭션이 통째로 롤백된다 — 그것이 안전망이다(평가에 이미 쓰인 문항은
+못 지운다).
+
+> **검수 상태는 되살아나지 않는다.** published·quarantined는 사람이 매긴
+> 것이고 지우면 그대로 사라진다. 2026-08-05 재적재로 published 197건이
+> 사라졌다 — 지우기 전에 문항별 상태를 백업할지 먼저 정할 것.
 
 지우고 다시 넣으면 문항 id가 바뀐다. 인쇄 번호로 다시 찾으려면:
 
@@ -196,20 +212,34 @@ select id from questions where source_ref->>'printedNumber' = '0027';
 때마다 갱신되므로, 프로파일 버전만 올리고 다시 돌리면 판의 프로파일과 문항의
 `source_ref.extractedBy.version`이 어긋난 채로 남는다.
 
-### 3.2 개념서(개념원리 본책) — 개념 블록 반입 (2026-08-03)
+### 3.2 개념서(개념원리 본책) — 개념 블록 반입 (2026-08-05 네 단원 완료)
 
-RPM 문항과 별개로, 같은 폴더의 『22개정 개념원리 중 1-1 교사용.pdf』에서
-**I단원 개념 블록 8개**를 뽑아 `learning_materials`(kind=reading, draft)로
-넣었다. 학생 「개념 공부」 화면이 읽는 자리다. RPM 문항이 걸린 것과 같은
-정본 개념(m1-*)에 붙어서, 개념 설명 → 문항이 한 줄로 이어진다.
+RPM 문항과 별개로 『개념원리 중학 1-1 교사용.pdf』에서 **개념 블록 55개**를
+뽑아 `learning_materials`(kind=reading, draft)로 넣었다. 학생 「개념 공부」
+화면이 읽는 자리다. RPM 문항이 걸린 것과 같은 정본 개념(m1-*)에 붙어서,
+개념 설명 → 문항이 한 줄로 이어진다.
 
 ```bash
-python packages/ingest/python/extract.py \
-  "N:/개인/강아/교재자료/RPM/22/22개정 개념원리 중 1-1 교사용.pdf" \
-  -o kwr-dump.json --from 6 --to 47
-pnpm --filter @su-maek/ingest load-concepts --dump=kwr-dump.json \
-  --org=<uuid> --actor=<uuid>   # --pages 기본값 10,11,17,30,35 (차례로 확인한 값)
+KWR="D:/mathlab/data/개념원리/개념원리 중학 1-1 교사용.pdf"
+python packages/ingest/python/extract.py "$KWR" -o kwr2.json --from 48 --to 101
+pnpm --filter @su-maek/ingest load-concepts --chapter=II \
+  --dump=kwr2.json --org=<uuid> --actor=<uuid>
 ```
+
+`--chapter`가 덤프 쪽 범위·개념 쪽 허용목록·잇는 표를 다 안다. 기본값은 없다.
+
+| 대단원 | 덤프 쪽 | 개념 쪽 (허용목록) | 블록 |
+|---|---|---|---|
+| I | 6–47 | 10, 11, 17, 30, 35 | 9 |
+| II | 48–101 | 50, 51, 56, 70, 71, 81, 89 | 16 |
+| III | 102–173 | 104, 105, 111, 117, 132, 133, 139, 156, 163 | 18 |
+| IV | 174–224 | 176, 177, 184, 198, 208 | 12 |
+
+**허용목록은 사람이 확인한 값이다.** 문제 쪽은 조판 신호가 개념 쪽과 겹쳐,
+추론에 맡겼더니 개념 하나가 문제 12쪽 분량(500줄)을 삼켰다. 위 값은
+「N. 중단원」 머리글이 있는 쪽과 「…는가?」+핵심문제로 이어지는 쪽을 224쪽
+전체에서 훑어 뽑은 뒤, **1단원 결과가 사람이 손으로 확인해 둔
+10,11,17,30,35와 정확히 같은지** 대조해 규칙을 검증한 것이다.
 
 규칙·함정·실측은 [packages/ingest/README.md](../packages/ingest/README.md)의
 `kwr-2022` 절에 있다. 재적재는 문항과 같은 원칙 — **덮어쓰지 않는다**
@@ -296,6 +326,16 @@ PDF ──(python/extract.py, PyMuPDF)──▶ 기하 덤프 JSON ──(src/, 
 그럴듯하게 지어내면 학생이 맞는 답을 쓰고 틀렸다는 채점을 받는다. `points`는
 `'10'` 고정이고, 난이도는 지면의 뱃지가 벡터 그림이라 텍스트로 못 뽑아 비워 두었다.
 
+> **다만 「못 읽었다」는 판단도 틀릴 수 있다 — 실제로 틀렸다.**
+> 이 문서는 0166·0184를 「그림 문항이라 별책에서 답을 못 읽는다」고 적어
+> 두었는데 사실이 아니었다. 별책 13쪽·15쪽 **첫 단에 답 16과 답 ③이 그대로
+> 인쇄돼 있다.** 해설이 단 끝을 넘어가면서 「답」 배지가 다음 쪽으로 밀렸고,
+> 파서가 쪽마다 따로 읽어서 그 배지를 통째로 버린 것이다(2026-08-05 수리).
+> 중1-1 전권에서 이 결함으로 25건이 비어 있었고, 지금은 7건이다.
+>
+> 비워 두는 것은 옳지만, **왜 비었는지를 지면을 열어 확인하지 않은 채
+> 이유를 적으면** 그 문장이 다음 사람의 조사를 막는다.
+
 > **난이도 컬럼은 `null`이 아니다.** `{"band": null, "source": "미측정 — 지면
 > 뱃지가 벡터라 추출 불가"}`라는 jsonb가 들어간다. 그래서 미지정 문항을 찾을 때는
 > `where difficulty is null`이 아니라 **`where difficulty->>'band' is null`**로
@@ -373,30 +413,39 @@ figureBoxes · figureLabels · extractedBy{profile,version}
 
 우선순위 순. 각 항목에 **어디를 고쳐야 하는지**까지 적었다.
 
-### 7.1 개념 매핑표의 키 충돌 — 지금 조용히 틀리고 있다
+### 7.1 ~~개념 매핑표의 키 충돌~~ — 고쳤다 (2026-08-05)
 
-`rpm-2022-concepts.ts`의 `RPM_M1_CH1_TITLE_TO_CONCEPT`에 **`"소인수분해"` 키가 두
-번** 들어 있다. 유형·소단원용(`m1-prime-factorization` 가중치 1, :87)과 중단원용
-(3개 개념 0.34/0.33/0.33, :162)인데, `Map`은 나중 것이 이기므로 **앞엣것이 통째로
-덮여 사문화됐다.** 소단원 「소인수분해」 문항이 단일 개념 대신 3분할로 들어간다.
+유형·소단원 표(`*_TITLE_TO_CONCEPT`)와 중단원 표(`*_UNIT_TO_CONCEPT`)를 나눴고,
+`conceptTable()`이 **중복 키를 불러들이는 순간 던진다.** 사람이 조심해서 될
+일이 아니었다 — 표를 다시 짜면서 2단원에 「절댓값」을 또 두 번 넣었다.
 
-조회는 `load.ts:526-536`이 `typeContext.title` → `unit.title` 순으로 **같은 표
-하나**를 본다. 고치려면 유형용 표와 중단원용 표를 나누고 조회도 나눠야 한다.
-고친 뒤에는 3.1절대로 지우고 다시 넣어야 반영된다.
+같은 자리에서 둘을 더 찾았다.
 
-### 7.2 그림 문항 3건이 반쪽이다
+- 지면의 □는 공백이 아니라 **사설 영역 글자(U+E22D)**다. `\s`로 눌러도 안
+  없어져서 1단원 4문항이 유형 표를 못 찾고 있었다 — 중단원 표가 받아 주는
+  바람에 「개념 미지정 0」으로 보였다. 걸리기는 걸리되 엉뚱한 데 걸린 것이다.
+- 소단원 머리글 둘이 한 줄에 붙어 오는 「소수와 합성수 소인수분해」 29문항도
+  표에 없어 같은 길로 샜다.
+
+### 7.2 그림 문항 55건이 반쪽이다
 
 벡터 도형 뭉치를 찾아 `figureBoxes`·`figureLabels`를 `source_ref`에 남기고
 `layout_review_required`로 격리하는 데까지만 되어 있다.
 
 - `diagram_assets`·`question_assets` 테이블은 **존재하지만 아무것도 넣지 않는다**
-  (`load.ts:414` 주석 「그림이 있는데 아직 자산이 없다」)
 - 문항 본문(`buildBody`)이 만드는 블록은 `paragraph`·`condition_box`·`choice_group`
-  3종뿐 — **그림 블록이 없다**
+  3종뿐 — **그림 블록도 표 블록도 없다**
 - 웹 화면(`apps/web/src`)은 `figureBoxes`를 아예 참조하지 않는다
 
-즉 그 3문항은 화면에서 그림 없이 보인다. 크롭 이미지를 만들어 스토리지에 올리고
-본문 블록에 잇는 작업이 통째로 남아 있다.
+**설계와 실행 계획은 [figure-svg-plan.md](figure-svg-plan.md)에 있다.** 요점:
+
+- 55건 중 **19건은 그림이 아니라 표**다(달력·대응표·농도표). 괘선이 벡터라
+  그림으로 잡혔을 뿐이다. SVG가 아니라 본문 표 블록으로 가야 한다.
+- 25건은 좌표평면·그래프라 **프리셋 spec으로 결정적으로 생성**할 수 있다.
+  `D:\mathlab\src\lib\utils\svg-diagrams`(24종)와
+  `D:\mathg-gen\src\lib\diagram`(정리된 이식본)에 이미 있다.
+- 진짜로 사람이나 AI가 그려야 하는 것은 **3건**뿐이다(그릇·타는 초·용수철).
+  그 3건용 GPT 프롬프트도 같은 문서에 있다.
 
 ### 7.3 숫자 변형이 DB에 저장되지 않는다
 
@@ -427,11 +476,31 @@ figureBoxes · figureLabels · extractedBy{profile,version}
 `load.ts`의 멱등성도 자동 검증되지 않는다 — `loadQuestions`를 부르는 곳은 CLI
 하나뿐이다.
 
-### 7.6 2단원(0214~) 미해독 글리프 9건
+### 7.6 ~~2단원 미해독 글리프 9건~~ — 고쳤다 (2026-08-05)
 
-`audit-content`가 잡아 둔 상태다. 전부 분수 표기 안의 글리프(`¥ ¦ » ª ¼ Á ¢ ¤`)로,
-1단원에는 나오지 않아 해독표에 넣지 않았다. 2단원을 반입하려면 지면을 열어
-대조해야 한다 — `packages/ingest/python/render-page.py`로 해당 쪽을 뽑아 눈으로 본다.
+`¥ ¦ » ª ¼ Á ¢ ¤`는 **분수의 분자 자리 전용 글리프**였다. 조판기는 분자와
+분모의 자릿수가 같으면 shift 행(`;1#2%;`=35/12)을 쓰고, 다르면 이쪽 벌을
+쓴다(가운데 맞춤 때문에 좌우 여백이 다른 글자가 필요해서다). 열 자리를 전부
+지면에서 확인했다: `¼=0 Á=1 ª=2 £=3 ¢=4 °=5 ¤=6 ¦=7 ¥=8 »=9`.
+
+같이 드러난 것 — **분수를 읽는 규칙 자체가 틀려 있었다.** 「짝수 자리가 분모」
+라는 교대 규칙이었는데, 자릿수가 같은 동안만 우연히 맞는 규칙이었다.
+실제로는 글자의 종류가 자리를 정한다(평문 숫자·소문자는 분모, 전용 글리프는
+분자). 그래서 1단원은 통과하고 2단원의 4/12·20/4가 통째로 unknown이 됐다.
+
+### 7.6a 2행 분수가 납작해진다 — **남아 있다** (2026-08-05 발견)
+
+조판기는 `-a/6`을 분자·분모 두 span으로 앉히고 사이에 막대를 그린다.
+그런데 앞의 마이너스가 분자와 **한 span**으로 오면(별책 1114의 `- a`) 그
+span이 막대보다 넓어 짝짓기가 폭 검사에서 탈락한다. 분자는 윗줄에 남고
+분모는 혼자 다음 줄이 된다.
+
+지면의 `C(-6, -a/6)`이 `C(-6, -a)`로 저장되고 **KaTeX는 아무 오류 없이
+그린다.** 렌더 검사로는 영영 안 잡힌다. 실측 145곳(해설 955개 중).
+
+지금은 `audit-content`의 「분수-납작해짐」이 **잡아만 준다.** 근본 수리는
+`mergeStackedFractions`가 분자 span에서 앞의 부호를 떼어 내고 폭을 재도록
+고치는 것이다 — `answers.ts:187` 언저리.
 
 ### 7.7 그 밖에 확인된 작은 것들
 
