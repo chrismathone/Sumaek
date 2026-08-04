@@ -331,6 +331,10 @@ describe.skipIf(!hasDb)("차단과 복습", () => {
               'spaced_repetition', ${isoAddDays(-5)}, 'scheduled')
     `;
     try {
+      /* 계획을 지우고 다시 연다 — 확정 이후에 생긴 항목은 선택으로 붙는
+       * 것이 규칙이므로(ADR-0017 §4), 「복습이 필수인가」를 보려면 복습이
+       * 있는 상태에서 학생이 그날을 **처음 여는** 장면이어야 한다. */
+      await sql`delete from learner_day_plans where learner_id = ${LEARNER} and plan_date = ${TODAY}`;
       const view = await projectToday({ learner: learnerRef, today: TODAY });
       const item = view.plan.items.find((i) => i.kind === "review");
 

@@ -1,11 +1,18 @@
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
-import { projectLearnerDayPlan, type DayPlanItemSpec } from "@su-maek/db/domain";
+import {
+  getLearnerDayPlan,
+  projectLearnerDayPlan,
+  type DayPlanItemSpec,
+} from "@su-maek/db/domain";
 import {
   buildDayPlan,
+  executeNodes,
   type DayPlan,
   type DayPlanItem,
   type DayPlanItemInput,
+  type ExecutableNode,
+  type NodeMaterial,
 } from "@su-maek/core/learning";
 import { KST, type IsoDate } from "@su-maek/core/shared";
 import { conceptIdsForNodes, listMaterials } from "@/lib/domain/learning-material";
@@ -219,9 +226,100 @@ async function listAssignments(
   `;
 }
 
-/** 자료 진도 → 항목 상태. 진도가 없으면 아직 시작하지 않은 것이다. */
-function materialStatus(progress: "none" | "in_progress" | "completed") {
-  return progress === "none" ? ("pending" as const) : progress;
+/** 오늘 노드의 실행 입력 — 실행기가 보는 모양 그대로 읽는다 */
+interface TodayNode extends ExecutableNode {
+  conceptIds: string[];
+}
+
+/** 노드 id → 그 노드가 다루는 개념 (자료를 노드별로 가르기 위해) */
+const nodeConcepts = new Map<string, string[]>();
+
+async function listTodayNodes(
+  learner: LearnerRef,
+  nodeIds: readonly string[],
+): Promise<TodayNode[]> {
+  /* `override:` 접두 id는 학생 오버라이드가 jsonb 안에 끼워 넣은 노드라
+   * route_nodes에 행이 없다. 실행기에 넘길 payload도 없으므로 여기서 뺀다. */
+  const real = nodeIds.filter((n) => !n.startsWith("override:"));
+  nodeConcepts.clear();
+  if (real.length === 0) return [];
+
+  const sql = getSharedSql();
+  const rows = await sql<
+    {
+      id: string;
+      kind: string;
+      title: string;
+      concept_ids: unknown;
+      book_edition_id: string | null;
+      page_range: unknown;
+      homework: unknown;
+      blueprint_id: string | null;
+    }[]
+  >`
+    select id::text, kind::text, title, concept_ids,
+           book_edition_id::text, page_range, homework, blueprint_id::text
+    from route_nodes
+    where organization_id = ${learner.organizationId}
+      and id = any(${real}::uuid[])
+    order by sort_order
+  `;
+
+  return rows.map((r) => {
+    const conceptIds = Array.isArray(r.concept_ids)
+      ? (r.concept_ids as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+    nodeConcepts.set(r.id, conceptIds);
+    return {
+      id: r.id,
+      kind: r.kind,
+      title: r.title,
+      conceptIds,
+      bookEditionId: r.book_edition_id,
+      pageRange: (r.page_range as TodayNode["pageRange"]) ?? null,
+      homework: (r.homework as TodayNode["homework"]) ?? null,
+      blueprintId: r.blueprint_id,
+    };
+  });
+}
+
+async function lookupBookTitles(
+  learner: LearnerRef,
+  editionIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (editionIds.length === 0) return new Map();
+  const sql = getSharedSql();
+  /* 학생에게 「교재」라고만 하면 어느 책인지 모른다. 판본 이름까지 붙여야
+   * 책상에 놓인 책과 화면이 이어진다. */
+  const rows = await sql<{ id: string; label: string }[]>`
+    select e.id::text,
+           coalesce(b.title, '교재') || ' ' || e.edition_label as label
+    from book_editions e
+    left join books b on b.id = e.book_id
+    where e.organization_id = ${learner.organizationId}
+      and e.id = any(${[...editionIds]}::uuid[])
+  `;
+  return new Map(rows.map((r) => [r.id, r.label]));
+}
+
+/** 최신 응시 상태 → 항목 상태 */
+function attemptStatusOf(a: AssignmentRow) {
+  if (a.attempt_status && DONE_ATTEMPT_STATUSES.includes(a.attempt_status)) {
+    return "completed" as const;
+  }
+  return a.attempt_status === "in_progress"
+    ? ("in_progress" as const)
+    : ("pending" as const);
+}
+
+/** 막힌 노드를 어떤 항목 종류로 낼지 — 화면이 알맞은 정거장에 놓게 */
+function blockedItemKind(nodeKind: string) {
+  if (nodeKind === "book_range") return "book_range" as const;
+  if (nodeKind === "homework") return "homework" as const;
+  if (nodeKind === "daily_test" || nodeKind === "confirmation_test") {
+    return "assessment" as const;
+  }
+  return "reading" as const;
 }
 
 /**
@@ -265,43 +363,98 @@ export async function projectToday(input: {
     `,
   ]);
 
-  const items: DayPlanItemInput[] = [];
-  let ordinal = 0;
-
-  /* 1) 개념 자료 — 읽기·인강·연습. 오늘 범위의 개념에 붙은 게시 자료만. */
+  /* 오늘 노드를 실행기로 편다 (T2.2).
+   *
+   * 예전에는 이 파일이 자료·평가·복습을 직접 늘어놓았고, 그래서 교재
+   * 범위·숙제 노드는 아무 데도 나타나지 않았다. 어떤 노드가 무엇으로
+   * 펼쳐지는지는 core가 정한다 — 여기서 다시 정하면 규칙이 둘이 된다. */
+  const nodes = await listTodayNodes(learner, scope.nodeIds);
+  const bookTitles = await lookupBookTitles(
+    learner,
+    nodes.map((n) => n.bookEditionId).filter((v): v is string => Boolean(v)),
+  );
+  const byConcept = new Map<string, NodeMaterial[]>();
   for (const m of materials) {
-    items.push({
-      key: `${m.kind}:${m.id}`,
+    const list = byConcept.get(m.conceptId) ?? [];
+    list.push({
+      id: m.id,
       kind: m.kind,
+      title: m.title,
+      questionCount: m.questionIds.length,
+      progress: m.progress,
+    });
+    byConcept.set(m.conceptId, list);
+  }
+  const assessmentByNode = new Map(
+    assignments.filter((a) => a.route_node_id).map((a) => [a.route_node_id!, a]),
+  );
+  const dueReviewCount = reviewCounts[0]?.due_cnt ?? 0;
+
+  const executed = executeNodes(nodes, (node, ordinalFrom) => {
+    const mine = nodeConcepts.get(node.id) ?? [];
+    /* 연습 숙제가 가리키는 자료는 노드의 개념 밖일 수 있다 — 실행기가
+     * questionCount를 보려면 그것도 함께 넘겨야 한다. */
+    const extra = node.homework?.practiceMaterialId
+      ? materials
+          .filter((m) => m.id === node.homework!.practiceMaterialId)
+          .map((m) => ({
+            id: m.id,
+            kind: m.kind,
+            title: m.title,
+            questionCount: m.questionIds.length,
+            progress: m.progress,
+          }))
+      : [];
+    const a = assessmentByNode.get(node.id);
+    return {
+      materials: [...mine.flatMap((c) => byConcept.get(c) ?? []), ...extra],
+      assessment: a
+        ? {
+            id: a.id,
+            title: a.title,
+            scheduledDate: (a.scheduled_date as IsoDate | null) ?? null,
+            questionCount: a.question_count,
+            status: attemptStatusOf(a),
+          }
+        : null,
+      bookTitle: node.bookEditionId ? (bookTitles.get(node.bookEditionId) ?? null) : null,
+      dueReviewCount,
+      ordinalFrom,
+    };
+  });
+
+  const items: DayPlanItemInput[] = [...executed.items];
+  let ordinal = items.length;
+
+  /* 막힌 노드는 버리지 않고 **차단 항목으로 낸다.** 목록에서 빼면 그 노드는
+   * 학생 화면에서도 교사 준비도에서도 사라지고, 하루는 「할 일 없음」으로
+   * 완주 처리된다 — 실행기를 만든 이유가 바로 그것이다. */
+  for (const b of executed.blocked) {
+    items.push({
+      key: `node:${b.nodeId}`,
+      kind: blockedItemKind(b.kind),
       required: true,
-      status: materialStatus(m.progress),
-      titleSnapshot: m.title,
+      status: "blocked",
+      blockedReason: b.reason,
+      titleSnapshot: b.title,
       ordinal: ordinal++,
-      refType: "learning_material",
-      refId: m.id,
-      // 문항 0개 연습 자료는 학생이 영원히 대기한다 — 차단으로 낸다 (G-06).
-      ...(m.kind === "practice" && m.questionIds.length === 0
-        ? { status: "blocked" as const, blockedReason: "no_questions" }
-        : {}),
+      routeNodeId: b.nodeId,
+      refType: "route_node",
     });
   }
 
-  /* 2) 평가 — 날짜는 core가 오늘·예정·밀림으로 가른다. */
+  /* 노드에 매이지 않은 배정 — 교사가 직접 만든 평가, 그리고 오늘 노드 밖의
+   * 날짜(예정·밀림)를 가진 평가. 날짜 판정은 core가 한다. */
   for (const a of assignments) {
-    const done =
-      a.attempt_status !== null && DONE_ATTEMPT_STATUSES.includes(a.attempt_status);
+    if (a.route_node_id && assessmentByNode.has(a.route_node_id)) {
+      if (nodes.some((n) => n.id === a.route_node_id)) continue;
+    }
     const blocked = a.question_count === 0;
     items.push({
       key: `assessment:${a.id}`,
       kind: "assessment",
       required: true,
-      status: blocked
-        ? "blocked"
-        : done
-          ? "completed"
-          : a.attempt_status === "in_progress"
-            ? "in_progress"
-            : "pending",
+      status: blocked ? "blocked" : attemptStatusOf(a),
       blockedReason: blocked ? "no_questions" : null,
       scheduledDate: (a.scheduled_date as IsoDate | null) ?? null,
       titleSnapshot: a.title,
@@ -312,25 +465,29 @@ export async function projectToday(input: {
     });
   }
 
-  /* 3) 복습 — 하루 한 덩어리. 기한이 지난 복습은 오늘 필수에 든다
-   *    (ADR-0017 §5의 유일한 예외 — 밀린 것이 곧 지금 할 것이다).
-   *    오늘 다 끝냈으면 항목을 없애지 않고 완료로 남긴다. 없애면 재투영이
-   *    pending으로 보고 지워, 「복습을 했다」는 기록이 사라진다. */
-  const due = reviewCounts[0]?.due_cnt ?? 0;
+  /* 복습 — 복습 노드가 없는 날에도 기한이 온 것은 오늘 필수다 (ADR-0017 §5).
+   *  노드가 이미 낸 경우에는 같은 key라 중복되지 않는다. */
   const doneToday = reviewCounts[0]?.done_today_cnt ?? 0;
-  if (due > 0 || doneToday > 0) {
+  if (
+    (dueReviewCount > 0 || doneToday > 0) &&
+    !items.some((i) => i.key === "review:due")
+  ) {
     items.push({
       key: "review:due",
       kind: "review",
       required: true,
-      status: due > 0 ? "pending" : "completed",
-      titleSnapshot: due > 0 ? `복습 ${due}건` : `복습 ${doneToday}건 완료`,
+      status: dueReviewCount > 0 ? "pending" : "completed",
+      titleSnapshot:
+        dueReviewCount > 0 ? `복습 ${dueReviewCount}건` : `복습 ${doneToday}건 완료`,
       ordinal: ordinal++,
       refType: "review_batch",
     });
   }
 
-  const plan = buildDayPlan({ planDate: today, items });
+  const computed = buildDayPlan({ planDate: today, items });
+  const deferredItems = computed.deferred;
+  const overdueItems = computed.overdue;
+  let plan = computed;
 
   let planId: string | null = null;
   let completable = false;
@@ -348,6 +505,39 @@ export async function projectToday(input: {
     });
     planId = result.planId;
     completable = result.completable;
+
+    /* 화면이 보는 것은 **병합된 결과**여야 한다.
+     *
+     * 방금 계산한 항목은 병합 이전이다. 자료·평가는 다른 테이블이 진실을
+     * 갖고 있어 다시 계산해도 완료가 살아나지만, 숙제·교재 범위는 계획
+     * 자체가 유일한 진실이다 — 계산 결과를 그대로 그리면 학생이 방금
+     * 「확인했습니다」를 눌러도 화면은 영영 「할 차례」라고 말한다.
+     * 재투영이 보존한 상태를 읽어 와야 그 거짓말이 사라진다. */
+    const persisted = await getLearnerDayPlan(sql, {
+      organizationId: learner.organizationId,
+      learnerId: learner.learnerId,
+      planDate: today,
+    });
+    if (persisted) {
+      plan = buildDayPlan({
+        planDate: today,
+        items: persisted.items.map((i) => ({
+          key: i.key,
+          kind: i.kind,
+          required: i.required,
+          status: i.status,
+          blockedReason: i.blockedReason,
+          titleSnapshot: i.titleSnapshot,
+          ordinal: i.ordinal,
+          routeNodeId: i.routeNodeId,
+          refType: i.refType,
+          refId: i.refId,
+          /* 날짜는 저장하지 않는다 — 저장된 항목은 이미 「오늘 것」으로
+           * 걸러진 결과다. 예정·밀림은 계산 결과에서 그대로 이어받는다. */
+        })),
+      });
+      plan = { ...plan, deferred: deferredItems, overdue: overdueItems };
+    }
   } else {
     completable = plan.status === "completed";
   }

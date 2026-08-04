@@ -43,7 +43,8 @@ describe.skipIf(!hasDb)("확인테스트 미통과 → 재시험 (인수 10)", (
     await sql`insert into learners (id, organization_id, display_name)
       values (${ids.learner}, ${ORG_ID}, '확인테스트 학습자')`;
     await sql`insert into canonical_concepts (id, slug, name, status, evidence)
-      values (${ids.concept}, ${`ctest-${ids.concept.slice(0, 8)}`}, '확인 개념', 'active', '[]'::jsonb)`;
+      values (${ids.concept}, ${/* uuidv7 앞 8자는 시각이라 겹친다 — 무작위인 뒷부분을 쓴다 */
+        `ctest-${ids.concept.slice(-12)}`}, '확인 개념', 'active', '[]'::jsonb)`;
     await sql`insert into content_rights (id, organization_id, rights_holder, status)
       values (${ids.right}, ${ORG_ID}, '테스트', 'usable')`;
     for (const [q, v, answer] of [

@@ -44,7 +44,9 @@ describe.skipIf(!hasDb)("채점 예외 통합 (인수 9)", () => {
     `;
     await sql`
       insert into canonical_concepts (id, slug, name, status, evidence)
-      values (${ids.concept}, ${`itest-${ids.concept.slice(0, 8)}`}, '통합테스트 개념', 'active', '[]'::jsonb)
+      values (${ids.concept}, ${/* uuidv7의 앞 8자는 **시각**이라 비슷한 때에 만들면 겹친다.
+         * 무작위인 뒷부분을 쓴다 — 실제로 slug 유니크 위반으로 깨졌다. */
+        `itest-${ids.concept.slice(-12)}`}, '통합테스트 개념', 'active', '[]'::jsonb)
     `;
     await sql`
       insert into content_rights (id, organization_id, rights_holder, status)

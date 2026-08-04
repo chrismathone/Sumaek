@@ -21,6 +21,7 @@ import Link from "next/link";
 
 const TABS = [
   { key: "today", href: "/learn/today", label: "오늘 학습" },
+  { key: "homework", href: "/learn/homework", label: "숙제" },
   { key: "records", href: "/learn/records", label: "지난 기록" },
 ] as const;
 

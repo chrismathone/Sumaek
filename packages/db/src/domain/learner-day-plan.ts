@@ -89,6 +89,9 @@ export interface LearnerDayPlanRow {
     ordinal: number;
     blockedReason: string | null;
     addedAfterMaterialization: boolean;
+    routeNodeId: string | null;
+    refType: string | null;
+    refId: string | null;
   }[];
 }
 
@@ -358,10 +361,14 @@ export async function getLearnerDayPlan(
       ordinal: number;
       blocked_reason: string | null;
       added_after_materialization: boolean;
+      route_node_id: string | null;
+      ref_type: string | null;
+      ref_id: string | null;
     }[]
   >`
     select item_key, kind::text as kind, required, status::text as status,
-           title_snapshot, ordinal, blocked_reason, added_after_materialization
+           title_snapshot, ordinal, blocked_reason, added_after_materialization,
+           route_node_id::text, ref_type, ref_id::text
     from learner_day_plan_items
     where learner_day_plan_id = ${plan.id}
     order by ordinal, item_key
@@ -385,6 +392,72 @@ export async function getLearnerDayPlan(
       ordinal: i.ordinal,
       blockedReason: i.blocked_reason,
       addedAfterMaterialization: i.added_after_materialization,
+      routeNodeId: i.route_node_id,
+      refType: i.ref_type,
+      refId: i.ref_id,
     })),
   };
+}
+
+/**
+ * 항목 하나를 완료로 표시한다.
+ *
+ * **현재 학생·현재 날짜의 항목만** 바꾼다. 항목 id가 아니라
+ * (조직·학생·날짜·키)로 찾는 이유가 그것이다 — 화면이 넘긴 id를 그대로
+ * 믿으면 남의 항목을 완료 처리할 수 있다. 학생 흐름에서 실제로 그런
+ * 결손이 있었다(답안 저장에 learner 스코프가 없었다).
+ *
+ * 멱등이다: 이미 완료된 항목을 다시 불러도 완료 시각이 바뀌지 않는다.
+ * 차단·면제 항목은 학생이 완료할 수 없다.
+ */
+export async function completeDayPlanItem(
+  sql: Sql,
+  input: {
+    organizationId: string;
+    learnerId: string;
+    planDate: IsoDate;
+    itemKey: string;
+  },
+): Promise<{ ok: boolean; message: string; alreadyDone: boolean }> {
+  const rows = await sql<{ status: string }[]>`
+    update learner_day_plan_items i
+    set status = 'completed', completed_at = now(), updated_at = now()
+    from learner_day_plans p
+    where i.learner_day_plan_id = p.id
+      and p.organization_id = ${input.organizationId}
+      and p.learner_id = ${input.learnerId}
+      and p.plan_date = ${input.planDate}
+      and i.item_key = ${input.itemKey}
+      and i.status in ('pending', 'in_progress')
+    returning i.status::text as status
+  `;
+  if (rows.length > 0) {
+    return { ok: true, message: "완료로 표시했습니다.", alreadyDone: false };
+  }
+
+  /* 0행이면 이유가 셋이다: 이미 끝냈거나, 할 수 없는 상태이거나, 내 것이
+   * 아니거나. 셋을 같은 말로 뭉개면 학생은 왜 안 되는지 모른다. */
+  const [existing] = await sql<{ status: string }[]>`
+    select i.status::text as status
+    from learner_day_plan_items i
+    join learner_day_plans p on p.id = i.learner_day_plan_id
+    where p.organization_id = ${input.organizationId}
+      and p.learner_id = ${input.learnerId}
+      and p.plan_date = ${input.planDate}
+      and i.item_key = ${input.itemKey}
+  `;
+  if (!existing) {
+    return { ok: false, message: "오늘 계획에 없는 항목입니다.", alreadyDone: false };
+  }
+  if (existing.status === "completed") {
+    return { ok: true, message: "이미 완료했습니다.", alreadyDone: true };
+  }
+  if (existing.status === "blocked") {
+    return {
+      ok: false,
+      message: "지금 할 수 없는 항목입니다 — 선생님께 알려 주세요.",
+      alreadyDone: false,
+    };
+  }
+  return { ok: false, message: "완료할 수 없는 항목입니다.", alreadyDone: false };
 }
