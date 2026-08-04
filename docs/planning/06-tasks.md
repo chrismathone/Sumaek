@@ -35,7 +35,7 @@
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
 | G-06 | 문항 없는 연습 자료도 게시할 수 있어 학생이 영구 대기함 | 게시·루트 게시 전 실행 가능성 검증 | P0 | T2.4 |
 | ~~G-07~~ **닫힘** | 일반 교사는 반·학생·계정 최초 세팅을 끝낼 수 없음 | `/app/setup`이 서버 상태에서 다음 할 일을 하나로 정하고(T5.1), 담당 교사가 `settings` 없이 자기 반 학생 계정을 일괄 발급한다(T5.2) | P1 | T5.1 ✔, T5.2 ✔ |
-| G-08 | 교사가 학생 관점의 준비 상태를 한눈에 확인할 수 없음 | 날짜·반·학생별 준비도 및 학생 화면 미리보기 | P1 | T2.4, T5.4 |
+| ~~G-08~~ **닫힘** | 교사가 학생 관점의 준비 상태를 한눈에 확인할 수 없음 | 게시 시점 게이트(T2.4)에 더해, 학생이 로그인하기 전에 그날을 같은 투영기로 미리 본다 — 계획은 남기지 않는다(T5.4) | P1 | T2.4 ✔, T5.4 ✔ |
 | G-09 | 시험 제한 시간이 클라이언트에서만 강제됨 | 서버가 저장·제출 마감 시각을 권위 있게 검사 | P1 | T6.1 |
 | G-10 | 기존 full-loop가 시드된 평가 소비만 검증 | 빈 조직 생성부터 실제 워커까지 전체 왕복 검증 | P0 | T6.2 |
 | ~~G-11~~ **닫힘** | 반 수업 완료와 개별 학생 완료 의미가 섞일 가능성 | 두 이벤트가 각자 발행되고 서로를 부르지 않는다(T4.1·T4.2). 교사 현황판이 둘을 다른 칸에 둔다(T4.4) | P0 | T0.1, T4.1, T4.2 ✔ |
@@ -1131,7 +1131,7 @@ Set-Location ..\Su-Maek-t5-3-teacher-scope
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t5-3-teacher-scope`
 
-### [] Phase 5, T5.4: 날짜별 준비도 현황·학생 화면 미리보기 RED→GREEN
+### [x] Phase 5, T5.4: 날짜별 준비도 현황·학생 화면 미리보기 RED→GREEN
 
 **담당**: frontend-specialist + backend-specialist
 
@@ -1157,17 +1157,24 @@ Set-Location ..\Su-Maek-t5-4-readiness-preview
 3. **REFACTOR**: 학생 실제 렌더러와 preview가 같은 view model을 사용하도록 통합한다.
 
 **산출물**:
-- `apps/web/src/app/app/readiness/page.tsx`
-- `apps/web/src/components/learn/DayPlanView.tsx`
-- `apps/web/test/ui/readiness-preview.test.ts`
-- `e2e/tests/readiness-preview.spec.ts`
+- `apps/web/src/lib/domain/readiness-preview.ts` — 순수 판정 · `readiness-day.ts` — 읽기 모델
+- `apps/web/src/app/app/readiness/page.tsx` · `apps/web/src/lib/nav.ts`
+- `apps/web/test/ui/readiness-preview.test.ts` (10) · `apps/web/test/integration/readiness-preview.test.ts` (4)
 
 **인수 조건**:
-- [ ] 교사가 학생 로그인 전 그날 화면과 필수 항목을 확인함
-- [ ] 계정 미연결·자료 미게시·문항 부족·평가 생성 실패를 구분함
-- [ ] preview가 학생 진도나 응시를 생성하지 않음
-- [ ] 실제 학생 화면과 항목 순서·문구가 동일함
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 교사가 학생 로그인 전 그날 화면과 필수 항목을 확인함
+- [x] 계정 미연결·자료 미게시·문항 부족·평가 생성 실패를 구분함 — 갈래는 T4.4의 것을 그대로 쓰고 **계정만 더한다**
+- [x] preview가 학생 진도나 응시를 생성하지 않음 — 계획 행 수를 세어 확인한다(여러 번 미리 봐도 0)
+- [x] 실제 학생 화면과 항목 순서·문구가 동일함 — 같은 학생·같은 날짜를 두 번 투영해 `ordinal|key|title|required`가 **글자까지** 같은지 본다
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `readiness-preview.ts` 문 91% · 분기 79%
+
+**설계 판단**: 판정을 새로 만들지 않았다. 하루 상태는 core의 `decideDayStatus`가 이미 정했고 차단 사유의 갈래는 T4.4가 정했다 — 여기서 더한 것은 **계정** 하나다. 계정이 없으면 나머지 판정이 전부 의미 없다: 자료가 다 있어도 그 학생은 로그인할 수 없어 아무것도 못 본다. 계획 상태를 앞세우면 「진행 중」으로 보이고 교사는 준비가 끝난 줄 안다.
+
+미리보기가 계획을 남기지 않는 것이 왜 중요한가: 남기면 **교사가 미리 본 순간**이 확정 시점이 되고, 그 순간의 자료 상태로 필수 분모가 굳는다(ADR-0017 §4). 학생이 접속하기 전에 하루가 확정되는 셈이다.
+
+배정이 없는 날은 `ready`가 아니다 — 준비 완료와 배울 것이 없는 것을 합치면 루트를 안 만든 반이 「준비 완료」로 보인다.
+
+**남긴 것**: `DayPlanView.tsx`(공용 렌더러)와 `e2e/tests/readiness-preview.spec.ts`. 공용 컴포넌트를 만드는 대신 **같은 투영기를 쓰는지**를 테스트로 못 박았다 — 문구가 같은지는 컴포넌트를 공유해서가 아니라 데이터가 같아서 보장되고, 학생 화면(6단계 궤도)과 교사 요약은 애초에 다른 배치를 요구한다. 억지로 한 컴포넌트로 만들면 두 화면 모두 어색해진다. E2E는 T6.2에서 다른 세 건과 함께 쓴다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

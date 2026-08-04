@@ -22,6 +22,8 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
        * 게이트는 today와 같다: 이 화면은 수치를 세어 갈 곳을 가리킬 뿐이고,
        * 각 단계의 실제 쓰기 권한은 그 화면이 자기 것으로 막는다. */
       { href: "/app/setup", label: "설정 시작하기", menu: "today" },
+      /* 학생이 로그인하기 전에 그날을 미리 본다 (T5.4 · G-08). */
+      { href: "/app/readiness", label: "날짜별 준비도", menu: "today" },
       { href: "/app/calendar", label: "캘린더", menu: "calendar" },
       { href: "/app/grading", label: "채점·예외", menu: "grading" },
       { href: "/app/inbox", label: "알림·업무함", menu: "inbox" },
