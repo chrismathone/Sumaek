@@ -34,11 +34,106 @@ describe("지수 — 지면 대조", () => {
     expect(decodeHwpMath("2Þ`").latex).toBe("2^{5}");
   });
 
+  /* á·â는 오래 비어 있었다 — 중1-1에 나오지 않아서다. 배치상 8·9로
+   * 보였지만 추정으로 넣지 않았고, 중2-1 지수법칙 단원에서 지면을 열어
+   * 확인하니 **á는 9, â는 0이었다.** 배치 추정이 틀렸던 셈이다. */
+  it("á 는 9 다 (중2-1 p.33 문항 0205 「(-3x³y^a)^b=-27x^c y⁹」)", () => {
+    expect(decodeHwpMath("2á`").latex).toBe("2^{9}");
+  });
+
+  it("â 는 0 이다 (중2-1 p.29 「x¹⁰÷x⁵÷x」)", () => {
+    expect(decodeHwpMath("xÚ`â`ÖxÞ`Öx").latex).toBe("x^{10}\\div x^{5}\\div x");
+  });
+
   it("대조하지 않은 지수 글리프는 통과시키지 않고 unknown에 담는다", () => {
-    /* á는 배치상 8일 것으로 보이지만 이 교재 1단원에 나오지 않아
-     * 확인한 적이 없다. 추정으로 표에 넣지 않는다. */
-    const got = decodeHwpMath("2á`");
-    expect(got.unknown).toContain("á");
+    /* ã는 배치상 á·â 다음 자리로 보이지만 어느 교재에서도 확인한 적이
+     * 없다. 추정으로 표에 넣지 않는다. */
+    const got = decodeHwpMath("2ã`");
+    expect(got.unknown).toContain("ã");
+  });
+});
+
+describe("여러 글자짜리 지수 — 한 덩어리로 묶는다", () => {
+  /* 한 글자씩 `^{}`를 씌우면 `x^{1}^{0}`이 되어 KaTeX가 파싱에 실패한다.
+   * 중2-1 II단원(지수법칙)에서만 37건이 이 꼴로 학생 화면에 빨간 글자를
+   * 내보내고 있었다. */
+  it("Ú`Û` 는 ¹² 다 — 지수가 두 번 서지 않는다", () => {
+    expect(decodeHwpMath("yÛ`)Ý`=xÚ`Û`y").latex).toBe("y^{2})^{4}=x^{12}y");
+  });
+
+  it("부호까지 함께 묶는다 (중2-1 p.32 「27^{2x-1}=3^{11-x}」)", () => {
+    expect(decodeHwpMath("27Û`Å`ÑÚ`=3Ú`Ú`ÑÅ`").latex).toBe(
+      "27^{2x-1}=3^{11-x}",
+    );
+  });
+
+  it("Ñ 는 지수 자리의 뺄셈이다 (중2-1 p.33 「x⁶÷x²=x^{6-2}=x⁴」)", () => {
+    expect(decodeHwpMath("xß`ÖxÛ`=xß`ÑÛ`=xÝ`").latex).toBe(
+      "x^{6}\\div x^{2}=x^{6-2}=x^{4}",
+    );
+  });
+
+  it("± 는 지수 자리의 덧셈이다 (중2-1 p.28 「a^m×a^n=a^{m+n}」)", () => {
+    expect(decodeHwpMath("aµ``_aÇ`=aµ``±Ç`", "EHsang-Italic").latex).toBe(
+      "a^{m}\\times a^{n}=a^{m+n}",
+    );
+  });
+});
+
+describe("아래첨자 — 윗자리 글꼴과 아랫자리 글꼴", () => {
+  /* 중2-1 p.25 「6/7 = x₁/10 + x₂/10² + x₃/10³ + … + x_n/10ⁿ」 한 줄이
+   * 근거다. 같은 `Ç`가 아래에서는 n, 위에서는 ⁿ으로 온다. */
+  it("EHsang의 작은 숫자는 아래첨자다 (x₁·x₂)", () => {
+    expect(decodeHwpMath("xÁ+xª+x", "EHsang-Italic").latex).toBe(
+      "x_{1}+x_{2}+x",
+    );
+  });
+
+  it("두 자리도 묶는다 — x₉₉ (p.25 「x₁+x₂+x₃+…+x₉₉의 값」)", () => {
+    expect(decodeHwpMath("x»»", "EHsang-Italic").latex).toBe("x_{99}");
+  });
+
+  it("EHhabu의 Ç 는 아래첨자 n이다 — 같은 코드가 EHsang에서는 지수 n이다", () => {
+    expect(decodeHwpMath("xÇ", "EHhabu-Italic").latex).toBe("x_{n}");
+    expect(decodeHwpMath("10Ç`", "EHsang-Italic").latex).toBe("10^{n}");
+  });
+
+  it("글꼴을 모르면 아래첨자로 옮기지 않는다 — 짐작하지 않는다", () => {
+    expect(decodeHwpMath("xÁ").unknown).toContain("Á");
+  });
+});
+
+describe("연산자로 끝난 수식은 조각이다", () => {
+  const math = (latex: string): Run => ({ kind: "math", raw: latex, latex, unknown: [] });
+
+  it("`f(x)=` 뒤의 분수는 같은 식이다 (중2-1 p.124 문항 0840)", () => {
+    const got = mergeUnbalancedMath([math("f(x)="), math("\\frac{x}{3}")]);
+    expect(got).toHaveLength(1);
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe("f(x)=\\frac{x}{3}");
+  });
+
+  it("부호로 끝나도 마찬가지다 (0840 ④ 「f(x)=-3/x」)", () => {
+    const got = mergeUnbalancedMath([math("f(x)=-"), math("\\frac{3}{x}")]);
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe("f(x)=-\\frac{3}{x}");
+  });
+
+  it("완결된 식끼리는 붙이지 않는다 — 나란한 두 수는 두 수다", () => {
+    const got = mergeUnbalancedMath([math("2"), math("3")]);
+    expect(got).toHaveLength(2);
+  });
+});
+
+describe("선분 기호 — 글자 뒤에 오는 윗줄", () => {
+  it("PQÓ 는 PQ‾ 다 (중2-1 p.143 「PQ‾=6」)", () => {
+    expect(decodeHwpMath("PQÓ=6", "EHsang-Plain").latex).toBe(
+      "\\overline{PQ}=6",
+    );
+  });
+
+  it("한 줄에 둘이 와도 각각 씌운다 (p.130 「1/2×BC‾×OA‾」)", () => {
+    expect(decodeHwpMath("_BCÓ_OAÓ", "EHsang-Plain").latex).toBe(
+      "\\times \\overline{BC}\\times \\overline{OA}",
+    );
   });
 });
 

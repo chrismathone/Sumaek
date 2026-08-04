@@ -35,6 +35,8 @@ interface IndexedSpan extends Span {
   index: number;
   /** 2행 분수로 합쳐진 span — 분자·분모 원본을 함께 들고 있는다 */
   stacked?: { numerator: IndexedSpan; denominator: IndexedSpan };
+  /** 연립방정식으로 합쳐진 span — 중괄호 오른쪽의 각 줄 */
+  system?: IndexedSpan[][];
   /** 이 span이 대표하는 다른 원본 span의 인덱스 (커버리지 계산용) */
   alsoIndexes?: number[];
 }
@@ -107,6 +109,139 @@ function mergeStackedFractions(
       y1: (numerator.y1 + denominator.y1) / 2,
       stacked: { numerator, denominator },
       alsoIndexes: [denominator.index],
+    });
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s.index)), ...merged];
+}
+
+/**
+ * 연립방정식을 한 span으로 합친다.
+ *
+ * 지면의 `{ x+y=8 / 3x+y=16 }`은 덤프에서 세 조각으로 온다 — 세로로 늘인
+ * 중괄호 하나, 그 오른쪽 위의 식, 오른쪽 아래의 식. 파서는 가로로 맞닿은
+ * 것만 잇고 줄이 다르면 따로 두므로, 그대로 두면 두 식이 **다른 줄의
+ * 조각으로 흩어진다.** 그런데 중괄호가 짝이 안 맞는 채 끝나는 바람에
+ * mergeUnbalancedMath가 둘을 이어 붙였고, 결과가 `x+y=83x+y=16`이 됐다.
+ * 렌더도 실패하지만 **더 나쁜 것은 8과 3이 붙어 83이 된 것이다** — 렌더가
+ * 우연히 통과했다면 학생은 없는 식을 풀었을 것이다(중2-1 IV단원 84건).
+ *
+ * 가르는 근거는 **중괄호의 생김새**다. 이 글꼴의 큰 중괄호는 폭이 글자
+ * 크기의 절반뿐인데 높이는 두 배가 넘는다(w 5.0 · h 23.9 · size 10.2).
+ * 본문의 여는 중괄호(집합 기호)는 그렇지 않다 — 높이가 글자 크기 언저리다.
+ * 그래서 「좁고 길쭉한 것」만 연립의 괄호로 본다.
+ */
+function mergeEquationSystems(
+  spans: IndexedSpan[],
+  profile: ExtractionProfile,
+): IndexedSpan[] {
+  const math = spans.filter((s) => profile.fonts.math.test(s.font));
+
+  /* **span 상자가 아니라 글자 상자로 잰다.**
+   *
+   * 괄호 span에 공백이 딸려 오는 자리가 있다(`'[ '`). span 폭으로 재면
+   * 9.6pt가 되어 「좁다」는 조건에서 탈락하고, x1이 오른쪽으로 밀려 바로
+   * 옆의 식이 「괄호 왼쪽」으로 보인다 — 중2-1 p.91 선택지가 통째로
+   * 그랬다. 공백은 잉크가 아니다. */
+  const ink = (s: IndexedSpan): { x0: number; x1: number } => {
+    const glyphs = [...s.text];
+    if (!s.chars || s.chars.length !== glyphs.length) return { x0: s.x0, x1: s.x1 };
+    const boxes = s.chars.filter((_, i) => glyphs[i]!.trim() !== "");
+    if (boxes.length === 0) return { x0: s.x0, x1: s.x1 };
+    return {
+      x0: Math.min(...boxes.map((b) => b[0])),
+      x1: Math.max(...boxes.map((b) => b[2])),
+    };
+  };
+  /* 「좁고 길쭉하다」만으로는 부족하다. 분수를 감싸는 **키 큰 소괄호**가
+   * 같은 생김새로 온다 — `(y/x)³`의 괄호도 폭 5pt에 높이 24pt다. 그것까지
+   * 받았더니 지수가 통째로 연립이 됐다(`\begin{cases}y \\ \right) \\ x³\end{cases}²`,
+   * II단원 13건). 그래서 **여는 중괄호로 읽히는 글리프**만 받는다.
+   * EHSunm은 큰 중괄호를 세로로 서너 조각 내어 보내는 전용 글꼴이라 통째로
+   * 받고, 조각은 아래에서 하나로 잇는다. */
+  const isBracePiece = (s: IndexedSpan): boolean => {
+    const box = ink(s);
+    if (s.text.trim().length > 2) return false;
+    if (box.x1 - box.x0 >= s.size * 0.9) return false;
+    if (s.y1 - s.y0 <= s.size * 1.6) return false;
+    if (/^EHSunm/.test(s.font)) return true;
+    return decodeHwpMath(s.text, s.font).latex.trim() === "\\left\\{";
+  };
+
+  /** 세로로 잇닿은 조각들을 한 괄호로 잇는다 (EHSunm은 `(`+`{`+`¥9` 세 조각) */
+  const braces: { pieces: IndexedSpan[]; x1: number; y0: number; y1: number }[] = [];
+  for (const s of math
+    .filter(isBracePiece)
+    .sort((a, b) => a.x0 - b.x0 || a.y0 - b.y0)) {
+    const last = braces[braces.length - 1];
+    if (
+      last &&
+      Math.abs(last.pieces[0]!.x0 - s.x0) <= 1 &&
+      s.y0 <= last.y1 + 2
+    ) {
+      last.pieces.push(s);
+      last.x1 = Math.max(last.x1, ink(s).x1);
+      last.y1 = Math.max(last.y1, s.y1);
+      continue;
+    }
+    braces.push({ pieces: [s], x1: ink(s).x1, y0: s.y0, y1: s.y1 });
+  }
+
+  const used = new Set<number>();
+  const merged: IndexedSpan[] = [];
+
+  for (const braceInk of braces) {
+    const brace = braceInk.pieces[0]!;
+    if (used.has(brace.index)) continue;
+    /* 괄호 오른쪽에 바싹 붙어, 괄호가 덮는 세로 띠 안에 있는 수식만 본다 */
+    const pieceIndexes = new Set(braceInk.pieces.map((p) => p.index));
+    const inside = math.filter((s) => {
+      if (used.has(s.index) || pieceIndexes.has(s.index)) return false;
+      const center = (s.y0 + s.y1) / 2;
+      return (
+        s.x0 >= braceInk.x1 - 2 &&
+        s.x0 <= braceInk.x1 + 14 &&
+        center > braceInk.y0 - 4 &&
+        center < braceInk.y1 + 4
+      );
+    });
+    if (inside.length < 2) continue;
+
+    /* 줄로 나눈다 — 세로 가운데가 글자 크기의 절반 안이면 같은 줄이다 */
+    const rows: IndexedSpan[][] = [];
+    for (const s of [...inside].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+      const center = (s.y0 + s.y1) / 2;
+      const row = rows[rows.length - 1];
+      const rowCenter = row ? (row[0]!.y0 + row[0]!.y1) / 2 : Number.NaN;
+      if (row && Math.abs(center - rowCenter) <= s.size * 0.6) row.push(s);
+      else rows.push([s]);
+    }
+    if (rows.length < 2) continue;
+
+    for (const row of rows) for (const s of row) used.add(s.index);
+    for (const p of braceInk.pieces) used.add(p.index);
+    const all = rows.flat();
+    merged.push({
+      ...brace,
+      text: rows.map((r) => r.map((s) => s.text).join("")).join(" | "),
+      x0: brace.x0,
+      x1: Math.max(...all.map((s) => s.x1)),
+      /* 본문 줄에 얹히도록 각 줄 아래끝의 평균에 놓는다. 괄호 상자의
+       * 가운데로 놓았더니 선택지 표식(①②)보다 7pt 위에 서서 **다른 줄이
+       * 됐고**, 그 줄에는 표식이 없으므로 두 연립이 통째로 앞 선택지에
+       * 딸려 들어갔다(p.91 0621에서 ①③⑤가 비었다). 2행 분수가 같은
+       * 이유로 같은 자리를 쓴다. */
+      y0: rows[0]![0]!.y0,
+      y1: rows.reduce((sum, r) => sum + Math.max(...r.map((s) => s.y1)), 0) / rows.length,
+      system: rows.map((r) => [...r].sort((a, b) => a.x0 - b.x0)),
+      /* 대표 span의 index는 첫 조각 것이므로, 나머지 괄호 조각까지 여기
+       * 적어야 커버리지가 「미분류」로 세지 않는다 — EHSunm은 괄호 하나가
+       * 조각 셋이라 이걸 빠뜨리면 연립 한 개마다 둘씩 새어 나간다. */
+      alsoIndexes: [
+        ...braceInk.pieces.slice(1).map((p) => p.index),
+        ...all.map((s) => s.index),
+      ],
     });
   }
 
@@ -324,6 +459,27 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
       let latex = "";
       const unknown: string[] = [];
       for (const span of cluster) {
+        if (span.system) {
+          /* `\begin{cases}`는 왼쪽에 큰 중괄호를 세우고 줄을 왼끝으로
+           * 맞춘다 — 지면 그대로다. 줄 사이는 `\\`로 가른다. */
+          const rows = span.system.map((row) =>
+            row
+              .map((s) => decodeHwpMath(markSuperscripts(s.text, s.chars), s.font))
+              .reduce(
+                (acc, d) => {
+                  unknown.push(...d.unknown);
+                  return { latex: joinLatex(acc.latex, d.latex) };
+                },
+                { latex: "" },
+              ).latex,
+          );
+          raw += span.text;
+          latex = joinLatex(
+            latex,
+            `\\begin{cases}${rows.join(" \\\\ ")}\\end{cases}`,
+          );
+          continue;
+        }
         if (span.stacked) {
           const top = decodeHwpMath(span.stacked.numerator.text, span.stacked.numerator.font);
           const bottom = decodeHwpMath(span.stacked.denominator.text, span.stacked.denominator.font);
@@ -440,7 +596,13 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     else body.push(span);
   }
 
-  const prepared = mergeStackedFractions(body, page, profile);
+  /* 연립을 먼저 합친다 — 그 안에 2행 분수가 들어 있으면 분수 쪽이 먼저
+   * 가져가 버려 연립의 한 줄이 비기 때문이다 */
+  const prepared = mergeStackedFractions(
+    mergeEquationSystems(body, profile),
+    page,
+    profile,
+  );
   const lines = toLines(prepared, profile, columnOf);
 
   /* 공통 지시문은 **단을 가로지른다.** 단으로 나눈 뒤에 찾으면

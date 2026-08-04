@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "extract": "tsx src/cli/extract.mts",
+    "glyph-census": "tsx src/cli/glyph-census.mts",
     "answers": "tsx src/cli/answers.mts",
     "load": "tsx src/cli/load.mts",
     "load-concepts": "tsx src/cli/load-concepts.mts",
