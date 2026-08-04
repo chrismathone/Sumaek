@@ -25,8 +25,10 @@ import { createSql } from "../src/client";
 
 const API = "https://api.deepseek.com/chat/completions";
 const MODEL = "deepseek-chat";
-/** 한 문장에 뚫을 수 있는 최대 — 넘으면 인출이 아니라 받아쓰기다 */
-const MAX_BLANKS = { one: 2, two: 4, full: 6 } as const;
+/* 단계별 빈칸 수. 1단계 1개·2단계 2개로는 인출이 되지 않는다(실측 지적) —
+ * 한 칸만 비면 나머지 문장이 답을 거의 다 알려 준다. 3단계는 개수가 아니라
+ * **전부**라서 여기에 없다(아래 buildFullStage가 기계적으로 만든다). */
+const MAX_BLANKS = { one: 3, two: 6 } as const;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -100,19 +102,17 @@ const PROMPT = `너는 중학교 수학 개념서를 빈칸 학습으로 바꾸�
 - 힌트는 정답을 말하지 않고 방향만 준다 (예: "1과 자기 자신만 약수인 수").
 
 세 단계를 만든다:
-- one: 빈칸 1~2개. 가장 중요한 말만.
-- two: 빈칸 3~4개. one의 것을 포함해 뼈대까지.
-- full: 본문 없이 학생이 개념을 통째로 다시 쓴다. 반드시 담아야 할 핵심어
-  4~6개만 고른다(templateText 없음).
+- one: 빈칸 3개. 그 개념을 가르는 말들.
+- two: 빈칸 5~6개. one의 것을 포함해 뼈대까지.
+(3단계는 네가 만들지 않는다 — 프로그램이 전부 비운다.)
 
 **문장을 뚫는 일은 하지 마라.** 너는 어느 말을 뚫을지만 고른다 — 그 말을
 본문에서 찾아 자리를 파는 것은 프로그램이 한다. one·two의 답은 본문의 **한
 문장 안에** 함께 있는 말들로 고른다(흩어져 있으면 쓸 수 없다).
 
 출력은 JSON만. 설명 금지.
-{"one":{"blanks":[{"answer":"...","hint":"...","alternatives":["..."]}]},
- "two":{"blanks":[...]},
- "full":{"blanks":[...]}}
+{"one":{"blanks":[{"answer":"...","alternatives":["..."]}]},
+ "two":{"blanks":[...]}}
 
 alternatives에는 띄어쓰기 변형처럼 정답으로 받아야 할 표기만 넣는다(없으면 []).`;
 
@@ -214,64 +214,57 @@ function keepGrounded(
     });
   }
 
-  // full 단계는 본문이 없다 — 핵심어 목록이 전부다
-  if (!needsTemplate) {
-    return {
-      blanks: picked.map((p, i) => ({ ...p, position: i + 1 })),
-      template: null,
-    };
-  }
+  /* 자리는 화면이 본문 전체에서 찾는다(getBlankStage → applyBlanks). 여기서
+   * 한 문장으로 좁히면 그 문장에 없는 답이 통째로 버려져 1·2단계가 한두 칸만
+   * 남는다(실측). 답 목록만 넘기고 뚫는 자리는 본문 전체로 둔다.
+   *
+   * template_text는 화면이 쓰지 않지만 DB CHECK가 one·two에 요구하므로
+   * 원문을 그대로 넣어 둔다 — 검수에서 「어느 글에서 뽑았나」의 근거가 된다. */
+  return {
+    blanks: picked.map((p, i) => ({ ...p, position: i + 1 })),
+    template: needsTemplate ? plain : null,
+  };
+}
 
-  /* 답을 가장 많이 담은 줄을 고른다. 블록 표지([정의] 등)는 학생에게
-   * 보일 것이 아니므로 떼어 낸다. */
-  const lines = plain
-    .split("\n")
-    .map((l) => l.replace(/^\[[^\]]+\]\s*/, "").trim())
-    .filter((l) => l.length > 10);
-  let best = "";
-  let bestHit: typeof picked = [];
-  for (const line of lines) {
-    const hit = picked.filter((p) => line.includes(p.answer));
-    if (hit.length > bestHit.length) {
-      best = line;
-      bestHit = hit;
+/**
+ * 3단계 — **전부 빈칸.** 낱말을 고르는 것이 아니라, 「소수: 내용」이
+ * 「__ : ______」이 되게 글 조각을 통째로 비운다(소유자 정의).
+ *
+ * 그래서 모델을 부르지 않는다. 무엇을 비울지 고를 필요가 없기 때문이다 —
+ * 정의의 용어와 그 내용, 핵심·순서의 각 항목이 그대로 한 칸씩이 된다.
+ * 정답은 원문 전체이므로 학생이 토씨까지 맞출 수는 없다. 채점이 뜻으로
+ * 보는 이유가 여기 있다(blank-semantic).
+ */
+function buildFullStage(body: unknown[]): KeptBlank[] {
+  const out: KeptBlank[] = [];
+  const push = (text: string) => {
+    const t = text.trim();
+    // 너무 짧은 조각(기호·한 글자)은 칸으로 만들지 않는다
+    if (t.length < 2) return;
+    out.push({ position: out.length + 1, answer: t, hint: "", alternatives: [] });
+  };
+  for (const doc of body) {
+    if (!Array.isArray(doc)) continue;
+    for (const b of doc as Block[]) {
+      if (b.type === "definition") {
+        if (b.term) push(b.term);
+        push(runsToText(b.content));
+      } else if (b.type === "text") {
+        push(b.text ?? "");
+      } else if (b.type === "paragraph") {
+        push(runsToText(b.content));
+      } else if (b.type === "key_point" || b.type === "steps") {
+        for (const it of Array.isArray(b.items) ? b.items : []) {
+          push(
+            Array.isArray(it)
+              ? runsToText(it as Run[])
+              : runsToText((it as { content?: Run[] }).content),
+          );
+        }
+      }
     }
   }
-  if (bestHit.length === 0) return { blanks: [], template: null };
-  if (bestHit.length < picked.length) {
-    console.log(`    · 버림(그 문장에 없음): ${picked.length - bestHit.length}개`);
-  }
-
-  /* 첫 등장만 뚫는다. 같은 말이 두 번 나오는 문장에서 둘 다 뚫으면 학생이
-   * 한 칸을 보고 다른 칸을 베낀다. 긴 답부터 바꿔야 짧은 답이 긴 답의
-   * 일부를 먼저 먹지 않는다(소인수 ⊂ 소인수분해). */
-  const order = [...bestHit].sort((a, b) => b.answer.length - a.answer.length);
-  let template = best;
-  const marks = new Map<string, number>();
-  for (const p of order) {
-    const at = template.indexOf(p.answer);
-    if (at === -1) continue;
-    const mark = marks.size + 1;
-    marks.set(p.answer, mark);
-    template =
-      template.slice(0, at) + `<<${mark}>>` + template.slice(at + p.answer.length);
-  }
-  /* 자리 번호는 **문장에 나타난 순서**로 다시 매긴다 — 학생은 왼쪽부터
-   * 채우는데 번호가 뒤섞여 있으면 힌트 목록과 짝이 안 맞는다. */
-  const appearance = [...template.matchAll(/<<(\d+)>>/g)].map((m) => Number(m[1]));
-  const finalOf = new Map<number, number>();
-  appearance.forEach((mark, i) => finalOf.set(mark, i + 1));
-  template = template.replace(/<<(\d+)>>/g, (_m, n: string) =>
-    `{{${finalOf.get(Number(n))}}}`,
-  );
-
-  const blanks: KeptBlank[] = [];
-  for (const [answer, mark] of marks) {
-    const p = bestHit.find((x) => x.answer === answer)!;
-    blanks.push({ ...p, position: finalOf.get(mark)! });
-  }
-  blanks.sort((a, b) => a.position - b.position);
-  return { blanks, template };
+  return out;
 }
 
 const sql = createSql();
@@ -316,13 +309,17 @@ try {
         console.log(`    · ${stage}: 이미 있음`);
         continue;
       }
-      const p = proposal[stage];
-      const { blanks, template } = keepGrounded(
-        p?.blanks,
-        stage !== "full",
-        plain,
-        MAX_BLANKS[stage],
-      );
+      let blanks: KeptBlank[];
+      let template: string | null;
+      if (stage === "full") {
+        blanks = buildFullStage(c.body as unknown[]);
+        template = null;
+      } else {
+        const p = proposal[stage];
+        const kept = keepGrounded(p?.blanks, true, plain, MAX_BLANKS[stage]);
+        blanks = kept.blanks;
+        template = kept.template;
+      }
       if (blanks.length === 0) {
         console.log(`    · ${stage}: 쓸 만한 빈칸이 없어 만들지 않음`);
         continue;
@@ -332,7 +329,11 @@ try {
         continue;
       }
       console.log(
-        `    · ${stage}: 빈칸 ${blanks.length}개 — ${blanks.map((b) => b.answer).join(", ")}`,
+        `    · ${stage}: 빈칸 ${blanks.length}개${
+          stage === "full"
+            ? " (전부)"
+            : ` — ${blanks.map((b) => b.answer).join(", ")}`
+        }`,
       );
       if (dryRun) continue;
       await sql`

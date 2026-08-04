@@ -104,18 +104,26 @@ function runsToMixed(runs: Run[] | undefined): string {
  * 끝난 뒤** 여기서 바꾼다. 입력칸은 폼 안에서 이름(b-1)으로 제출된다 —
  * 제어 컴포넌트로 만들면 이 서버 렌더 트리 전체가 클라이언트가 되어야 한다.
  *
- * 너비는 글자 수에 맞춘다. 다만 **정답 길이를 그대로 노출하지 않으려고**
- * 최소 4자·최대 10자로 눌러, 한 글자 답과 세 글자 답이 같은 칸으로 보인다. */
+ * 너비는 글자 수를 따르되 계단으로 뭉갠다 — 정답 길이를 그대로 노출하지
+ * 않으려는 것이다(한 글자 답과 세 글자 답이 같은 칸으로 보인다). 3단계는
+ * 문장 전체가 정답이라 칸도 문장만큼 길어야 하므로 상한을 두지 않고,
+ * 일정 길이를 넘으면 줄 전체를 차지하는 칸이 된다. */
 const BLANK_TOKEN = /(\d+):(\d+)/g;
 
 function withBlankInputs(html: string): string {
   return html.replace(BLANK_TOKEN, (_m, pos: string, width: string) => {
-    const ch = Math.min(10, Math.max(4, Number(width)));
+    const n = Number(width);
+    // 계단 — 4·8·14자로 뭉개 길이를 흘리지 않는다
+    const step = n <= 4 ? 6 : n <= 8 ? 10 : n <= 14 ? 16 : 0;
+    const long = step === 0;
+    const style = long ? "width:100%" : `width:${step}ch`;
+    const align = long ? "text-left" : "text-center";
+    const box = long ? "block w-full my-1" : "mx-0.5 inline-block";
     return (
       `<input name="b-${pos}" type="text" autocomplete="off" ` +
       `aria-label="${pos}번 빈칸" ` +
-      `style="width:${ch + 1}ch" ` +
-      `class="mx-0.5 inline-block rounded-[var(--radius-control)] border-0 border-b-2 border-pen bg-pen-soft/30 px-1 text-center font-medium text-ink focus:bg-pen-soft/60 focus:outline-none" />`
+      `style="${style}" ` +
+      `class="${box} rounded-[var(--radius-control)] border-0 border-b-2 border-pen bg-pen-soft/30 px-1 ${align} font-medium text-ink focus:bg-pen-soft/60 focus:outline-none" />`
     );
   });
 }
