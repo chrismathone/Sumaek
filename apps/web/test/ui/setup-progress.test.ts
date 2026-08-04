@@ -128,6 +128,50 @@ describe("설정 진행 판정 (buildSetupProgress)", () => {
     expect(p.steps.find((s) => s.id === "accounts")!.detail).toContain("3");
   });
 
+  it("자료는 루트 게시보다 먼저 온다 — 게시가 자료를 요구하기 때문이다", () => {
+    /* 루트 게시는 준비도 게이트(T2.4)를 지난다. 개념 차시에 게시된 자료가
+     * 없으면 게시가 **거부된다**(checkRouteReadiness의 material_missing).
+     *
+     * 그런데 이 순서표는 materials를 route 뒤에 두고 route를 선행으로
+     * 요구하고 있었다. 그러면 새 학원은 「학습 루트 게시」를 할 차례로
+     * 받아 들고 게시를 눌러 거부당하는데, 고치러 갈 자료 단계는 차단돼
+     * 링크조차 없다 — 화면이 시킨 일을 하다가 막다른 길에 서는 것이다.
+     * (T6.2 자율 E2E가 실제로 이 벽에 부딪혀 드러났다.)
+     *
+     * 순서를 뒤집는다: 자료가 있어야 게시가 된다. */
+    const order = [...SETUP_STEP_ORDER];
+    expect(order.indexOf("materials")).toBeLessThan(order.indexOf("route"));
+
+    const beforeRoute = buildSetupProgress(
+      facts({
+        coursePeriods: 1,
+        learningGroups: 1,
+        learners: 2,
+        learnersWithAccount: 2,
+      }),
+    );
+    expect(beforeRoute.next?.id).toBe("materials");
+    expect(
+      beforeRoute.steps.find((s) => s.id === "materials")!.blockedBy,
+    ).toBeNull();
+  });
+
+  it("준비도는 게시된 루트를 보는 단계다 — 루트 전에는 할 수 없다", () => {
+    /* 이 단계의 갈 곳은 /app/routes다. 루트가 없으면 볼 것이 없다. */
+    const noRoute = buildSetupProgress(
+      facts({
+        coursePeriods: 1,
+        learningGroups: 1,
+        learners: 2,
+        learnersWithAccount: 2,
+        materials: 3,
+      }),
+    );
+    expect(noRoute.steps.find((s) => s.id === "readiness")!.blockedBy).toBe(
+      "route",
+    );
+  });
+
   it("모든 단계에 갈 곳이 있다 — 「어딘가에서 하세요」가 되지 않게", () => {
     const p = buildSetupProgress(facts());
     for (const step of p.steps) {

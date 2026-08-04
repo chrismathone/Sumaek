@@ -26,14 +26,22 @@ export type SetupStepId =
   | "assessment_policy"
   | "readiness";
 
-/** 배우는 순서가 아니라 **만드는 순서**다 — 앞이 없으면 뒤를 만들 수 없다. */
+/**
+ * 배우는 순서가 아니라 **만드는 순서**다 — 앞이 없으면 뒤를 만들 수 없다.
+ *
+ * 자료가 루트보다 앞이다. 루트 게시는 준비도 게이트를 지나는데
+ * (`checkRouteReadiness`), 개념 차시에 게시된 자료가 없으면 게시가
+ * 거부된다. 반대로 두면 화면이 「루트 게시」를 할 차례로 내밀고, 눌러서
+ * 거부당한 교사가 고치러 갈 자료 단계는 차단돼 링크조차 없다 — 화면이
+ * 시킨 일을 하다 막다른 길에 서는 것이다 (T6.2 자율 E2E에서 실측).
+ */
 export const SETUP_STEP_ORDER: readonly SetupStepId[] = [
   "course_period",
   "learning_group",
   "learners",
   "accounts",
-  "route",
   "materials",
+  "route",
   "assessment_policy",
   "readiness",
 ];
@@ -70,15 +78,22 @@ export interface SetupProgress {
   complete: boolean;
 }
 
-/** 이 단계를 하려면 먼저 끝나 있어야 하는 단계. */
+/**
+ * 이 단계를 하려면 먼저 끝나 있어야 하는 단계.
+ *
+ * `route`의 선행을 `materials`로 **묶지 않는다.** 교재 쪽 범위와 숙제만으로
+ * 된 루트는 자료 없이도 게시된다 — 없는 요구를 걸면 그 학원은 있지도 않은
+ * 일을 먼저 하라는 말을 듣는다. 순서(SETUP_STEP_ORDER)가 권하고, 차단은
+ * 실제로 불가능한 것만 건다.
+ */
 const REQUIRES: Readonly<Partial<Record<SetupStepId, SetupStepId>>> = {
   learning_group: "course_period",
   learners: "learning_group",
   accounts: "learners",
+  materials: "learning_group",
   route: "learning_group",
-  materials: "route",
   assessment_policy: "learning_group",
-  readiness: "materials",
+  readiness: "route",
 };
 
 export function buildSetupProgress(facts: SetupFacts): SetupProgress {
@@ -155,14 +170,18 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
       href: "/app/settings",
     },
     readiness: {
+      /* 판정 기준은 **게시된 루트**다. 자료 수로 재면, 자료 없이도 게시되는
+       * 루트(교재 쪽 범위·숙제만)를 쓰는 학원은 설정이 영원히 끝나지 않는다.
+       * 이 단계가 보는 것은 「게시한 것을 학생이 실제로 할 수 있는가」이고,
+       * 그 대상은 루트다. */
       title: "학생 화면 준비도 확인",
-      done: facts.materials > 0 && facts.readinessBlocking === 0,
+      done: facts.publishedRoutes > 0 && facts.readinessBlocking === 0,
       detail:
         facts.readinessBlocking > 0
           ? `학생이 할 수 없는 항목 ${facts.readinessBlocking}건이 남아 있습니다.`
-          : facts.materials > 0
+          : facts.publishedRoutes > 0
             ? "차단 항목 없음"
-            : "자료를 먼저 등록하세요.",
+            : "루트를 먼저 게시하세요.",
       href: "/app/routes",
     },
   };
