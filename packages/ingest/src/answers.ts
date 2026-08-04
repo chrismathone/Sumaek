@@ -4,6 +4,7 @@ import {
   joinKorean,
   joinLatex,
   markSuperscripts,
+  mergeUnbalancedMath,
   tidyBodyText,
 } from "./hwp-encoding";
 import { visibleSpans } from "./ink";
@@ -966,6 +967,14 @@ export function parseAnswers(
     }
     const last: ParsedAnswer | null = parsedPage[parsedPage.length - 1] ?? carry;
     carry = last && last.answer.length === 0 ? last : null;
+  }
+  /* 조각난 수식을 도로 붙인다 — **쪽을 다 읽은 뒤**에 한다. 쪽 안에서 하면
+   * 다음 쪽으로 이어진 해설의 마지막 조각을 아직 못 본 상태다. */
+  for (const entry of byNumber.values()) {
+    entry.answer = mergeUnbalancedMath(entry.answer);
+    entry.rubric = mergeUnbalancedMath(entry.rubric);
+    entry.explanation = entry.explanation.map(mergeUnbalancedMath);
+    entry.strategy = entry.strategy.map(mergeUnbalancedMath);
   }
   return byNumber;
 }

@@ -16,6 +16,8 @@
  * 게시 불가)를 지키려면 "못 읽었다"는 사실 자체가 밖으로 나가야 한다.
  * ───────────────────────────────────────────────────────────── */
 
+import type { Run } from "./types";
+
 export interface DecodeResult {
   /** 디코드된 LaTeX 조각 (수식 모드 안에 들어갈 내용, $ 없음) */
   latex: string;
@@ -66,12 +68,28 @@ const SUPERSCRIPT_LETTER: ReadonlyMap<string, string> = new Map([
  */
 const OVERSTRUCK_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([["b", "a"]]);
 
-/** 진짜 유니코드 위첨자로 들어온 경우 (개념 정리 쪽에서 나온다) */
+/**
+ * 유니코드 위첨자 꼴로 들어온 글자 — **분수 글꼴에서는 위첨자가 아니다.**
+ *
+ * 실측(본책 네 단원 + 별책 + 개념서 두 덤프)에서 `¹²³`는 **한 번도 예외 없이**
+ * EHboNA에 폭 0으로 왔다. 그 글꼴에서 이것들은 세로셈의 괄호·윗줄, 표의
+ * 괘선 조각이지 지수가 아니다 (markSuperscripts의 주석이 이미 그렇게 적고
+ * 있었는데, 이 표는 반대로 지수로 옮기고 있었다).
+ *
+ * 그래서 문항 0265·0316의 보기 표에서 괘선 조각이 `^{2}`가 되고, 뒤따르는
+ * 「20」이 다시 `^{20}`이 되어 `^{2}^{20}`이 됐다 — KaTeX가 이중 위첨자로
+ * 파싱에 실패해 학생 화면에 빨간 글자가 나간다.
+ *
+ * 분수 글꼴에서는 표에서 빼고 **unknown으로 올린다.** 조용히 지우지 않는
+ * 이유는 늘 같다 — 못 읽었다는 사실이 밖으로 나가야 한다.
+ */
 const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
   ["¹", "1"],
   ["²", "2"],
   ["³", "3"],
 ]);
+/** 이 글꼴에서 온 `¹²³`는 지수가 아니라 세로셈·표 조각이다 */
+const FRACTION_FONT = /EHboNA/;
 
 /**
  * 분수 안의 **분자** 글리프 — 숫자 자판의 shift 행이다.
@@ -427,7 +445,10 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
     const sup =
       SUPERSCRIPT.get(ch) ??
       SUPERSCRIPT_LETTER.get(ch) ??
-      UNICODE_SUPERSCRIPT.get(ch);
+      /* 분수 글꼴의 ¹²³는 세로셈·표 조각이다 — 지수로 옮기지 않는다 */
+      (font !== undefined && FRACTION_FONT.test(font)
+        ? undefined
+        : UNICODE_SUPERSCRIPT.get(ch));
     if (inSuperscript) {
       /* 이미 위첨자 안이다 — `^{}`를 또 씌우지 않는다 */
       out += sup ?? OVERSTRUCK_SUPERSCRIPT.get(ch) ?? ch;
@@ -507,6 +528,78 @@ export function joinLatex(left: string, right: string): string {
   if (left === "") return right;
   const needsSpace = /\\[a-zA-Z]+$/.test(left) && /^[a-zA-Z]/.test(right);
   return left + (needsSpace ? " " : "") + right;
+}
+
+/**
+ * 중괄호가 짝을 못 맞춘 깊이. 음수는 0으로 보지 않고 그대로 돌려준다
+ * (닫는 괄호가 먼저 온 것도 조각났다는 뜻이다).
+ */
+function braceDepth(latex: string): number {
+  let depth = 0;
+  for (let i = 0; i < latex.length; i += 1) {
+    const ch = latex[i]!;
+    if (ch === "\\") {
+      i += 1; // 이스케이프된 \{ \} 는 글자다
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+  }
+  return depth;
+}
+
+/**
+ * **짝이 안 맞는 수식 조각을 도로 붙인다.**
+ *
+ * 한 수식이 두 조각으로 저장되는 일이 있다. 조판기가 2행 분수를 별개
+ * 덩어리로 앉히기 때문이다 — 별책 0346의 지면은
+ * `{-3/4}+{-1/3}={-9/12}+{-4/12}` 한 줄인데, 마지막 4/12만 2행 분수라
+ * 그 앞뒤로 12pt·2pt 틈이 벌어진다. 파서는 가로로 맞닿은 조각만 이어
+ * 붙이므로 `…+{-` · `4/12` · `}` 세 조각이 된다.
+ *
+ * 내용은 다 있지만 **각 조각이 혼자서는 LaTeX으로 성립하지 않는다.**
+ * `{-`도 `}`도 KaTeX에서 파싱에 실패하고, 화면에는 빨간 글자가 나간다.
+ * 실제로 중1-1 II~IV단원에서 이렇게 136면이 깨졌다(1단원은 2행 분수가
+ * 거의 없어 드러나지 않았다).
+ *
+ * 가르는 근거는 **중괄호 깊이**다. 앞 조각이 열린 채로 끝났으면 그것은
+ * 문장이 아니라 조각이다 — 틈이 얼마나 벌어졌든 같은 수식이다. 사이에
+ * 한글이 끼어들면 붙이지 않는다(그건 진짜로 끊긴 것이다).
+ *
+ * **쉼표는 예외다.** 순서쌍 `{-1, -2/3}`의 쉼표는 조판기가 한글 글꼴로
+ * 찍어서 텍스트 조각이 된다. 열린 중괄호 안의 구두점은 수식의 일부다 —
+ * 여기서 끊으면 `{-1`과 `-2/3}` 둘 다 KaTeX에서 실패한다. 정비례·반비례
+ * 단원의 좌표 문항이 거의 다 이 꼴이다.
+ */
+export function mergeUnbalancedMath(runs: readonly Run[]): Run[] {
+  const out: Run[] = [];
+  /** 수식 안에 들어가도 되는 텍스트 — 구두점과 공백뿐이다 */
+  const isInnerPunctuation = (text: string): boolean => /^[\s,.]+$/.test(text);
+  for (let i = 0; i < runs.length; i += 1) {
+    const run = runs[i]!;
+    const last = out[out.length - 1];
+    const open = last?.kind === "math" && braceDepth(last.latex) !== 0;
+    if (open && run.kind === "math") {
+      last.raw += run.raw;
+      last.latex = joinLatex(last.latex, run.latex);
+      last.unknown = [...last.unknown, ...run.unknown];
+      continue;
+    }
+    /* 구두점 하나만으로는 붙이지 않는다 — **뒤에 수식이 이어질 때만**
+     * 안쪽 쉼표다. 그렇지 않으면 문장 끝의 마침표를 수식에 밀어 넣는다. */
+    if (
+      open &&
+      run.kind === "text" &&
+      isInnerPunctuation(run.text) &&
+      runs[i + 1]?.kind === "math"
+    ) {
+      last.raw += run.text;
+      last.latex += run.text.trimEnd();
+      continue;
+    }
+    out.push(run.kind === "math" ? { ...run, unknown: [...run.unknown] } : { ...run });
+  }
+  return out;
 }
 
 /**

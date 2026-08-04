@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cleanBodyText, decodeHwpMath, markSuperscripts } from "../src/hwp-encoding";
+import {
+  cleanBodyText,
+  decodeHwpMath,
+  markSuperscripts,
+  mergeUnbalancedMath,
+} from "../src/hwp-encoding";
+import type { Run } from "../src/types";
 
 /* ─────────────────────────────────────────────────────────────
  * 여기 적힌 기댓값은 전부 **지면을 열어 눈으로 확인한 것**이다.
@@ -190,6 +196,81 @@ describe("분수 — 안쪽은 분모·분자 교대다", () => {
     expect(decodeHwpMath("2Û`_;1#2%;_3").latex).toBe(
       "2^{2}\\times \\frac{35}{12}\\times 3",
     );
+  });
+});
+
+describe("분수 글꼴의 ¹²³ — 지수가 아니라 세로셈·표 조각이다", () => {
+  it("EHboNA에서 온 ²는 지수로 옮기지 않는다 (문항 0265 보기 표)", () => {
+    const got = decodeHwpMath("²20", "EHboNA-Plain");
+    expect(got.latex).not.toContain("^{2}");
+    expect(got.unknown).toContain("²");
+  });
+
+  it("다른 글꼴의 ²는 그대로 지수다", () => {
+    expect(decodeHwpMath("x²", "EHsang-Italic").latex).toBe("x^{2}");
+  });
+});
+
+describe("조각난 수식 잇기", () => {
+  const math = (latex: string): Run => ({ kind: "math", raw: latex, latex, unknown: [] });
+
+  it("중괄호가 열린 채 끝난 조각은 다음 수식 조각과 붙인다", () => {
+    /* 별책 0346 — 지면은 `{-3/4}+{-1/3}={-9/12}+{-4/12}` 한 줄인데
+     * 마지막 4/12만 2행 분수라 앞뒤로 틈이 벌어져 세 조각이 됐다. */
+    const got = mergeUnbalancedMath([
+      math("{-\\frac{3}{4}}+{-\\frac{1}{3}}={-\\frac{9}{12}}+{-"),
+      math("\\frac{4}{12}"),
+      math("}"),
+    ]);
+    expect(got).toHaveLength(1);
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe(
+      "{-\\frac{3}{4}}+{-\\frac{1}{3}}={-\\frac{9}{12}}+{-\\frac{4}{12}}",
+    );
+  });
+
+  it("짝이 맞는 조각끼리는 붙이지 않는다 — 원래 두 수식일 수 있다", () => {
+    expect(mergeUnbalancedMath([math("2+3"), math("5-1")])).toHaveLength(2);
+  });
+
+  it("열린 중괄호 안의 쉼표는 수식의 일부다 — 순서쌍 (문항 1043 선택지)", () => {
+    const got = mergeUnbalancedMath([
+      math("{-1"),
+      { kind: "text", text: ", " },
+      math("-\\frac{2}{3}}"),
+    ]);
+    expect(got).toHaveLength(1);
+    // 쉼표 뒤 공백은 넣지 않는다 — 수식 모드에서 TeX가 알아서 벌린다
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe("{-1,-\\frac{2}{3}}");
+  });
+
+  it("뒤에 수식이 없으면 구두점을 삼키지 않는다 — 문장 끝 마침표", () => {
+    const got = mergeUnbalancedMath([math("{-1"), { kind: "text", text: ". " }]);
+    expect(got).toHaveLength(2);
+  });
+
+  it("사이에 한글이 들어오면 붙이지 않는다 — 거기는 진짜로 끊긴 자리다", () => {
+    const got = mergeUnbalancedMath([
+      math("{-"),
+      { kind: "text", text: "그러므로 " },
+      math("}"),
+    ]);
+    expect(got).toHaveLength(3);
+  });
+
+  it("닫는 괄호가 먼저 온 조각도 앞엣것에 붙인다", () => {
+    const got = mergeUnbalancedMath([math("}=-\\frac{13}{12}"), math("+1")]);
+    expect(got).toHaveLength(1);
+  });
+
+  it("이스케이프한 중괄호는 깊이로 세지 않는다", () => {
+    expect(mergeUnbalancedMath([math("\\{a\\}"), math("b")])).toHaveLength(2);
+  });
+
+  it("원래 배열을 건드리지 않는다", () => {
+    const runs = [math("{-"), math("1}")];
+    mergeUnbalancedMath(runs);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.kind === "math" && runs[0]!.latex).toBe("{-");
   });
 });
 
