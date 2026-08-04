@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { StudentAnswer } from "@su-maek/contracts";
+import { QuestionBody } from "@/components/learn/QuestionText";
 import {
   saveAnswerAction,
   submitAttemptAction,
@@ -24,7 +25,8 @@ export interface AttemptQuestion {
   assessmentQuestionId: string;
   number: number;
   kind: "multiple_choice" | "short_answer";
-  bodyHtml: string;
+  /** 첫 줄이 발문, 뒤가 판별 대상이다 (renderQuestionBody) */
+  bodyLines: string[];
   choices?: Array<{ choiceId: string; order: number; html: string }>;
   points: number;
   savedAnswer: StudentAnswer | null;
@@ -178,7 +180,7 @@ export function AttemptRunner({
       <div className="min-h-[220px] px-5 py-6">
         <div className="flex gap-2">
           <span className="font-mono font-bold text-pen">{q.number}.</span>
-          <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: q.bodyHtml }} />
+          <QuestionBody lines={q.bodyLines} className="leading-relaxed" />
         </div>
 
         {q.kind === "multiple_choice" && q.choices && (

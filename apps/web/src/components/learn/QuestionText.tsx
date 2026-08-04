@@ -63,7 +63,7 @@ const MARK_RE = new RegExp(`${SYMBOL_MARK_OPEN}(.)${SYMBOL_MARK_CLOSE}`, "g");
  *
  * 표식이 없으면 갈래가 하나뿐이라 예전과 똑같은 HTML이 나온다.
  */
-export function QuestionLine({ html }: { html: string }) {
+function QuestionLine({ html }: { html: string }) {
   /* 캡처가 있는 split은 잡힌 글자도 배열에 남긴다 — 짝수 자리는 HTML,
    * 홀수 자리는 기호다. */
   const parts = html.split(MARK_RE);
@@ -77,5 +77,25 @@ export function QuestionLine({ html }: { html: string }) {
         ),
       )}
     </p>
+  );
+}
+
+/**
+ * 문항 본문 — 발문과 판별 대상이 각각 한 줄이다(renderQuestionBody가 가른다).
+ * 「…고르시오. 11」을 한 줄에 두면 11이 문장 꼬리처럼 묻힌다.
+ */
+export function QuestionBody({
+  lines,
+  className = "",
+}: {
+  lines: string[];
+  className?: string;
+}) {
+  return (
+    <div className={`space-y-1 ${className}`}>
+      {lines.map((line, i) => (
+        <QuestionLine key={i} html={line} />
+      ))}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { todayInKst } from "@/lib/format";
 import { listDueReviews } from "@/lib/domain/review";
+import { renderQuestionBody } from "@/lib/learn/question-body";
 import { ReviewForm } from "./ReviewForm";
 
 export const metadata: Metadata = { title: "복습" };
@@ -84,7 +85,7 @@ export default async function ReviewPage() {
     );
   }
 
-  const rendered = renderMixedText(bodyToText(first.body), "publish");
+  const rendered = renderQuestionBody(bodyToText(first.body));
   const choices = Array.isArray(first.choices)
     ? (first.choices as Array<{
         choiceId: string;
@@ -117,7 +118,7 @@ export default async function ReviewPage() {
         <ReviewForm
           reviewItemId={first.id}
           conceptName={first.conceptName}
-          bodyHtml={rendered.html}
+          bodyLines={rendered.lines}
           choices={choices}
           kind={first.kind ?? "short_answer"}
         />

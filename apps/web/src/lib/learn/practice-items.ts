@@ -1,11 +1,10 @@
 import "server-only";
 import { symbolAnswerClass } from "@su-maek/core/grading";
 import { renderMixedText } from "@su-maek/core/math";
+import { renderQuestionBody } from "@/lib/learn/question-body";
 import {
   adaptInstructionForChoice,
   isSymbolAnswerKey,
-  markSymbolGlyphs,
-  splitInstructionLine,
   symbolOptionsFromBodyText,
 } from "@/lib/learn/symbol-answer";
 import {
@@ -73,20 +72,12 @@ export async function buildPracticeSets(input: {
           isSymbolAnswerKey(q.answerKey, (s) => symbolAnswerClass(s) !== null);
         let bodyText = blocksToText(q.body);
         if (symbolAnswer) bodyText = adaptInstructionForChoice(bodyText);
-        /* 발문의 기호는 답 칩과 같은 그림으로 그린다(QuestionLine). 판별
-         * 문항에서만 표시한다 — 다른 문항의 ×는 곱셈이지 답 기호가 아니다. */
-        const marked = symbolAnswer ? markSymbolGlyphs(bodyText) : bodyText;
         return {
           key: q.assessmentQuestionId,
           number: i + 1,
           kind: q.kind,
           symbolOptions: symbolAnswer ? symbolOptionsFromBodyText(bodyText) : [],
-          bodyLines: marked
-            .split("\n")
-            .flatMap(splitInstructionLine)
-            .map((line) => line.trim())
-            .filter((line) => line !== "")
-            .map((line) => renderMixedText(line, "publish").html),
+          bodyLines: renderQuestionBody(bodyText).lines,
           choices: Array.isArray(q.choices)
             ? (
                 q.choices as Array<{

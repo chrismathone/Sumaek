@@ -7,6 +7,7 @@ import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { todayInKst } from "@/lib/format";
 import { startAttempt } from "@/lib/domain/attempt";
+import { renderQuestionBody } from "@/lib/learn/question-body";
 import {
   AttemptRunner,
   type AttemptQuestion,
@@ -106,7 +107,7 @@ export default async function AttemptPage({
   /* 게시 모드 렌더 — 실패 수식이 있으면 시험을 시작시키지 않는다 (18장) */
   const failures: string[] = [];
   const questions: AttemptQuestion[] = rows.map((row) => {
-    const bodyResult = renderMixedText(bodyToText(row.body), "publish");
+    const bodyResult = renderQuestionBody(bodyToText(row.body));
     failures.push(...bodyResult.failures);
 
     let choices: AttemptQuestion["choices"];
@@ -127,7 +128,7 @@ export default async function AttemptPage({
       assessmentQuestionId: row.aq_id,
       number: row.sort_order,
       kind: row.kind === "multiple_choice" ? "multiple_choice" : "short_answer",
-      bodyHtml: bodyResult.html,
+      bodyLines: bodyResult.lines,
       ...(choices ? { choices } : {}),
       points: Number(row.points),
       savedAnswer: savedParsed.success ? (savedParsed.data as StudentAnswer) : null,

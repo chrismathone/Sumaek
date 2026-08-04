@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import { QuestionBody } from "@/components/learn/QuestionText";
 import { answerReviewAction } from "./actions";
 import type { ReviewAnswerResult } from "@/lib/domain/review";
 
@@ -12,13 +13,14 @@ import type { ReviewAnswerResult } from "@/lib/domain/review";
 export function ReviewForm({
   reviewItemId,
   conceptName,
-  bodyHtml,
+  bodyLines,
   choices,
   kind,
 }: {
   reviewItemId: string;
   conceptName: string;
-  bodyHtml: string;
+  /** 렌더가 끝난 발문 — 발문과 판별 대상이 각각 한 줄이다 */
+  bodyLines: string[];
   choices: Array<{ choiceId: string; order: number; html: string }> | null;
   kind: string;
 }) {
@@ -67,10 +69,7 @@ export function ReviewForm({
       <input type="hidden" name="reviewItemId" value={reviewItemId} />
       <input type="hidden" name="kind" value={kind} />
       <p className="font-mono text-xs text-ink-soft">{conceptName}</p>
-      <div
-        className="mt-2 text-[15px]"
-        dangerouslySetInnerHTML={{ __html: bodyHtml }}
-      />
+      <QuestionBody lines={bodyLines} className="mt-2 text-[15px]" />
 
       {kind === "multiple_choice" && choices ? (
         <fieldset className="mt-4 space-y-2">

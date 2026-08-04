@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { renderMixedText } from "@su-maek/core/math";
+import { renderQuestionBody } from "@/lib/learn/question-body";
 import { TestRunner } from "@/components/runner/TestRunner";
 import type { RunnerQuestion } from "@/components/runner/types";
 
@@ -18,6 +19,15 @@ function publish(text: string): string {
   return html;
 }
 
+/** 본문은 학생 화면과 **같은 경로**로 낸다 — 체험판이 실제와 다르면 안 된다 */
+function publishBody(text: string): string[] {
+  const { lines, failures } = renderQuestionBody(text);
+  if (failures.length > 0) {
+    throw new Error(`수식 게이트 위반: ${failures[0]}`);
+  }
+  return lines;
+}
+
 const QUESTIONS: RunnerQuestion[] = [
   {
     questionId: "demo-1",
@@ -25,7 +35,7 @@ const QUESTIONS: RunnerQuestion[] = [
     kind: "multiple_choice",
     points: 10,
     conceptName: "연립일차방정식의 뜻",
-    bodyHtml: publish("다음 중 미지수가 2개인 일차방정식인 것을 고르시오."),
+    bodyLines: publishBody("다음 중 미지수가 2개인 일차방정식인 것을 고르시오."),
     choices: [
       { choiceId: "c1", order: 1, html: publish("$x^2+y=3$") },
       { choiceId: "c2", order: 2, html: publish("$2x+y=7$") },
@@ -40,7 +50,7 @@ const QUESTIONS: RunnerQuestion[] = [
     kind: "short_answer",
     points: 10,
     conceptName: "가감법",
-    bodyHtml: publish(
+    bodyLines: publishBody(
       "연립방정식 $\\begin{cases} x+y=5 \\\\ x-y=1 \\end{cases}$ 의 해가 $(a, b)$일 때, $a$의 값을 구하시오.",
     ),
     answerKey: {
@@ -54,7 +64,7 @@ const QUESTIONS: RunnerQuestion[] = [
     kind: "short_answer",
     points: 10,
     conceptName: "대입법",
-    bodyHtml: publish(
+    bodyLines: publishBody(
       "연립방정식 $\\begin{cases} y=2x-1 \\\\ 3x+y=9 \\end{cases}$ 를 대입법으로 풀 때, $x$의 값을 구하시오.",
     ),
     answerKey: {
@@ -68,7 +78,7 @@ const QUESTIONS: RunnerQuestion[] = [
     kind: "short_answer",
     points: 10,
     conceptName: "분수의 계산 (복습)",
-    bodyHtml: publish("$\\frac{1}{2} + \\frac{1}{3}$ 의 값을 구하시오."),
+    bodyLines: publishBody("$\\frac{1}{2} + \\frac{1}{3}$ 의 값을 구하시오."),
     answerKey: {
       kind: "short_answer",
       accepted: [{ value: "5/6", form: "fraction", allowEquivalence: true }],
@@ -80,7 +90,7 @@ const QUESTIONS: RunnerQuestion[] = [
     kind: "short_answer",
     points: 10,
     conceptName: "연립방정식의 활용",
-    bodyHtml: publish(
+    bodyLines: publishBody(
       "합이 $27$이고 차가 $5$인 두 자연수 중 큰 수를 구하시오.",
     ),
     answerKey: {
