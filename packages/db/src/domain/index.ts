@@ -2,6 +2,8 @@
 export * from "./schedule";
 export * from "./learner-schedule";
 export * from "./learner-day-plan";
+/** 평가 자동 생성 — 웹 액션과 워커 핸들러가 같은 함수를 쓴다 (ADR-0018 §5). */
+export * from "./assessment-generation";
 export * from "./ingestion";
 export * from "./privacy";
 export * from "./ai-usage";

@@ -8,7 +8,7 @@ import {
   generateConfirmationTest,
   generateDailyTest,
   type GenerateResult,
-} from "@/lib/domain/assessment";
+} from "@su-maek/db/domain";
 
 export async function generateDailyTestAction(
   _prev: GenerateResult | null,

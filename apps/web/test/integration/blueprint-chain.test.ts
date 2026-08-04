@@ -4,7 +4,7 @@ import { getSharedSql } from "@su-maek/db";
 import {
   generateConfirmationTest,
   generateDailyTest,
-} from "@/lib/domain/assessment";
+} from "@su-maek/db/domain";
 
 /* ─────────────────────────────────────────────────────────────
  * 평가 블루프린트 (2N · 인수 48 뒤 고리) — 라이브 DB.

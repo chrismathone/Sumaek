@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import type { GenerateResult } from "@/lib/domain/assessment";
+import type { GenerateResult } from "@su-maek/db/domain";
 import { generateDailyTestAction } from "./actions";
 
 const REASON_LABEL: Record<string, string> = {

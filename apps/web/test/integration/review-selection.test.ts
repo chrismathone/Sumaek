@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "@su-maek/db";
-import { generateDailyTest } from "@/lib/domain/assessment";
+import { generateDailyTest } from "@su-maek/db/domain";
 
 /* ─────────────────────────────────────────────────────────────
  * 일일테스트의 복습 버킷 — 망각곡선이 실제로 출제에 닿는가.

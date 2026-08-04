@@ -1,6 +1,5 @@
-import "server-only";
 import { v7 as uuidv7 } from "uuid";
-import { getSharedSql } from "@su-maek/db";
+import { getSharedSql } from "../client";
 import {
   selectQuestions,
   type PoolQuestion,
