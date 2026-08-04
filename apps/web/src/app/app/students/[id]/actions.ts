@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
-import { executeLearnerErasure } from "@su-maek/db/domain";
+import { executeLearnerErasure, reopenLearnerDay } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
+import type { IsoDate } from "@su-maek/core/shared";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { todayInKst } from "@/lib/format";
 import { materializeLearnerSchedule } from "@/lib/domain/schedule";
@@ -496,4 +497,55 @@ export async function cancelOverride(
 
   revalidatePath(`/app/students/${target.learner_id}`);
   return { ok: true, message: "오버라이드를 취소했습니다." };
+}
+
+/* ── 하루 완료 취소 (ADR-0017 §6 · T4.1) ──
+ *
+ * 자동 완료가 잘못 걸린 하루를 교사가 되돌린다. 완료 시각은 **지우지
+ * 않는다** — 지우고 다시 채우면 숙련도·일정 엔진에 같은 날이 두 번 흘러가고,
+ * DB 트리거도 그 변경을 거부한다.
+ *
+ * 취소의 실제 효과는 **재투영이 다시 도는 것**이다. 완료된 계획은 투영기가
+ * 통째로 건너뛰므로, 잘못 완료된 하루는 원본을 고쳐도 계획이 갱신되지 않는다.
+ *
+ * 권한은 `learners` 쓰기다. 학생 기록을 되돌리는 일이고 담당 교사의 일상
+ * 업무이므로, 계정 발급(settings)만큼 무겁게 잠그지 않는다.
+ */
+const reopenDaySchema = z.object({
+  learnerId: z.uuid(),
+  planDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().min(1).max(500),
+});
+
+export async function reopenLearnerDayAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "learners")) {
+    return { ok: false, message: "하루 완료를 취소할 권한이 없습니다." };
+  }
+
+  const parsed = reopenDaySchema.safeParse({
+    learnerId: formData.get("learnerId"),
+    planDate: formData.get("planDate"),
+    reason: String(formData.get("reason") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "취소 사유를 적어 주세요 — 완료 기록을 되돌리는 유일한 근거입니다.",
+    };
+  }
+
+  const result = await reopenLearnerDay(getSharedSql(), {
+    organizationId: user.organizationId,
+    learnerId: parsed.data.learnerId,
+    planDate: parsed.data.planDate as IsoDate,
+    actorUserId: user.userId,
+    reason: parsed.data.reason,
+  });
+
+  if (result.ok) revalidatePath(`/app/students/${parsed.data.learnerId}`);
+  return { ok: result.ok, message: result.message };
 }

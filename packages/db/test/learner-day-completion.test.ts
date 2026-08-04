@@ -3,7 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createSql } from "../src/client";
 import {
   completeLearnerDay,
+  listLearnerDayPlans,
   projectLearnerDayPlan,
+  reopenLearnerDay,
   type DayPlanItemSpec,
 } from "../src/domain/learner-day-plan";
 import type { IsoDate } from "@su-maek/core/shared";
@@ -40,6 +42,8 @@ const OTHER_ORG = "ffffffff-0000-7000-8000-000000061002";
 const PERIOD = uuidv7();
 const GROUP = uuidv7();
 const LEARNER = uuidv7();
+/** 완료를 취소하는 교사 — 감사 행의 actor */
+const TEACHER = uuidv7();
 const OTHER_PERIOD = uuidv7();
 const OTHER_LEARNER = uuidv7();
 
@@ -89,6 +93,17 @@ function complete(over: Record<string, unknown> = {}) {
     organizationId: ORG,
     learnerId: LEARNER,
     planDate: currentDate,
+    ...over,
+  });
+}
+
+function reopen(over: Record<string, unknown> = {}) {
+  return reopenLearnerDay(sql, {
+    organizationId: ORG,
+    learnerId: LEARNER,
+    planDate: currentDate,
+    actorUserId: TEACHER,
+    reason: "ITEST 오조작 복구",
     ...over,
   });
 }
@@ -331,24 +346,24 @@ describe.skipIf(!hasDb)("계획 1건당 최대 1회 (I-22)", () => {
 
   it("완료 취소 후 다시 완료돼도 재발행하지 않는다 (ADR-0017 §6)", async () => {
     const planId = await makePlan([item({ key: "a", status: "completed" })]);
-    await complete();
+    const first = await complete();
 
-    /* 교사의 오조작 복구 — completed_at은 **지우지 않고** reopened_at을 더한다.
-     * 지우고 다시 채우는 설계는 소비자에게 같은 날을 두 번 흘려보낸다. */
-    await sql`
-      update learner_day_plans
-      set status = 'in_progress', reopened_at = now(), reopen_reason = 'ITEST 오조작 복구'
-      where id = ${planId}
-    `;
+    await reopen();
 
+    /* 필수가 여전히 전부 충족돼 있으므로 곧바로 다시 완료로 돌아간다.
+     * 되돌리지 않으면 그 하루는 학생이 무엇을 더 해도 영영 미완료로 남고,
+     * 교사에게도 닫을 방법이 없다 — 재개방의 목적은 계획을 다시 갱신되게
+     * 하는 것이지 하루를 영구히 여는 것이 아니다. */
     const again = await complete();
 
-    expect(again.outcome).toBe("already");
+    expect(again.outcome).toBe("recompleted");
+    /* 완료 시각은 최초의 것 그대로 — 그래서 이벤트도 하나다 */
+    expect(again.completedAt).toBe(first.completedAt);
     expect(await completionEvents(planId)).toHaveLength(1);
-    /* 재완료가 상태를 되돌리지도 않는다 — 재개방은 교사의 판단이고,
-     * 자동 완료가 그것을 조용히 취소하면 교사는 자기 조치가 먹혔는지 모른다. */
+
     const row = await planRow(planId);
-    expect(row.status).toBe("in_progress");
+    expect(row.status).toBe("completed");
+    /* 재개방이 있었다는 사실은 지워지지 않는다 */
     expect(row.reopened_at).not.toBeNull();
   });
 
@@ -393,6 +408,142 @@ describe.skipIf(!hasDb)("완료 이력의 불변", () => {
     await expect(
       sql`delete from learner_day_plans where id = ${planId}`,
     ).rejects.toThrow();
+  });
+});
+
+describe.skipIf(!hasDb)("교사의 완료 취소 (ADR-0017 §6)", () => {
+  it("완료 시각을 지우지 않고 재개방을 기록한다", async () => {
+    const planId = await makePlan([item({ key: "a", status: "completed" })]);
+    const done = await complete();
+
+    const result = await reopen();
+
+    expect(result.ok).toBe(true);
+    const row = await planRow(planId);
+    /* 지우고 다시 채우는 설계는 소비자(숙련도·일정 엔진)에게 같은 날을 두 번
+     * 흘려보낸다. 그래서 완료 시각은 그대로 두고 재개방 사실만 더한다. */
+    expect(row.completed_at).toBe(done.completedAt);
+    expect(row.reopened_at).not.toBeNull();
+    expect(row.status).not.toBe("completed");
+  });
+
+  it("재개방하면 재투영이 다시 돈다 — 그것이 취소의 목적이다", async () => {
+    /* 완료된 계획은 재투영이 건너뛴다. 그래서 잘못 완료된 하루는 원본
+     * 데이터를 고쳐도 계획이 갱신되지 않는다. 재개방이 그 문을 다시 연다. */
+    await makePlan([item({ key: "a", status: "completed" })]);
+    await complete();
+    await reopen();
+
+    const again = await projectLearnerDayPlan(sql, {
+      organizationId: ORG,
+      learnerId: LEARNER,
+      planDate: currentDate,
+      timezone: TZ,
+      learningGroupId: GROUP,
+      source: "group_session",
+      sourceRefId: null,
+      items: [item({ key: "a", status: "completed" }), item({ key: "b" })],
+    });
+
+    expect(again.skippedCompleted).toBe(false);
+  });
+
+  it("사유 없는 취소는 거부한다", async () => {
+    /* 사유 없는 재개방은 나중에 아무도 설명할 수 없다. 완료 기록을 건드리는
+     * 유일한 조작이라 그 한 줄이 유일한 근거가 된다. */
+    const planId = await makePlan([item({ key: "a", status: "completed" })]);
+    await complete();
+
+    const result = await reopen({ reason: "   " });
+
+    expect(result.ok).toBe(false);
+    /* DB를 열기도 전에 막는다 — 계획 id조차 돌려주지 않는다 */
+    expect(result.planId).toBeNull();
+    expect((await planRow(planId)).reopened_at).toBeNull();
+  });
+
+  it("완료되지 않은 하루는 취소할 수 없다", async () => {
+    await makePlan([item({ key: "a", status: "pending" })]);
+
+    const result = await reopen();
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("완료");
+  });
+
+  it("계획이 없으면 취소할 것도 없다", async () => {
+    const result = await reopen();
+    expect(result.ok).toBe(false);
+    expect(result.planId).toBeNull();
+  });
+
+  it("남의 조직 계획은 취소할 수 없다", async () => {
+    const planId = await makePlan([item({ key: "a", status: "completed" })], {
+      organizationId: OTHER_ORG,
+      learnerId: OTHER_LEARNER,
+      learningGroupId: null,
+      source: "review_only",
+    });
+    await completeLearnerDay(sql, {
+      organizationId: OTHER_ORG,
+      learnerId: OTHER_LEARNER,
+      planDate: currentDate,
+    });
+
+    /* 조직은 ORG인데 학습자는 남의 조직 것 — 키가 하나라도 어긋나면 못 찾는다 */
+    const result = await reopen({ learnerId: OTHER_LEARNER });
+
+    expect(result.ok).toBe(false);
+    expect((await planRow(planId)).reopened_at).toBeNull();
+  });
+
+  it("취소가 감사에 남는다 — 사유와 함께", async () => {
+    const planId = await makePlan([item({ key: "a", status: "completed" })]);
+    await complete();
+    await reopen({ reason: "시험 채점이 잘못돼 다시 보게 함" });
+
+    const rows = await sql<{ actor_id: string; reason: string }[]>`
+      select actor_id::text as actor_id, reason
+      from audit_events
+      where organization_id = ${ORG}
+        and action = 'learner-day.reopen'
+        and target_id = ${planId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actor_id).toBe(TEACHER);
+    expect(rows[0]!.reason).toContain("채점");
+  });
+});
+
+describe.skipIf(!hasDb)("교사가 보는 하루 실행 기록", () => {
+  it("최근 날짜부터 상태·완료 시각·재개방을 함께 낸다", async () => {
+    const planId = await makePlan([item({ key: "a", status: "completed" })]);
+    await complete();
+
+    const rows = await listLearnerDayPlans(sql, {
+      organizationId: ORG,
+      learnerId: LEARNER,
+      limit: 50,
+    });
+    const mine = rows.find((r) => r.planId === planId);
+
+    expect(mine).toBeDefined();
+    expect(mine!.status).toBe("completed");
+    expect(mine!.completedAt).not.toBeNull();
+    expect(mine!.requiredTotal).toBe(1);
+    expect(mine!.requiredSatisfied).toBe(1);
+    /* 날짜 내림차순 — 교사가 먼저 보는 것은 최근이다 */
+    const dates = rows.map((r) => r.planDate);
+    expect([...dates].sort().reverse()).toEqual(dates);
+  });
+
+  it("남의 조직 학습자는 보이지 않는다", async () => {
+    const rows = await listLearnerDayPlans(sql, {
+      organizationId: ORG,
+      learnerId: OTHER_LEARNER,
+      limit: 50,
+    });
+    expect(rows).toHaveLength(0);
   });
 });
 

@@ -38,6 +38,9 @@ const { getSharedSql } = await import("@su-maek/db");
 const { completeDayPlanItem } = await import("@su-maek/db/domain");
 const { projectToday } = await import("@/lib/domain/day-plan");
 const { completeHomework } = await import("@/app/learn/homework/actions");
+const { reopenLearnerDayAction } = await import(
+  "@/app/app/students/[id]/actions"
+);
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const ORG = "00000000-0000-7000-8000-000000000001";
@@ -47,6 +50,8 @@ let sql: ReturnType<typeof getSharedSql>;
 /** 하루를 끝낼 학생 */
 const FINISHER = uuidv7();
 const FINISHER_USER = uuidv7();
+/** 완료를 취소하는 교사 */
+const TEACHER_USER = uuidv7();
 /** 하나를 남기는 학생 */
 const HALFWAY = uuidv7();
 const PERIOD = uuidv7();
@@ -125,6 +130,15 @@ beforeAll(async () => {
     values (${HALFWAY}, ${ORG}, ${"완주 테스트 학생2"}, 'active')
   `;
   await sql`
+    insert into users (id, email, display_name, default_organization_id)
+    values (${TEACHER_USER}, ${`t-${TEACHER_USER}@su-maek.test`},
+            ${"완주 테스트 교사"}, ${ORG})
+  `;
+  await sql`
+    insert into memberships (id, organization_id, user_id, role, status)
+    values (${uuidv7()}, ${ORG}, ${TEACHER_USER}, 'teacher', 'active')
+  `;
+  await sql`
     insert into course_periods
       (id, organization_id, name, academic_year, starts_on, ends_on, status)
     values (${PERIOD}, ${ORG}, '완주 테스트 기간', 2026, ${isoAddDays(-30)},
@@ -184,8 +198,8 @@ afterAll(async () => {
   await sql`delete from learning_groups where id = ${GROUP}`;
   await sql`delete from course_periods where id = ${PERIOD}`;
   await sql`delete from learners where id in (${FINISHER}, ${HALFWAY})`;
-  await sql`delete from memberships where user_id = ${FINISHER_USER}`;
-  await sql`delete from users where id = ${FINISHER_USER}`;
+  await sql`delete from memberships where user_id in (${FINISHER_USER}, ${TEACHER_USER})`;
+  await sql`delete from users where id in (${FINISHER_USER}, ${TEACHER_USER})`;
 });
 
 describe.skipIf(!hasDb)("하루 완료가 학생 흐름에서 기록된다", () => {
@@ -254,5 +268,78 @@ describe.skipIf(!hasDb)("하루 완료가 학생 흐름에서 기록된다", () 
     expect(view.completable).toBe(false);
     expect(view.completedAt).toBeNull();
     expect(await completionEvents(HALFWAY)).toHaveLength(0);
+  });
+});
+
+describe.skipIf(!hasDb)("교사의 하루 완료 취소", () => {
+  function reopenForm(reason: string): FormData {
+    const form = new FormData();
+    form.set("learnerId", FINISHER);
+    form.set("planDate", TODAY);
+    form.set("reason", reason);
+    return form;
+  }
+
+  it("로그인하지 않으면 아무것도 바꾸지 않는다", async () => {
+    claims.sub = null;
+    const before = await completedAtOf(FINISHER);
+
+    const r = await reopenLearnerDayAction(null, reopenForm("권한 없음 확인"));
+
+    expect(r.ok).toBe(false);
+    expect(await completedAtOf(FINISHER)).toBe(before);
+  });
+
+  it("사유가 없으면 거부한다", async () => {
+    /* 완료 기록을 되돌리는 유일한 조작이라 그 한 줄이 유일한 근거가 된다. */
+    claims.sub = TEACHER_USER;
+    const r = await reopenLearnerDayAction(null, reopenForm("   "));
+
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("사유");
+    claims.sub = null;
+  });
+
+  it("취소해도 완료 시각은 남고 취소 사실이 더해진다", async () => {
+    claims.sub = TEACHER_USER;
+    const before = await completedAtOf(FINISHER);
+    expect(before).not.toBeNull();
+
+    const r = await reopenLearnerDayAction(
+      null,
+      reopenForm("시험 채점이 잘못돼 다시 보게 함"),
+    );
+
+    expect(r.ok).toBe(true);
+    const [row] = await sql<
+      { status: string; completed_at: string | null; reopened_at: string | null }[]
+    >`
+      select status::text as status, completed_at::text, reopened_at::text
+      from learner_day_plans
+      where learner_id = ${FINISHER} and plan_date = ${TODAY}::date
+    `;
+    /* 지우고 다시 채우면 숙련도·일정 엔진에 같은 날이 두 번 들어간다 */
+    expect(row!.completed_at).toBe(before);
+    expect(row!.reopened_at).not.toBeNull();
+    expect(row!.status).not.toBe("completed");
+    claims.sub = null;
+  });
+
+  it("취소 뒤 학생이 오늘 화면을 열면 다시 완료로 돌아가고 이벤트는 그대로 하나다", async () => {
+    /* 되돌리지 않으면 그 하루는 학생이 무엇을 더 해도 영영 미완료다 —
+     * 필수가 전부 충족돼 있는데 화면만 아니라고 하면 그것이 거짓말이다.
+     * 완료 시각이 그대로이므로 이벤트는 여전히 하나다 (I-22). */
+    const view = await projectToday({ learner: ref(FINISHER), today: TODAY });
+
+    expect(view.completedAt).not.toBeNull();
+    const [row] = await sql<{ status: string; reopened_at: string | null }[]>`
+      select status::text as status, reopened_at::text
+      from learner_day_plans
+      where learner_id = ${FINISHER} and plan_date = ${TODAY}::date
+    `;
+    expect(row!.status).toBe("completed");
+    /* 취소가 있었다는 사실은 지워지지 않는다 */
+    expect(row!.reopened_at).not.toBeNull();
+    expect(await completionEvents(FINISHER)).toHaveLength(1);
   });
 });

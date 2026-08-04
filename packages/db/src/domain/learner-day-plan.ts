@@ -481,7 +481,16 @@ export async function completeDayPlanItem(
  * ───────────────────────────────────────────────────────────── */
 
 export type DayCompletionOutcome =
+  /** 이번 호출이 처음 완료로 넘겼다 — 이벤트 1건 */
   | "completed"
+  /**
+   * 재개방된 하루가 다시 충족돼 상태만 되돌렸다 — 이벤트는 내지 않는다.
+   *
+   * 되돌리지 않으면 그 하루는 학생이 무엇을 더 해도 영영 미완료로 남고
+   * 교사에게도 닫을 방법이 없다. 재개방의 목적은 계획이 다시 갱신되게 하는
+   * 것이지 하루를 영구히 여는 것이 아니다 (ADR-0017 §6의 「다시 완료돼도」).
+   */
+  | "recompleted"
   | "already"
   | "not_completable"
   | "not_found";
@@ -580,7 +589,9 @@ export async function completeLearnerDay(
      * 확정 시점(= 필수 분모의 기준)을 정하는 곳이 둘이 된다. */
     if (!plan) return noCompletion("not_found");
 
-    if (plan.completed_at !== null) {
+    /* 이미 완료 상태면 할 일이 없다. 재개방된 하루(완료 시각은 있는데 상태는
+     * 아닌)는 아래에서 다시 판정한다. */
+    if (plan.completed_at !== null && plan.status === "completed") {
       return noCompletion("already", {
         planId: plan.id,
         completedAt: plan.completed_at,
@@ -600,7 +611,26 @@ export async function completeLearnerDay(
     if (derived !== "completed") {
       return noCompletion("not_completable", {
         planId: plan.id,
+        /* 재개방된 하루면 완료 시각은 여전히 사실이다 — 감추지 않는다 */
+        completedAt: plan.completed_at,
         derived,
+        required,
+      });
+    }
+
+    /* 재개방된 하루의 재완료: 상태만 되돌리고 이벤트는 내지 않는다.
+     * completed_at을 건드리지 않으므로 I-22의 「계획 1건당 최대 1회」가
+     * 그대로 성립한다 — 그리고 DB 트리거도 그 변경만 허용한다. */
+    if (plan.completed_at !== null) {
+      await tx`
+        update learner_day_plans
+        set status = 'completed', updated_at = now()
+        where id = ${plan.id}
+      `;
+      return noCompletion("recompleted", {
+        planId: plan.id,
+        completedAt: plan.completed_at,
+        derived: "completed",
         required,
       });
     }
@@ -663,4 +693,190 @@ export async function completeLearnerDay(
       required,
     };
   }) as Promise<CompleteLearnerDayResult>;
+}
+
+export interface ReopenLearnerDayResult {
+  ok: boolean;
+  message: string;
+  planId: string | null;
+  /** 되돌아간 상태 — 항목에서 다시 판정한 값 */
+  status: DayPlanStatus | null;
+}
+
+/**
+ * 교사의 「하루 완료 취소」 (ADR-0017 §6).
+ *
+ * `completed_at`을 **지우지 않는다.** 지우고 다시 채우는 설계는 소비자
+ * (숙련도·일정 엔진)에게 같은 날을 두 번 흘려보낸다 — 그래서 DB 트리거도
+ * 그 변경을 거부한다. 여기서 하는 일은 `reopened_at`을 더하고 상태를
+ * 항목에서 다시 판정한 값으로 되돌리는 것뿐이다.
+ *
+ * **취소의 실제 효과는 재투영이 다시 도는 것이다.** 완료된 계획은 투영기가
+ * 통째로 건너뛰므로(ADR-0018 §3), 잘못 완료된 하루는 원본 데이터를 고쳐도
+ * 계획이 갱신되지 않는다. 재개방이 그 문을 다시 연다.
+ *
+ * 그래서 필수가 여전히 전부 충족돼 있으면 다음 재투영에서 곧바로 다시
+ * 완료로 돌아간다(`completeLearnerDay`의 `recompleted`). 그것이 맞다 —
+ * 계획이 「전부 했다」고 말하는데 화면만 아니라고 하면 그것이 거짓말이다.
+ */
+export async function reopenLearnerDay(
+  sql: Sql,
+  input: {
+    organizationId: string;
+    learnerId: string;
+    planDate: IsoDate;
+    actorUserId: string;
+    reason: string;
+  },
+): Promise<ReopenLearnerDayResult> {
+  /* 사유 없는 재개방은 나중에 아무도 설명할 수 없다. 완료 기록을 건드리는
+   * 유일한 조작이라 그 한 줄이 유일한 근거가 된다. DB를 열기 전에 막는다. */
+  const reason = input.reason.trim();
+  if (reason.length === 0) {
+    return {
+      ok: false,
+      message: "취소 사유를 적어 주세요 — 완료 기록을 되돌리는 유일한 근거입니다.",
+      planId: null,
+      status: null,
+    };
+  }
+
+  return sql.begin(async (tx) => {
+    const [plan] = await tx<{ id: string; completed_at: string | null }[]>`
+      select id::text, completed_at::text
+      from learner_day_plans
+      where organization_id = ${input.organizationId}
+        and learner_id = ${input.learnerId}
+        and plan_date = ${input.planDate}
+      for update
+    `;
+    if (!plan) {
+      return {
+        ok: false,
+        message: "그 날짜의 하루 계획이 없습니다.",
+        planId: null,
+        status: null,
+      };
+    }
+    if (plan.completed_at === null) {
+      return {
+        ok: false,
+        message: "완료된 하루만 취소할 수 있습니다.",
+        planId: plan.id,
+        status: null,
+      };
+    }
+
+    const items = await tx<{ required: boolean; status: DayPlanItemStatus }[]>`
+      select required, status::text as status
+      from learner_day_plan_items
+      where learner_day_plan_id = ${plan.id}
+    `;
+    /* 투영기와 같은 규칙으로 상태를 정한다 — 충족돼 있어도 `completed`로
+     * 쓰지 않는다. 그 전이는 완료 명령의 몫이고, 여기서 넘기면 취소가
+     * 아무 일도 하지 않은 것이 된다. */
+    const derived = decideDayStatus(items);
+    const status: DayPlanStatus =
+      derived === "empty"
+        ? "not_started"
+        : derived === "completed"
+          ? "in_progress"
+          : derived;
+
+    await tx`
+      update learner_day_plans
+      set status = ${status}, reopened_at = now(), reopened_by = ${input.actorUserId},
+          reopen_reason = ${reason}, updated_at = now()
+      where id = ${plan.id}
+    `;
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id,
+        reason, before, after
+      ) values (
+        ${uuidv7()}, ${input.organizationId}, 'user', ${input.actorUserId},
+        'learner-day.reopen', 'learner_day_plan', ${plan.id}, ${reason},
+        ${tx.json({ status: "completed", completedAt: plan.completed_at } as never)},
+        ${tx.json({ status } as never)}
+      )
+    `;
+
+    return {
+      ok: true,
+      message:
+        "하루 완료를 취소했습니다. 완료 기록은 남고, 계획이 다시 갱신됩니다.",
+      planId: plan.id,
+      status,
+    };
+  }) as Promise<ReopenLearnerDayResult>;
+}
+
+export interface LearnerDayPlanSummary {
+  planId: string;
+  planDate: string;
+  status: string;
+  completedAt: string | null;
+  reopenedAt: string | null;
+  reopenReason: string | null;
+  learningGroupId: string | null;
+  requiredTotal: number;
+  /** 완료 + 면제 — 완료 판정이 보는 값 */
+  requiredSatisfied: number;
+  requiredBlocked: number;
+}
+
+/**
+ * 한 학생의 하루 실행 기록 — 교사 화면(학습자 상세)이 읽는다.
+ *
+ * 반·날짜로 가로지르는 현황판은 T4.4의 몫이고, 이것은 한 학생의 세로
+ * 기록이다. 두 화면은 같은 표를 다르게 자르므로 질의도 따로 둔다.
+ */
+export async function listLearnerDayPlans(
+  sql: Sql,
+  input: { organizationId: string; learnerId: string; limit?: number },
+): Promise<LearnerDayPlanSummary[]> {
+  const rows = await sql<
+    {
+      id: string;
+      plan_date: string;
+      status: string;
+      completed_at: string | null;
+      reopened_at: string | null;
+      reopen_reason: string | null;
+      learning_group_id: string | null;
+      required_total: number;
+      required_satisfied: number;
+      required_blocked: number;
+    }[]
+  >`
+    select p.id::text, p.plan_date::text, p.status::text as status,
+           p.completed_at::text, p.reopened_at::text, p.reopen_reason,
+           p.learning_group_id::text,
+           count(*) filter (where i.required)::int as required_total,
+           count(*) filter (
+             where i.required and i.status in ('completed', 'exempted')
+           )::int as required_satisfied,
+           count(*) filter (where i.required and i.status = 'blocked')::int
+             as required_blocked
+    from learner_day_plans p
+    left join learner_day_plan_items i on i.learner_day_plan_id = p.id
+    where p.organization_id = ${input.organizationId}
+      and p.learner_id = ${input.learnerId}
+    group by p.id
+    order by p.plan_date desc
+    limit ${input.limit ?? 30}
+  `;
+
+  return rows.map((r) => ({
+    planId: r.id,
+    planDate: r.plan_date,
+    status: r.status,
+    completedAt: r.completed_at,
+    reopenedAt: r.reopened_at,
+    reopenReason: r.reopen_reason,
+    learningGroupId: r.learning_group_id,
+    requiredTotal: r.required_total,
+    requiredSatisfied: r.required_satisfied,
+    requiredBlocked: r.required_blocked,
+  }));
 }

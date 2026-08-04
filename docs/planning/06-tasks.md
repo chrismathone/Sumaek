@@ -811,7 +811,8 @@ Set-Location ..\Su-Maek-t4-1-learner-complete
 - `packages/db/src/queue.ts` · `packages/db/src/checks/invariants.sql` — 무소비 선언 한 쌍, I-22 검사 정정
 - `apps/web/src/lib/domain/day-plan.ts` — 재투영 **한 곳**에서만 완료를 부른다
 - `apps/web/src/app/learn/today/page.tsx` — 확정된 완료 시각 표시
-- `packages/db/test/learner-day-completion.test.ts` (16) · `apps/web/test/integration/learner-day-complete.test.ts` (5)
+- `apps/web/src/app/app/students/[id]/{page.tsx,actions.ts,DayRecord.tsx}` — 하루 실행 기록과 완료 취소
+- `packages/db/test/learner-day-completion.test.ts` (25) · `apps/web/test/integration/learner-day-complete.test.ts` (9)
 
 **인수 조건**:
 - [x] 한 학생·한 날짜 완료 이벤트가 정확히 1회 발행됨 — 중복 호출·동시 호출·완료 취소 후 재완료 셋 다 두 번째를 만들지 않는다
@@ -820,9 +821,13 @@ Set-Location ..\Su-Maek-t4-1-learner-complete
 - [x] 완료 이력이 재계산으로 삭제되지 않음 — 재투영은 `skippedCompleted`, 삭제·`completed_at` 변경은 DB 트리거가 막는다
 - [x] 신규/변경 모듈 커버리지 80% 이상 — `learner-day-plan.ts` 문 87% · 분기 94% (남은 미커버는 행 잠금을 우회해야만 닿는 CAS 실패 재조회)
 
+**하루 완료 취소도 함께 넣었다** (ADR-0017 §6 · `reopenLearnerDay`):
+- 학습자 상세(`/app/students/[id]`)에 **하루 실행 기록** 표를 더했다. 이 표가 생기기 전까지 `learner_day_plans`는 교사에게 보이지 않았다 — 학생 화면은 「다 마쳤습니다」라고 말하는데 교사가 그 사실을 확인할 곳이 없었다. 반·날짜로 가로지르는 현황판은 여전히 T4.4의 몫이고, 이것은 한 학생의 세로 기록이다.
+- 취소는 `completed_at`을 **지우지 않는다.** 사유가 필수이고 감사에 남는다.
+- 취소의 실제 효과는 **재투영이 다시 도는 것**이다(완료된 계획은 투영기가 통째로 건너뛴다). 그래서 필수가 여전히 전부 충족돼 있으면 다음 재투영에서 곧바로 다시 완료로 돌아간다 — `recompleted`. 되돌리지 않으면 그 하루는 학생이 무엇을 더 해도 영영 미완료로 남고 교사에게도 닫을 방법이 없다. 완료 시각이 그대로이므로 이벤트는 여전히 하나다.
+
 **남긴 것**:
-- **교사의 「하루 완료 취소」 도구는 T4.4로.** ADR-0017 §6의 재개방 정책은 여기서 집행된다(`completed_at`이 있으면 재완료해도 재발행하지 않는다). 버튼이 놓일 화면이 교사 현황판이고, 그것을 T4.4가 만든다 — 화면 없는 명령을 미리 만들면 아무도 부르지 않는 코드가 하나 는다.
-- **E-16 소비자는 T4.3에서.** 지금은 무소비를 근거와 함께 선언한다 — 붙일 수 있는 유일한 기존 토픽(`schedule.recalculate`)이 학생 한 명의 완료마다 반 전체를 재실체화하기 때문이다.
+- **E-16 소비자는 T4.3에서.** 지금은 무소비를 근거와 함께 선언한다 — 붙일 수 있는 유일한 기존 토픽(`schedule.recalculate`)이 학생 한 명의 완료마다 반 전체를 재실체화하기 때문이다. 소비자를 지어내는 것은 T4.3의 설계(무엇을 다시 계획할지)를 이름만 빌려 앞당기는 일이고, 그것이 이 저장소가 `EVENT_WITHOUT_CONSUMER`로 막으려는 「있는 것처럼 보이는데 없는 것」이다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

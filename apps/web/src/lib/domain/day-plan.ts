@@ -561,7 +561,11 @@ export async function projectToday(input: {
      *
      * 명령 자체가 멱등이라(계획 1건당 최대 1회) 새로 고칠 때마다 불러도
      * 이벤트는 하나다. 완료가 불가능한 날은 아예 트랜잭션을 열지 않는다. */
-    if (result.completable && completedAt === null) {
+    /* `skippedCompleted`면 이미 완료로 굳은 계획이라 할 일이 없다. 그것으로
+     * 거르는 이유: 교사가 완료를 취소한 하루는 `completed_at`이 남아 있어도
+     * 다시 완료돼야 한다(ADR-0017 §6). `completedAt === null`로 걸렀다면
+     * 재개방된 하루는 학생이 무엇을 더 해도 영영 미완료로 남는다. */
+    if (result.completable && !result.skippedCompleted) {
       const done = await completeLearnerDay(sql, {
         organizationId: learner.organizationId,
         learnerId: learner.learnerId,

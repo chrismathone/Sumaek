@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
+import { listLearnerDayPlans } from "@su-maek/db/domain";
 import { requireAccess } from "@/lib/auth/require-access";
 import {
   ATTEMPT_STATUS_LABEL,
@@ -25,6 +26,7 @@ import { CancelOverrideButton, OverrideForm } from "./OverrideForm";
 import { MaterializeLearnerScheduleButton } from "./LearnerScheduleForm";
 import { LinkAccountForm, UnlinkAccountButton } from "./AccountForm";
 import { DeletionExecuteForm, DeletionRequestForm } from "./PrivacyForm";
+import { DayRecord } from "./DayRecord";
 
 const DELETION_STATUS_LABEL: Record<string, string> = {
   received: "접수됨",
@@ -197,6 +199,7 @@ export default async function StudentDetailPage({
     deletionRequests,
     scheduleItems,
     masteryPolicyRows,
+    dayPlans,
   ] = await Promise.all([
     sql<
       {
@@ -355,6 +358,14 @@ export default async function StudentDetailPage({
       where organization_id = ${user.organizationId} and is_active = true
       order by version desc limit 1
     `,
+    /* 하루 실행 기록 (T4.1) — 이 표가 없는 동안 learner_day_plans는 교사에게
+     * 보이지 않았다. 학생 화면은 「다 마쳤습니다」라고 말하는데 교사가 그
+     * 사실을 확인할 곳이 없었다. */
+    listLearnerDayPlans(sql, {
+      organizationId: user.organizationId,
+      learnerId: id,
+      limit: 14,
+    }),
   ]);
   const masterySpec = masteryPolicyRows[0]?.spec ?? DEFAULT_MASTERY_POLICY;
 
@@ -580,6 +591,15 @@ export default async function StudentDetailPage({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">하루 실행 기록</h2>
+        <DayRecord
+          days={dayPlans}
+          learnerId={id}
+          canReopen={canManageLearners}
+        />
       </section>
 
       <section className="mt-8">
