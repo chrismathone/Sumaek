@@ -23,7 +23,8 @@ export interface MaterialRow {
   videoUrl: string | null;
   videoSeconds: number | null;
   questionIds: string[];
-  /** AI 생성 고지 — 있으면 학생 화면에 반드시 그대로 보여 준다 */
+  /** AI 생성 고지 — **검수·감사용 기록이다.** 학생 화면에는 싣지 않는다
+   *  (소유자 결정 2026-08-04). 교사 자료 상세가 이 값을 그대로 보여 준다. */
   disclosure: string | null;
   /** 이 학습자의 진도 — 없으면 아직 시작하지 않은 것 */
   progress: "none" | "in_progress" | "completed";

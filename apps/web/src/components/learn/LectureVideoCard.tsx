@@ -77,18 +77,14 @@ export function LectureVideoCard({
           done={video.progress === "completed"}
         />
       </div>
-      {/* AI 고지 — 영상 **위에** 둔다. 다 보고 난 뒤에 알리는 것은
-          알린 것이 아니다. 파이프라인은 이 문구를 유튜브 설명란에
-          넣으라고 안내하지만, 임베드로 보는 학생에게 설명란은
-          보이지 않는다. 그래서 자료에 저장해 여기서 말한다. */}
-      {video.disclosure && (
-        <p className="mt-3 rounded-[var(--radius-control)] border border-highlight bg-highlight-soft px-3 py-2 text-sm">
-          {video.disclosure}
-        </p>
-      )}
+      {/* AI 고지(video.disclosure)는 학생 화면에 싣지 않는다(소유자 결정
+          2026-08-04) — 출처·생성 경위는 교사 검수 화면의 정보다. 데이터는
+          그대로 남아 있으므로 정책이 바뀌면 여기서 다시 켠다. */}
       {video.videoUrl &&
         (embed ? (
-          <div className="mt-3 aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-control)] border border-rule">
+          /* 폭은 **담는 칸이 정한다** — 카드가 max-w를 박아 두면 넓은 칸에
+             놓였을 때도 영상만 작게 남는다. 좁은 화면에서는 칸 자체가 좁다. */
+          <div className="mt-3 aspect-video w-full overflow-hidden rounded-[var(--radius-control)] border border-rule">
             <iframe
               src={embed}
               title={video.title}

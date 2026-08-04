@@ -69,7 +69,19 @@ interface ScheduleRow {
   is_rejoin: boolean | null;
 }
 
-type StopKey = "session" | "reading" | "video" | "practice" | "test" | "review";
+type StopKey = "session" | "concept" | "test" | "review";
+
+/** 개념 하나의 오늘 진행 — 히어로와 배지가 같은 셈을 쓰도록 한 곳에 모은다 */
+interface ConceptProgress {
+  conceptId: string;
+  name: string;
+  /** 이 개념의 자료를 다 봤나 */
+  done: boolean;
+  /** 하나라도 손을 댔나 — 「이어서」 문구의 근거 */
+  started: boolean;
+  /** 남은 갈래 이름 (예: 「설명·인강」) */
+  remainLabel: string;
+}
 
 interface Stop {
   key: StopKey;
@@ -134,66 +146,58 @@ function HeroButton({ href, children }: { href: string; children: string }) {
   );
 }
 
-/* 자료 단계(개념 공부·인강·연습문제)의 히어로.
+/* 개념 학습 단계의 히어로 — 목록의 단위가 **개념**이다.
  *
- * 「3건이 있습니다」가 아니라 **실제 제목**을 낸다 — 하위 화면은 전부
- * 「무엇을」을 보여 주는데 이 화면만 「몇 건」이라 추상화가 한 칸 높았다.
- * 완료한 자료는 싣지 않는다(건수는 메타 줄이 말한다) — 히어로는 「지금
- * 할 것」의 자리다. */
-function MaterialHero({
+ * 「자료 9건」이 아니라 개념 이름을 낸다. 하위 화면(/learn/study)이 한 쪽에
+ * 한 개념을 내므로, 여기서 자료를 세면 두 화면의 단위가 어긋난다 — 예전에
+ * 이 화면은 「할 차례 5건」, study는 「3건 중 2건」이라 같은 데이터로 서로
+ * 다른 사실을 말했다.
+ *
+ * 마친 개념은 싣지 않는다(수치는 메타 줄이 말한다) — 히어로는 「지금 할
+ * 것」의 자리다. 개념마다 무엇이 남았는지(설명·인강·연습)를 함께 적는다:
+ * 학생이 그 쪽에 가서 무엇을 하게 되는지가 곧 갈지 말지의 판단 근거다. */
+function ConceptHero({
   no,
-  title,
-  href,
-  cta,
-  resumeCta,
-  all,
-  meta,
+  concepts,
+  started,
 }: {
   no: number;
-  title: string;
-  href: string;
-  cta: string;
-  /** 손댄 자료가 있을 때의 문구 — 하위 화면이 이어 주는 사실을 말로도 낸다 */
-  resumeCta: string;
-  all: MaterialRow[];
-  meta: string | null;
+  concepts: ConceptProgress[];
+  /** 손댄 자료가 있으면 「이어서」 — 하위 화면이 이어 주는 사실을 말로도 낸다 */
+  started: boolean;
 }) {
-  const rest = all.filter((m) => m.progress !== "completed");
+  const rest = concepts.filter((c) => !c.done);
   const shown = rest.slice(0, 3);
   const more = rest.length - shown.length;
-  const done = all.length - rest.length;
-  /* 「읽으러 가기」와 「이어서 읽기」는 다른 말이다. 하위 화면은 첫 미완료
-   * 자료로 이어 주는데(study의 firstUnread) 문구가 그 사실을 숨기면, 다섯
-   * 건을 읽고 돌아온 학생은 처음부터 다시 찾아야 하는 줄 안다. 완료뿐 아니라
-   * 「보던 중」도 손댄 것으로 센다. */
-  const started = all.some((m) => m.progress !== "none");
+  const done = concepts.length - rest.length;
   return (
-    <Hero no={no} eyebrow={conceptSpan(rest.map((m) => m.conceptName))} title={title}>
+    <Hero
+      no={no}
+      eyebrow={conceptSpan(rest.map((c) => c.name))}
+      title="개념 학습"
+    >
       <ul className="mt-3 space-y-1.5 border-t border-rule-soft pt-3">
-        {shown.map((m) => (
-          <li key={m.id} className="flex items-baseline gap-2 text-sm">
+        {shown.map((c) => (
+          <li key={c.conceptId} className="flex items-baseline gap-2 text-sm">
             <span aria-hidden className="font-mono text-xs text-ink-soft">
-              {m.progress === "in_progress" ? "▸" : "·"}
+              {c.started ? "▸" : "·"}
             </span>
-            <span className="min-w-0 flex-1 break-keep">{m.title}</span>
-            {/* in_progress를 none과 같이 취급하지 않는다 — 반쯤 읽은 자료를
-                손도 안 댄 것으로 되돌리면 학생이 한 일을 지우는 셈이다. */}
-            {m.progress === "in_progress" && (
-              <span className="shrink-0 font-mono text-[11px] text-pen">
-                보던 중
-              </span>
-            )}
+            <span className="min-w-0 flex-1 break-keep">{c.name}</span>
+            <span className="shrink-0 font-mono text-[11px] text-ink-soft">
+              {c.remainLabel}
+            </span>
           </li>
         ))}
         {more > 0 && (
-          <li className="font-mono text-[11px] text-ink-soft">외 {more}건</li>
+          <li className="font-mono text-[11px] text-ink-soft">외 {more}개</li>
         )}
       </ul>
       <p className="mt-3 font-mono text-xs break-keep text-ink-soft">
-        자료 {all.length}건 중 {done}건 완료
-        {meta && ` · ${meta}`}
+        개념 {concepts.length}개 중 {done}개 완료
       </p>
-      <HeroButton href={href}>{started ? resumeCta : cta}</HeroButton>
+      <HeroButton href="/learn/study">
+        {started ? "이어서 하기" : "개념 학습 시작"}
+      </HeroButton>
     </Hero>
   );
 }
@@ -307,8 +311,8 @@ export default async function LearnTodayPage() {
     nodeIds,
   });
 
-  /* 오늘 개념의 학습 자료 — 개념 공부·인강·연습문제 단계의 상태를 정한다.
-   * 자료가 0건인 종류는 「없음」으로 두고 단계 자체를 없애지는 않는다:
+  /* 오늘 개념의 학습 자료 — 개념 학습 단계의 상태를 정한다.
+   * 자료가 0건이면 「없음」으로 두고 단계 자체를 없애지는 않는다:
    * 없다는 사실도 학생이 알아야 하고, 자료가 생기면 그 자리에 나타난다. */
   const conceptIds = await conceptIdsForNodes(nodeIds);
   const materials = await listMaterials({
@@ -316,39 +320,55 @@ export default async function LearnTodayPage() {
     learnerId: learner.learnerId,
     conceptIds,
   });
-  const byKind = (k: MaterialRow["kind"]) => materials.filter((m) => m.kind === k);
-  /* 총건수가 아니라 **남은 건수**를 센다. 3건 중 2건을 읽은 학생에게
-   * 「할 차례 3건」이라 말하면 /learn/study의 「3건 중 2건을 읽었습니다」와
-   * 사실이 갈린다 — 같은 데이터로 두 화면이 다른 말을 하게 된다. */
-  const undone = (k: MaterialRow["kind"]) =>
-    byKind(k).filter((m) => m.progress !== "completed");
-  const materialState = (k: MaterialRow["kind"]): StepState => {
-    const list = byKind(k);
-    if (list.length === 0) return "none";
-    return undone(k).length === 0 ? "done" : "todo";
+
+  /* ── 개념 단위 진행 ──
+   *
+   * 하위 화면(/learn/study)이 한 쪽에 한 개념을 내므로 이 화면도 개념을
+   * 센다. 자료를 세면 두 화면의 단위가 어긋나 같은 데이터로 서로 다른
+   * 사실을 말하게 된다.
+   *
+   * 개념 순서는 listMaterials의 정렬(개념명)이다 — study의 쪽 순서와 같아야
+   * 「첫 번째로 보이는 개념」이 「들어가면 열리는 쪽」과 일치한다. */
+  const conceptOrder: string[] = [];
+  const conceptBucket = new Map<string, MaterialRow[]>();
+  for (const m of materials) {
+    let bucket = conceptBucket.get(m.conceptId);
+    if (!bucket) {
+      bucket = [];
+      conceptBucket.set(m.conceptId, bucket);
+      conceptOrder.push(m.conceptId);
+    }
+    bucket.push(m);
+  }
+  const KIND_LABEL: Record<MaterialRow["kind"], string> = {
+    reading: "설명",
+    video: "인강",
+    practice: "연습",
   };
-  const readingState = materialState("reading");
-  const videoState = materialState("video");
-  const practiceState = materialState("practice");
-
-  /* 남은 영상 길이 — 하나라도 값이 없으면 아무 말도 하지 않는다.
-   * 일부만 더한 합계는 「약 5분」이라 말하면서 실제로는 20분일 수 있다. */
-  const restVideo = undone("video");
-  const videoMeta =
-    restVideo.length > 0 && restVideo.every((m) => m.videoSeconds !== null)
-      ? `남은 영상 약 ${Math.round(
-          restVideo.reduce((a, m) => a + (m.videoSeconds ?? 0), 0) / 60,
-        )}분`
-      : null;
-
-  /* 연습 문항 수 — 지정이 비면 개념에서 자동으로 골라 오므로 0은
-   * 「문항 없음」이 아니라 「지정 없음」이다. 0이면 아무 수치도 적지 않는다. */
-  const practiceQ = undone("practice").reduce(
-    (a, m) => a + m.questionIds.length,
-    0,
-  );
-  const practiceMeta =
-    practiceQ > 0 ? `${practiceQ}문항 · 점수로 남지 않습니다` : "점수로 남지 않습니다";
+  const concepts: ConceptProgress[] = conceptOrder.map((id) => {
+    const list = conceptBucket.get(id)!;
+    const rest = list.filter((m) => m.progress !== "completed");
+    /* 남은 것을 갈래 이름으로 적는다 — 「3건」보다 「설명·인강」이 학생이
+     * 그 쪽에서 무엇을 하게 되는지를 그대로 말한다. 순서는 화면의 순서
+     * (설명 → 인강 → 연습)를 따른다. */
+    const kinds = (["reading", "video", "practice"] as const).filter((k) =>
+      rest.some((m) => m.kind === k),
+    );
+    return {
+      conceptId: id,
+      name: list[0]!.conceptName,
+      done: rest.length === 0,
+      started: list.some((m) => m.progress !== "none"),
+      remainLabel: kinds.map((k) => KIND_LABEL[k]).join("·"),
+    };
+  });
+  const conceptState: StepState =
+    concepts.length === 0
+      ? "none"
+      : concepts.every((c) => c.done)
+        ? "done"
+        : "todo";
+  const undoneConcepts = concepts.filter((c) => !c.done).length;
 
   /* ── 단계 판정 ── */
   const isDone = (s: string | null) =>
@@ -397,9 +417,7 @@ export default async function LearnTodayPage() {
    * 선언하지 않는다 — 판정과 그 이유는 today-steps.ts에 있다. */
   const { active: activeStep, verdict } = readDay({
     hasSession: schedule.length > 0,
-    reading: readingState,
-    video: videoState,
-    practice: practiceState,
+    concept: conceptState,
     test: testState,
     review: reviewState,
   });
@@ -414,41 +432,24 @@ export default async function LearnTodayPage() {
       empty: "오늘은 예정된 수업이 없습니다.",
     },
     {
-      key: "reading",
+      /* 설명·인강·연습이 한 단계다 — 셋을 갈라 두면 학생이 같은 개념을
+       * 배우면서 세 단계와 세 화면을 오간다. 배지 단위도 개념이다. */
+      key: "concept",
       no: 2,
-      title: "개념 공부",
-      state: readingState,
-      badge: badgeLabel(readingState, undone("reading").length),
-      empty: "오늘 개념에 등록된 설명 자료가 아직 없습니다.",
+      title: "개념 학습",
+      state: conceptState,
+      badge:
+        conceptState === "todo"
+          ? `남은 ${undoneConcepts}개`
+          : badgeLabel(conceptState, undoneConcepts),
+      empty: "오늘 개념에 등록된 자료가 아직 없습니다.",
       href: "/learn/study",
-      cta: "읽으러 가기",
-      again: "다시 보기",
-    },
-    {
-      key: "video",
-      no: 3,
-      title: "개념 인강",
-      state: videoState,
-      badge: badgeLabel(videoState, undone("video").length),
-      empty: "오늘 개념에 등록된 강의 영상이 아직 없습니다.",
-      href: "/learn/watch",
-      cta: "보러 가기",
-      again: "다시 보기",
-    },
-    {
-      key: "practice",
-      no: 4,
-      title: "연습문제",
-      state: practiceState,
-      badge: badgeLabel(practiceState, undone("practice").length),
-      empty: "오늘 개념에 등록된 연습문제가 아직 없습니다.",
-      href: "/learn/practice",
-      cta: "풀러 가기",
+      cta: "개념 학습 시작",
       again: "다시 보기",
     },
     {
       key: "test",
-      no: 5,
+      no: 3,
       title: "테스트",
       state: testState,
       badge: badgeLabel(
@@ -465,7 +466,7 @@ export default async function LearnTodayPage() {
     },
     {
       key: "review",
-      no: 6,
+      no: 4,
       title: "복습",
       state: reviewState,
       badge: badgeLabel(reviewState, reviewCount),
@@ -488,16 +489,17 @@ export default async function LearnTodayPage() {
       </h1>
 
       {/* 궤도의 텍스트 동등물이자 좌표 노트의 눈금.
-       * **분모는 언제나 6(단계 수)이다** — 「없음이 아닌 단계」를 분모로 쓰면
-       * 오후에 선생님이 자료를 올렸을 때 3/3이 3/4로 후퇴한다. 진행률이 뒤로
-       * 가는 것은 성취 표현이 아니라 벌이다. 이 줄은 성취가 아니라 위치를
-       * 말한다. */}
+       * **분모는 언제나 단계 수(stops.length)다** — 「없음이 아닌 단계」를
+       * 분모로 쓰면 오후에 선생님이 자료를 올렸을 때 3/3이 3/4로 후퇴한다.
+       * 진행률이 뒤로 가는 것은 성취 표현이 아니라 벌이다. 이 줄은 성취가
+       * 아니라 위치를 말한다. 숫자를 박아 두지 않는 이유는 단계가 6에서 4로
+       * 줄던 날 이 자리와 아래 aria-label이 함께 틀린 말이 됐기 때문이다. */}
       <p className="mt-1.5 font-mono text-xs text-ink-soft">
         현재 위치{" "}
         <span className="font-bold text-ink">
-          {here ? hereIndex + 1 : verdict === "finished" ? 6 : "–"}
+          {here ? hereIndex + 1 : verdict === "finished" ? stops.length : "–"}
         </span>{" "}
-        / 6 ·{" "}
+        / {stops.length} ·{" "}
         {here
           ? here.title
           : verdict === "finished"
@@ -542,7 +544,7 @@ export default async function LearnTodayPage() {
         </section>
       )}
 
-      <ol className="mt-5" aria-label="오늘 학습 6단계">
+      <ol className="mt-5" aria-label={`오늘 학습 ${stops.length}단계`}>
         {stops.map((s, i) => {
           const active = activeStep === s.key;
           /* 접혀도 행동은 남는다 — 큰 채운 버튼 대신 밑줄 링크로
@@ -565,37 +567,11 @@ export default async function LearnTodayPage() {
               solidBelow={solidBelow(i, hereIndex, verdict === "finished")}
               last={i === stops.length - 1}
             >
-              {active && s.key === "reading" && (
-                <MaterialHero
+              {active && s.key === "concept" && (
+                <ConceptHero
                   no={s.no}
-                  title={s.title}
-                  href="/learn/study"
-                  cta="읽으러 가기"
-                  resumeCta="이어서 읽기"
-                  all={byKind("reading")}
-                  meta={null}
-                />
-              )}
-              {active && s.key === "video" && (
-                <MaterialHero
-                  no={s.no}
-                  title={s.title}
-                  href="/learn/watch"
-                  cta="보러 가기"
-                  resumeCta="이어서 보기"
-                  all={byKind("video")}
-                  meta={videoMeta}
-                />
-              )}
-              {active && s.key === "practice" && (
-                <MaterialHero
-                  no={s.no}
-                  title={s.title}
-                  href="/learn/practice"
-                  cta="풀러 가기"
-                  resumeCta="이어서 풀기"
-                  all={byKind("practice")}
-                  meta={practiceMeta}
+                  concepts={concepts}
+                  started={materials.some((m) => m.progress !== "none")}
                 />
               )}
 

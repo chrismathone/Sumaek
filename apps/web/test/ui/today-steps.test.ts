@@ -21,9 +21,7 @@ import {
 
 const day = (over: Partial<DayInput> = {}): DayInput => ({
   hasSession: true,
-  reading: "none",
-  video: "none",
-  practice: "none",
+  concept: "none",
   test: "none",
   review: "none",
   ...over,
@@ -31,25 +29,30 @@ const day = (over: Partial<DayInput> = {}): DayInput => ({
 
 describe("오늘의 판정 (readDay)", () => {
   it("할 차례는 언제나 하나 — 배우는 순서에서 앞선 것이 이긴다", () => {
-    const r = readDay(
-      day({ reading: "todo", video: "todo", practice: "todo", review: "todo" }),
-    );
-    expect(r.active).toBe("reading");
+    const r = readDay(day({ concept: "todo", test: "todo", review: "todo" }));
+    expect(r.active).toBe("concept");
     expect(r.verdict).toBe("active");
   });
 
   it("앞 단계를 마치면 다음 단계가 할 차례가 된다", () => {
-    expect(readDay(day({ reading: "done", video: "todo" })).active).toBe("video");
+    expect(readDay(day({ concept: "done", test: "todo" })).active).toBe("test");
     expect(
-      readDay(day({ reading: "done", video: "done", test: "todo" })).active,
-    ).toBe("test");
-    expect(
-      readDay(day({ reading: "done", practice: "none", review: "todo" })).active,
+      readDay(day({ concept: "done", test: "done", review: "todo" })).active,
     ).toBe("review");
+    expect(readDay(day({ concept: "none", review: "todo" })).active).toBe(
+      "review",
+    );
+  });
+
+  /* 설명·인강·연습은 **한 단계**다(ActionKey "concept"). 셋이 각각 단계였을
+   * 때는 학생이 같은 개념을 배우면서 세 단계를 지나야 했고, 화면도 셋으로
+   * 갈려 있었다. 단계를 다시 쪼개면 이 단언이 컴파일에서 먼저 깨진다. */
+  it("설명·인강·연습은 한 단계로 묶여 있다", () => {
+    expect(ACTION_ORDER).toEqual(["concept", "test", "review"]);
   });
 
   it("할 일이 있었고 전부 마친 날에만 완주를 선언한다", () => {
-    const r = readDay(day({ reading: "done", test: "done" }));
+    const r = readDay(day({ concept: "done", test: "done" }));
     expect(r.active).toBeNull();
     expect(r.verdict).toBe("finished");
   });
@@ -98,7 +101,7 @@ describe("오늘의 판정 (readDay)", () => {
 
   it("오늘 할 일을 마쳤으면 예정이 남아 있어도 완주다", () => {
     // 내일 볼 테스트가 오늘의 완주를 막지 않는다
-    expect(readDay(day({ reading: "done", test: "upcoming" })).verdict).toBe(
+    expect(readDay(day({ concept: "done", test: "upcoming" })).verdict).toBe(
       "finished",
     );
   });

@@ -353,15 +353,19 @@ export default async function MaterialDetailPage({
         </p>
       )}
 
+      {/* 「학생에게 보이는」이라 부르지 않는다 — 학생 화면은 이 문구를 싣지
+          않는다(소유자 결정 2026-08-04, learn/study·LectureVideoCard). 라벨이
+          화면과 어긋나면 교사가 쓴 고지가 거짓말이 된다. 기록은 계속 받는다:
+          검수·감사에서 이 자료가 어떻게 만들어졌는지를 남기는 자리다. */}
       {material.disclosure ? (
         <p className="mt-3 rounded-lg border border-rule bg-paper p-3 text-sm">
-          <span className="font-medium">학생에게 보이는 고지</span> —{" "}
+          <span className="font-medium">AI 고지 (검수용 기록)</span> —{" "}
           {material.disclosure}
         </p>
       ) : (
         <p className="mt-3 text-sm text-ink-soft">
-          AI 고지가 없습니다. AI가 만든 자료라면 아래에 고지를 적으세요 — 학생이
-          그 사실을 알아야 합니다.
+          AI 고지가 없습니다. AI가 만든 자료라면 아래에 적어 두세요 — 검수·감사
+          기록으로 남습니다(학생 화면에는 표시되지 않습니다).
         </p>
       )}
 
