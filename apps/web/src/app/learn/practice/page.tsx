@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { symbolAnswerClass } from "@su-maek/core/grading";
 import { renderMixedText } from "@su-maek/core/math";
+import {
+  adaptInstructionForChoice,
+  isSymbolAnswerKey,
+  symbolOptionsFromBodyText,
+} from "@/lib/learn/symbol-answer";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { todayInKst } from "@/lib/format";
 import {
@@ -56,23 +62,34 @@ export default async function PracticePage() {
         organizationId: learner.user.organizationId,
         materialId: m.id,
       });
-      const items: PracticeItem[] = questions.map((q, i) => ({
-        key: q.assessmentQuestionId,
-        number: i + 1,
-        kind: q.kind,
-        bodyHtml: renderMixedText(blocksToText(q.body), "publish").html,
-        choices: Array.isArray(q.choices)
-          ? (q.choices as Array<{
-              choiceId: string;
-              order: number;
-              content?: ContentRun[];
-            }>).map((c) => ({
-              choiceId: c.choiceId,
-              order: c.order,
-              html: renderMixedText(runsToText(c.content ?? []), "publish").html,
-            }))
-          : null,
-      }));
+      const items: PracticeItem[] = questions.map((q, i) => {
+        /* 판별 문항이면 발문을 고르기 발문으로 표시 전환하고, 발문이 언급한
+         * 기호만 칩으로 낸다. 정답 값은 화면으로 내려가지 않는다 —
+         * 기호 쌍은 발문 자체에 이미 적혀 있다. */
+        const symbolAnswer =
+          q.kind !== "multiple_choice" &&
+          isSymbolAnswerKey(q.answerKey, (s) => symbolAnswerClass(s) !== null);
+        let bodyText = blocksToText(q.body);
+        if (symbolAnswer) bodyText = adaptInstructionForChoice(bodyText);
+        return {
+          key: q.assessmentQuestionId,
+          number: i + 1,
+          kind: q.kind,
+          symbolOptions: symbolAnswer ? symbolOptionsFromBodyText(bodyText) : [],
+          bodyHtml: renderMixedText(bodyText, "publish").html,
+          choices: Array.isArray(q.choices)
+            ? (q.choices as Array<{
+                choiceId: string;
+                order: number;
+                content?: ContentRun[];
+              }>).map((c) => ({
+                choiceId: c.choiceId,
+                order: c.order,
+                html: renderMixedText(runsToText(c.content ?? []), "publish").html,
+              }))
+            : null,
+        };
+      });
       return { material: m, items };
     }),
   );

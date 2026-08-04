@@ -8,7 +8,10 @@ import {
   listMaterials,
   type MaterialRow,
 } from "@/lib/domain/learning-material";
+import { listDueReviewConcepts } from "@/lib/domain/review";
 import {
+  badgeLabel,
+  conceptSpan,
   orbitOf,
   readDay,
   solidBelow,
@@ -142,6 +145,7 @@ function MaterialHero({
   title,
   href,
   cta,
+  resumeCta,
   all,
   meta,
 }: {
@@ -149,6 +153,8 @@ function MaterialHero({
   title: string;
   href: string;
   cta: string;
+  /** 손댄 자료가 있을 때의 문구 — 하위 화면이 이어 주는 사실을 말로도 낸다 */
+  resumeCta: string;
   all: MaterialRow[];
   meta: string | null;
 }) {
@@ -156,8 +162,13 @@ function MaterialHero({
   const shown = rest.slice(0, 3);
   const more = rest.length - shown.length;
   const done = all.length - rest.length;
+  /* 「읽으러 가기」와 「이어서 읽기」는 다른 말이다. 하위 화면은 첫 미완료
+   * 자료로 이어 주는데(study의 firstUnread) 문구가 그 사실을 숨기면, 다섯
+   * 건을 읽고 돌아온 학생은 처음부터 다시 찾아야 하는 줄 안다. 완료뿐 아니라
+   * 「보던 중」도 손댄 것으로 센다. */
+  const started = all.some((m) => m.progress !== "none");
   return (
-    <Hero no={no} eyebrow={rest[0]?.conceptName ?? null} title={title}>
+    <Hero no={no} eyebrow={conceptSpan(rest.map((m) => m.conceptName))} title={title}>
       <ul className="mt-3 space-y-1.5 border-t border-rule-soft pt-3">
         {shown.map((m) => (
           <li key={m.id} className="flex items-baseline gap-2 text-sm">
@@ -182,7 +193,7 @@ function MaterialHero({
         자료 {all.length}건 중 {done}건 완료
         {meta && ` · ${meta}`}
       </p>
-      <HeroButton href={href}>{cta}</HeroButton>
+      <HeroButton href={href}>{started ? resumeCta : cta}</HeroButton>
     </Hero>
   );
 }
@@ -192,7 +203,7 @@ export default async function LearnTodayPage() {
   const sql = getSharedSql();
   const today = todayInKst();
 
-  const [assessments, dueReviews, learnerItems] = await Promise.all([
+  const [assessments, dueConcepts, learnerItems] = await Promise.all([
     sql<
       {
         id: string;
@@ -248,17 +259,15 @@ export default async function LearnTodayPage() {
         )
       order by a.scheduled_date desc nulls last, a.created_at desc
     `,
-    /* 기한이 온 복습만 — 교사 화면(app/students)과 같은 기준(due_on)이다.
-     * 기한이 지난 건수는 같은 왕복에서 집계만 하나 더 얹어 얻는다. */
-    sql<{ cnt: number; overdue_cnt: number }[]>`
-      select count(*)::int as cnt,
-             count(*) filter (where due_on < ${today}::date)::int as overdue_cnt
-      from review_items
-      where organization_id = ${learner.user.organizationId}
-        and learner_id = ${learner.learnerId}
-        and status = 'scheduled'
-        and due_on <= ${today}::date
-    `,
+    /* 기한이 온 복습 — 교사 화면(app/students)과 같은 기준(due_on)이다.
+     * 개념별로 묶어서 받는다: 히어로가 「몇 건」이 아니라 **무엇을** 복습할지
+     * 말해야 하고, 총건수·기한 지난 수는 이 묶음을 더하면 나온다. 집계 질의를
+     * 따로 두면 두 정의가 갈릴 자리가 하나 더 생긴다. */
+    listDueReviewConcepts({
+      organizationId: learner.user.organizationId,
+      learnerId: learner.learnerId,
+      today,
+    }),
     sql<ScheduleRow[]>`
       select li.starts_at, li.ends_at, li.planned_node_ids,
              li.matches_group, li.is_rejoin
@@ -350,18 +359,39 @@ export default async function LearnTodayPage() {
       !isDone(a.attempt_status) &&
       !(a.scheduled_date !== null && a.scheduled_date > today),
   );
-  const upcomingTests = assessments.filter(
-    (a) =>
-      !isDone(a.attempt_status) &&
-      a.scheduled_date !== null &&
-      a.scheduled_date > today,
-  );
+  /* 예정 테스트는 **가까운 것부터** 낸다. 질의는 목록 전체를 최신순
+   * (scheduled_date desc)으로 주므로 그대로 쓰면 「8월 12일부터」가 「8월
+   * 5일부터」보다 위에 온다 — 아직 오지 않은 것을 먼 것부터 늘어놓는 셈이다. */
+  const upcomingTests = assessments
+    .filter(
+      (a) =>
+        !isDone(a.attempt_status) &&
+        a.scheduled_date !== null &&
+        a.scheduled_date > today,
+    )
+    .sort((x, y) => x.scheduled_date!.localeCompare(y.scheduled_date!));
+  /** 다음 테스트가 열리는 날 — 정렬이 오름차순이므로 맨 앞이 가장 가깝다 */
+  const nextTestDay = upcomingTests[0]?.scheduled_date ?? null;
   const finishedTests = assessments.filter((a) => isDone(a.attempt_status));
-  const reviewCount = dueReviews[0]?.cnt ?? 0;
-  const overdueCount = dueReviews[0]?.overdue_cnt ?? 0;
+  const reviewCount = dueConcepts.reduce((a, c) => a + c.count, 0);
+  const overdueCount = dueConcepts.reduce((a, c) => a + c.overdueCount, 0);
+  /* 자료 히어로와 같은 셈법(앞 3개 + 「외 N개」) — 두 히어로가 같은 규칙으로
+   * 접혀야 학생이 한 번 배운 읽는 법을 그대로 쓴다. */
+  const shownConcepts = dueConcepts.slice(0, 3);
+  const moreConcepts = dueConcepts.length - shownConcepts.length;
 
+  /* 예정 테스트를 상태에 넣지 않던 것이 화면을 두 줄 사이에서 모순시켰다:
+   * 열린 것도 끝난 것도 없으면 `none`이 되어 「배정된 테스트가 없습니다」를
+   * 찍고, 바로 아래에서 예정 테스트 목록을 냈다. 「있지만 오늘 것이 아니다」를
+   * 상태로 갖는다 — 순위는 지금 할 것 > 마친 것 > 예정 > 없음. */
   const testState: StepState =
-    openTests.length > 0 ? "todo" : finishedTests.length > 0 ? "done" : "none";
+    openTests.length > 0
+      ? "todo"
+      : finishedTests.length > 0
+        ? "done"
+        : upcomingTests.length > 0
+          ? "upcoming"
+          : "none";
   const reviewState: StepState = reviewCount > 0 ? "todo" : "none";
   /* 「할 차례」는 한 번에 하나이고, 활성 단계가 없다는 사실만으로 완주를
    * 선언하지 않는다 — 판정과 그 이유는 today-steps.ts에 있다. */
@@ -388,12 +418,7 @@ export default async function LearnTodayPage() {
       no: 2,
       title: "개념 공부",
       state: readingState,
-      badge:
-        readingState === "todo"
-          ? `할 차례 ${undone("reading").length}건`
-          : readingState === "done"
-            ? "완료"
-            : "없음",
+      badge: badgeLabel(readingState, undone("reading").length),
       empty: "오늘 개념에 등록된 설명 자료가 아직 없습니다.",
       href: "/learn/study",
       cta: "읽으러 가기",
@@ -404,12 +429,7 @@ export default async function LearnTodayPage() {
       no: 3,
       title: "개념 인강",
       state: videoState,
-      badge:
-        videoState === "todo"
-          ? `할 차례 ${undone("video").length}건`
-          : videoState === "done"
-            ? "완료"
-            : "없음",
+      badge: badgeLabel(videoState, undone("video").length),
       empty: "오늘 개념에 등록된 강의 영상이 아직 없습니다.",
       href: "/learn/watch",
       cta: "보러 가기",
@@ -420,12 +440,7 @@ export default async function LearnTodayPage() {
       no: 4,
       title: "연습문제",
       state: practiceState,
-      badge:
-        practiceState === "todo"
-          ? `할 차례 ${undone("practice").length}건`
-          : practiceState === "done"
-            ? "완료"
-            : "없음",
+      badge: badgeLabel(practiceState, undone("practice").length),
       empty: "오늘 개념에 등록된 연습문제가 아직 없습니다.",
       href: "/learn/practice",
       cta: "풀러 가기",
@@ -436,12 +451,10 @@ export default async function LearnTodayPage() {
       no: 5,
       title: "테스트",
       state: testState,
-      badge:
-        testState === "todo"
-          ? `할 차례 ${openTests.length}건`
-          : testState === "done"
-            ? "완료"
-            : "없음",
+      badge: badgeLabel(
+        testState,
+        testState === "upcoming" ? upcomingTests.length : openTests.length,
+      ),
       empty: "배정된 테스트가 없습니다. 선생님이 배정하면 여기에 표시됩니다.",
       /* 끝난 테스트 목록은 「지난 기록」으로 옮겼다. 접힌 줄에서 그리로
        * 가는 길만 남긴다 — 상단 탭을 우연히 누른 학생에게만 존재하는
@@ -455,7 +468,7 @@ export default async function LearnTodayPage() {
       no: 6,
       title: "복습",
       state: reviewState,
-      badge: reviewState === "todo" ? `할 차례 ${reviewCount}건` : "없음",
+      badge: badgeLabel(reviewState, reviewCount),
       empty:
         "오늘 할 복습이 없습니다. 틀린 개념은 간격을 두고 여기에 다시 올라옵니다.",
       href: "/learn/review",
@@ -497,8 +510,13 @@ export default async function LearnTodayPage() {
       {verdict === "finished" && (
         <section className="mt-4 rounded-lg bg-ink p-4 text-white">
           <p className="font-medium break-keep">오늘 할 일을 모두 마쳤습니다.</p>
+          {/* 다음이 언제인지 아는 날에는 말해 준다 — 「생기면 표시됩니다」는
+              이미 잡혀 있는 테스트를 모르는 척하는 말이 된다.
+              (upcomingTests는 가까운 것부터라 [0]이 다음 것이다) */}
           <p className="mt-1 text-sm break-keep text-wash">
-            새 테스트나 복습이 생기면 여기에 다시 표시됩니다.
+            {nextTestDay
+              ? `다음 테스트는 ${formatIsoDay(nextTestDay)}부터입니다.`
+              : "새 테스트나 복습이 생기면 여기에 다시 표시됩니다."}
           </p>
         </section>
       )}
@@ -513,8 +531,13 @@ export default async function LearnTodayPage() {
               ? "오늘 수업은 있지만, 배정된 자료·테스트는 아직 없습니다."
               : "오늘은 배정된 학습이 없습니다."}
           </p>
+          {/* 예정 테스트가 있는 날 「배정하면 표시됩니다」라고 하면, 이미
+              배정된 것을 아직 없는 것처럼 말하는 셈이다. 단계 번호를 문장에
+              박지 않는다 — 단계가 늘거나 순서가 바뀌면 조용히 틀린 말이 된다. */}
           <p className="mt-1 text-sm break-keep text-ink-soft">
-            선생님이 자료나 테스트를 배정하면 아래 단계에 표시됩니다.
+            {nextTestDay
+              ? `아직 열리지 않은 테스트가 ${formatIsoDay(nextTestDay)}부터 있습니다.`
+              : "선생님이 자료나 테스트를 배정하면 아래 단계에 표시됩니다."}
           </p>
         </section>
       )}
@@ -548,6 +571,7 @@ export default async function LearnTodayPage() {
                   title={s.title}
                   href="/learn/study"
                   cta="읽으러 가기"
+                  resumeCta="이어서 읽기"
                   all={byKind("reading")}
                   meta={null}
                 />
@@ -558,6 +582,7 @@ export default async function LearnTodayPage() {
                   title={s.title}
                   href="/learn/watch"
                   cta="보러 가기"
+                  resumeCta="이어서 보기"
                   all={byKind("video")}
                   meta={videoMeta}
                 />
@@ -568,6 +593,7 @@ export default async function LearnTodayPage() {
                   title={s.title}
                   href="/learn/practice"
                   cta="풀러 가기"
+                  resumeCta="이어서 풀기"
                   all={byKind("practice")}
                   meta={practiceMeta}
                 />
@@ -609,15 +635,48 @@ export default async function LearnTodayPage() {
 
               {active && s.key === "review" && (
                 <Hero no={s.no} eyebrow="전에 틀렸던 개념" title={s.title}>
-                  <p className="mt-3 border-t border-rule-soft pt-3 text-sm break-keep">
-                    전에 틀렸던 개념 {reviewCount}건이 기다리고 있습니다. 맞히면
-                    목록에서 사라집니다.
+                  {/* 복습만 「몇 건」에 머물러 있었다 — 자료 히어로가 제목을
+                      내는 옆에서 이 카드는 개념 이름을 손에 쥐고도 버렸다.
+                      무엇을 복습하는지 알아야 학생이 지금 할지 정할 수 있다. */}
+                  <ul className="mt-3 space-y-1.5 border-t border-rule-soft pt-3">
+                    {shownConcepts.map((c) => (
+                      <li
+                        key={c.conceptId}
+                        className="flex items-baseline gap-2 text-sm"
+                      >
+                        <span
+                          aria-hidden
+                          className="font-mono text-xs text-ink-soft"
+                        >
+                          {c.overdueCount > 0 ? "!" : "·"}
+                        </span>
+                        <span className="min-w-0 flex-1 break-keep">
+                          {c.conceptName}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] text-ink-soft">
+                          {c.count}건{c.overdueCount > 0 && " · 기한 지남"}
+                        </span>
+                      </li>
+                    ))}
+                    {moreConcepts > 0 && (
+                      <li className="font-mono text-[11px] text-ink-soft">
+                        외 개념 {moreConcepts}개
+                      </li>
+                    )}
+                  </ul>
+                  <p className="mt-3 font-mono text-xs break-keep text-ink-soft">
+                    복습 {reviewCount}건
+                    {overdueCount > 0 && ` · 그중 ${overdueCount}건은 기한이 지났습니다`}
                   </p>
-                  {overdueCount > 0 && (
-                    <p className="mt-1 font-mono text-xs text-ink-soft">
-                      이 중 {overdueCount}건은 기한이 지났습니다
-                    </p>
-                  )}
+                  {/* 「맞히면 목록에서 사라집니다」였다. 사실이 아니다 —
+                      맞혀도 닫히지 않고 간격이 늘어 뒤로 밀릴 뿐이다
+                      (lib/domain/review.ts의 「맞혔다고 닫지 않는다」).
+                      복습 화면은 이미 이 문구를 고쳤는데 오늘 화면만 옛말을
+                      들고 있었다. 두 화면이 같은 것을 다르게 말하면 안 된다. */}
+                  <p className="mt-2 text-sm break-keep">
+                    맞히면 다음 복습이 더 뒤로 밀리고, 틀리면 더 빨리 다시
+                    올라옵니다.
+                  </p>
                   <HeroButton href="/learn/review">복습 시작</HeroButton>
                 </Hero>
               )}

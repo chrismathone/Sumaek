@@ -2,6 +2,7 @@ import type { AnswerKey, StudentAnswer } from "@su-maek/contracts";
 import {
   canonicalizeExpressionText,
   normalizeShortAnswer,
+  symbolAnswerClass,
   type NormalizedAnswer,
 } from "./answer-normalize";
 
@@ -84,6 +85,20 @@ function compareShort(
     return { match: true, equivalence: false, unitIssue };
   }
 
+  // 1.5) 기호 답 동치류 — **기준이** ◯·△·× 계열일 때만. 기준이 기호면
+  // 아래 유리수·식 비교는 뜻이 없으므로 여기서 끝낸다. 기준이 숫자인
+  // 문항에서 학생의 o·x가 기호로 승격되는 일은 없다 (기준 주도).
+  const keySymbol = symbolAnswerClass(key.cleaned);
+  if (keySymbol) {
+    if (symbolAnswerClass(student.cleaned) === keySymbol) {
+      rationale.push(
+        `기호 동치: "${student.cleaned}" ≡ "${key.cleaned}" (${keySymbol})`,
+      );
+      return { match: true, equivalence: false, unitIssue };
+    }
+    return { match: false, equivalence: false, unitIssue };
+  }
+
   // 2) 유리수 동치 (0.5 = 1/2 = 2/4) — 수학적으로 안전한 범위
   if (rationalEquals(student.rational, key.rational) && student.rational) {
     const equivalence = student.form !== key.form;
@@ -97,13 +112,28 @@ function compareShort(
     return { match: true, equivalence, unitIssue };
   }
 
+  // 2.5) 공백 무시 일치 — 한국어 서술형 답(「밑: 2, 지수: 5」)의 공백 차이는
+  // 뜻이 아니다. **양쪽 다 수치 해석이 없을 때만** 적용한다 — 대분수
+  // 「1 3/4」(7/4)의 공백을 지우면 「13/4」와 겹쳐 다른 수가 같아진다.
+  if (
+    student.rational === null &&
+    key.rational === null &&
+    student.cleaned.replace(/\s+/g, "") === key.cleaned.replace(/\s+/g, "")
+  ) {
+    rationale.push("공백 무시 일치 (비수치 답)");
+    return { match: true, equivalence: false, unitIssue };
+  }
+
   // 3) 식 문자열의 보수적 정규화 비교 (대수 변형 없음)
   if (student.form === "expression" || key.form === "expression") {
-    if (
-      canonicalizeExpressionText(student.cleaned) ===
-      canonicalizeExpressionText(key.cleaned)
-    ) {
-      rationale.push("식 표기 정규화 일치 (공백·기호 통일)");
+    const a = canonicalizeExpressionText(student.cleaned);
+    const b = canonicalizeExpressionText(key.cleaned);
+    /* 한 글자 지수·밑의 중괄호는 표기 습관이다 — 2^{2}와 2^2는 같은 식.
+     * 여러 글자 지수(2^{10})는 벗기면 2^10 ≠ 2^1·0 해석이 갈라질 수 있어
+     * 그대로 둔다 — 학생이 지수 묶음을 표기해야 한다. */
+    const loose = (s: string) => s.replace(/\^\{([0-9a-z])\}/g, "^$1");
+    if (a === b || loose(a) === loose(b)) {
+      rationale.push("식 표기 정규화 일치 (공백·기호·한 글자 지수 중괄호 통일)");
       return { match: true, equivalence: true, unitIssue };
     }
   }

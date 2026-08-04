@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTION_ORDER,
+  badgeLabel,
+  conceptSpan,
   orbitOf,
   readDay,
   solidBelow,
@@ -72,6 +74,34 @@ describe("오늘의 판정 (readDay)", () => {
       expect(readDay(day({ [key]: "todo" } as Partial<DayInput>)).active).toBe(key);
     }
   });
+
+  /* ── 예정(upcoming) — 있지만 오늘 것이 아니다 ──
+   *
+   * 이 상태가 없던 시절 예정 테스트는 `none`으로 접혔고, 화면은 「배정된
+   * 테스트가 없습니다」라고 말한 바로 아래에 그 테스트를 목록으로 냈다.
+   * 상태를 만들면서 반대쪽 함정이 생긴다 — `hadWork`를 `!== "none"`으로
+   * 두면 예정 하나가 오늘 몫으로 딸려 들어가 거짓 축하가 되돌아온다. */
+  it("예정은 할 차례가 되지 않는다 — 아직 학생이 할 수 있는 일이 아니다", () => {
+    expect(readDay(day({ test: "upcoming" })).active).toBeNull();
+    // 앞 단계가 예정이어도 실제로 할 수 있는 뒤 단계가 할 차례다
+    expect(readDay(day({ test: "upcoming", review: "todo" })).active).toBe(
+      "review",
+    );
+  });
+
+  it("예정만 있는 날을 완주로 축하하지 않는다", () => {
+    expect(readDay(day({ test: "upcoming" })).verdict).toBe("sessionOnly");
+    expect(readDay(day({ hasSession: false, test: "upcoming" })).verdict).toBe(
+      "empty",
+    );
+  });
+
+  it("오늘 할 일을 마쳤으면 예정이 남아 있어도 완주다", () => {
+    // 내일 볼 테스트가 오늘의 완주를 막지 않는다
+    expect(readDay(day({ reading: "done", test: "upcoming" })).verdict).toBe(
+      "finished",
+    );
+  });
 });
 
 describe("궤도 노드 (orbitOf)", () => {
@@ -91,6 +121,12 @@ describe("궤도 노드 (orbitOf)", () => {
   it("마친 단계는 뒤에 있어도 ✓다 — 노드는 사실을 말한다", () => {
     expect(orbitOf("done", 0, here)).toBe("past");
     expect(orbitOf("done", here + 2, here)).toBe("past");
+  });
+
+  it("예정은 앞으로 갈 길이다 — 마친 것도 빈 것도 아니다", () => {
+    expect(orbitOf("upcoming", here + 2, here)).toBe("ahead");
+    // 활성 단계가 없는 날에도 ✓(past)로 새지 않는다
+    expect(orbitOf("upcoming", 4, -1)).toBe("ahead");
   });
 });
 
@@ -117,5 +153,60 @@ describe("궤도 선 (solidBelow)", () => {
   it("활성 단계가 없고 완주도 아니면 어디도 실선이 아니다", () => {
     expect(solidBelow(0, -1, false)).toBe(false);
     expect(solidBelow(4, -1, false)).toBe(false);
+  });
+});
+
+describe("배지 라벨 (badgeLabel)", () => {
+  /* 이 스펙이 이 함수를 화면에서 떼어 낸 이유다.
+   *
+   * 배지는 활성이 **아닌** 단계에만 렌더된다. 그러므로 배지가 「할 차례」라고
+   * 말하면 화면에 뜨는 모든 「할 차례」가 할 차례 아닌 단계의 것이 된다 —
+   * 실제로 그랬고, 좌표 줄·히어로와 함께 세 자리가 서로 다른 단계를 가리켰다. */
+  it("배지는 「할 차례」라고 말하지 않는다 — 그 말은 히어로가 독점한다", () => {
+    for (const state of ["todo", "done", "upcoming", "none"] as const) {
+      expect(badgeLabel(state, 3)).not.toContain("할 차례");
+    }
+  });
+
+  it("남은 양은 숨기지 않는다 — 조용하게 만드는 것과 지우는 것은 다르다", () => {
+    expect(badgeLabel("todo", 6)).toBe("남은 6건");
+    expect(badgeLabel("upcoming", 2)).toBe("예정 2건");
+  });
+
+  it("예정과 없음은 다른 말이다", () => {
+    // 「없음」으로 뭉개면 화면이 예정 테스트를 목록으로 내면서
+    // 「배정된 테스트가 없습니다」라고 말하게 된다
+    expect(badgeLabel("upcoming", 1)).not.toBe(badgeLabel("none", 1));
+  });
+
+  it("완료·없음은 세지 않는다", () => {
+    expect(badgeLabel("done", 99)).toBe("완료");
+    expect(badgeLabel("none", 99)).toBe("없음");
+  });
+});
+
+describe("개념 머리글 (conceptSpan)", () => {
+  it("한 개념이면 그 이름을 그대로 부른다", () => {
+    expect(conceptSpan(["소인수분해"])).toBe("소인수분해");
+    // 같은 개념의 자료가 여럿이어도 한 번만 센다
+    expect(conceptSpan(["소인수분해", "소인수분해"])).toBe("소인수분해");
+  });
+
+  /* 예전에는 첫 자료의 개념명만 달아, 다섯 개념에 걸친 카드가 「소수와
+   * 합성수」 하나로 이름 붙어 있었다. 머리글이 카드를 잘못 부르는 셈이다. */
+  it("여러 개념에 걸치면 첫 개념만 부르고 나머지가 있다는 사실을 남긴다", () => {
+    expect(conceptSpan(["소수와 합성수", "거듭제곱", "소인수분해"])).toBe(
+      "소수와 합성수 외 개념 2개",
+    );
+  });
+
+  it("중복은 세지 않는다 — 자료 수가 아니라 개념 수다", () => {
+    expect(
+      conceptSpan(["소수와 합성수", "소수와 합성수", "거듭제곱"]),
+    ).toBe("소수와 합성수 외 개념 1개");
+  });
+
+  it("자료가 없으면 머리글도 없다 — 빈 칸을 지어내지 않는다", () => {
+    expect(conceptSpan([])).toBeNull();
   });
 });

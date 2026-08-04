@@ -116,6 +116,59 @@ describe("자동 채점 계층", () => {
     expect(r.confidence).toBeGreaterThanOrEqual(0.99);
   });
 
+  /* 교재 판별 문항(RPM 0001~ 등)의 정답이 ◯·△·× 기호다. 키보드에 없는
+   * 글자라 비슷한 것을 치는데, 코드포인트·대소·한글 ㅇ까지 같은 뜻이면
+   * 맞다고 본다. 단 **기준이 기호일 때만** — 기준이 숫자인 문항은 그대로다. */
+  it("단답: 기호 답은 동치류로 비교한다 (◯≡○≡O≡o≡ㅇ, ×≡x≡X)", () => {
+    for (const input of ["◯", "○", "O", "o", "ㅇ"]) {
+      const r = gradeAnswer(shortKey("◯"), shortAns(input), 4, OPTS);
+      expect(r.verdict, input).toBe("correct");
+    }
+    for (const input of ["×", "x", "X", "✕"]) {
+      const r = gradeAnswer(shortKey("×"), shortAns(input), 4, OPTS);
+      expect(r.verdict, input).toBe("correct");
+    }
+    expect(gradeAnswer(shortKey("△"), shortAns("▲"), 4, OPTS).verdict).toBe("correct");
+    // 다른 기호는 오답
+    expect(gradeAnswer(shortKey("◯"), shortAns("△"), 4, OPTS).verdict).toBe("incorrect");
+    expect(gradeAnswer(shortKey("◯"), shortAns("x"), 4, OPTS).verdict).toBe("incorrect");
+  });
+
+  it("단답: 기준이 숫자면 o·x가 기호로 승격되지 않는다", () => {
+    // 정답 0에 대한 o 입력은 오답이다 — 숫자와 기호를 섞지 않는다
+    expect(gradeAnswer(shortKey("0"), shortAns("o"), 4, OPTS).verdict).toBe("incorrect");
+    expect(gradeAnswer(shortKey("0"), shortAns("0"), 4, OPTS).verdict).toBe("correct");
+  });
+
+  it("단답: 비수치 서술 답은 공백 차이를 무시한다", () => {
+    const key = shortKey("밑: $2$, 지수: $5$");
+    expect(gradeAnswer(key, shortAns("밑:2,지수:5"), 4, OPTS).verdict).toBe("correct");
+    expect(gradeAnswer(key, shortAns("밑: 2, 지수: 5"), 4, OPTS).verdict).toBe("correct");
+    expect(gradeAnswer(key, shortAns("밑:5,지수:2"), 4, OPTS).verdict).toBe("incorrect");
+  });
+
+  it("단답: 공백 무시가 수치 답으로 번지지 않는다 — 대분수 1 3/4 ≠ 13/4", () => {
+    const r = gradeAnswer(shortKey("1 3/4"), shortAns("13/4"), 4, OPTS);
+    expect(r.verdict).not.toBe("correct");
+  });
+
+  it("단답: 식 답은 한 글자 지수 중괄호·×/* 표기 차이를 관용한다", () => {
+    const key = shortKey("2^{2}\\times 3^{2}");
+    for (const input of ["2^2×3^2", "2^2*3^2", "2^{2}×3^{2}", "2^{2}\\times 3^{2}"]) {
+      const r = gradeAnswer(key, shortAns(input), 4, OPTS);
+      expect(r.verdict, input).toBe("correct");
+    }
+    expect(gradeAnswer(key, shortAns("2^3×3^2"), 4, OPTS).verdict).toBe("incorrect");
+    expect(
+      gradeAnswer(shortKey("5^{3}"), shortAns("5^3"), 4, OPTS).verdict,
+    ).toBe("correct");
+    // 관용은 **한 글자** 지수에만 — 여러 글자 지수(2^{10})는 중괄호 표기를
+    // 요구한다. 벗기면 2^10의 해석이 갈라질 수 있다.
+    expect(
+      gradeAnswer(shortKey("2^{10}"), shortAns("2^10"), 4, OPTS).verdict,
+    ).not.toBe("correct");
+  });
+
   it("단답: ± 등 모호한 답은 확정하지 않는다 (원칙 8)", () => {
     const r = gradeAnswer(shortKey("3"), shortAns("±3"), 4, OPTS);
     expect(r.verdict).toBe("needs_review");

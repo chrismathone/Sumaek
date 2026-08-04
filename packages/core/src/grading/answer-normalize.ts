@@ -166,6 +166,28 @@ export function normalizeShortAnswer(raw: string): NormalizedAnswer {
   return { ...base, rational: null, unit, form };
 }
 
+/* ── 기호 답(◯·△·×) 동치류 ──────────────────────────────────
+ * 교재 판별 문항의 정답이 기호 한 글자인데, 키보드에는 그 기호가 없다.
+ * 학생은 비슷한 글자(o·x·ㅇ)를 치거나 화면의 기호 칩으로 넣는다.
+ * 코드포인트가 갈라져도(◯ U+25EF / ○ U+25CB) 같은 뜻이면 같은 답이다.
+ * 숫자 0은 circle에 넣지 않는다 — 수치 답과 충돌한다. */
+export type SymbolAnswerClass = "circle" | "triangle" | "cross";
+
+const SYMBOL_CLASSES: ReadonlyArray<[SymbolAnswerClass, ReadonlySet<string>]> = [
+  ["circle", new Set(["◯", "○", "⭕", "O", "o", "ㅇ"])],
+  ["triangle", new Set(["△", "▲"])],
+  ["cross", new Set(["×", "x", "X", "✕", "✗"])],
+];
+
+/** 기호 답 동치류 판별 — 기호 한 글자가 아니면 null. */
+export function symbolAnswerClass(s: string): SymbolAnswerClass | null {
+  const t = s.trim();
+  for (const [cls, set] of SYMBOL_CLASSES) {
+    if (set.has(t)) return cls;
+  }
+  return null;
+}
+
 /** 식 문자열의 보수적 정규화 — 공백·표기 통일만. 대수적 변형은 하지 않는다. */
 export function canonicalizeExpressionText(s: string): string {
   return s
