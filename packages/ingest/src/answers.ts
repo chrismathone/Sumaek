@@ -866,8 +866,14 @@ export function parseAnswerPage(
     /* 위첨자는 **바로 앞 조각과 견줘서** 작은 것이다. 줄의 최대 크기와
      * 견주면 12pt 문항 번호가 기준이 되어 같은 줄의 9.3pt 본문 수가 몽땅
      * 위첨자가 된다 — 0048의 「27은 일의 자리」가 「^{27}은」이 됐다. */
-    const raised = adjacent && size < lastSize * 0.8;
-    if (!raised) lastSize = size;
+    /* **근호 조각은 기준 크기를 바꾸지 않는다.** 근호는 안의 내용 높이에
+     * 맞춰 글리프를 늘여 그리므로 size가 본문보다 크고, 그것을 기준으로
+     * 삼으면 뒤따르는 내용이 통째로 위첨자가 된다. 가구는 글자가 아니다. */
+    const isRadical =
+      radicalPiece(raw, font, chars?.[0] ? chars[0][2] - chars[0][0] : undefined) !==
+      null;
+    const raised = adjacent && !isRadical && size < lastSize * 0.8;
+    if (!raised && !isRadical) lastSize = size;
     /* 표는 앞 조각에 붙이지 않는다 — 한 덩어리로 서야 모양이 산다 */
     if (table) {
       runs.push({ kind: "math", raw, latex: table, unknown: [] });

@@ -478,9 +478,24 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         j += 1;
       }
 
-      /* 덩어리의 기준 크기·기준선. 위첨자는 이보다 작고 위에 있다. */
-      const baseSize = Math.max(...cluster.map((c) => c.size));
-      const baseY1 = Math.max(...cluster.map((c) => c.y1));
+      /* 덩어리의 기준 크기·기준선. 위첨자는 이보다 작고 위에 있다.
+       *
+       * **근호 조각은 기준에서 뺀다.** 근호는 안의 내용 높이에 맞춰 글리프를
+       * 늘여 그리므로 size가 본문보다 크다(11.2 : 9.0). 그것을 기준으로 삼으면
+       * 근호 **안의 내용이 통째로 위첨자로** 올라간다 —
+       * `\surd ^{(sinA+1)^{2}}`가 되고 KaTeX가 이중 위첨자로 실패한다
+       * (중3-2 삼각비). 가구는 글자의 크기를 정하지 않는다. */
+      const body = cluster.filter(
+        (c) =>
+          radicalPiece(
+            c.text,
+            c.font,
+            c.chars?.[0] ? c.chars[0][2] - c.chars[0][0] : undefined,
+          ) === null,
+      );
+      const sizing = body.length > 0 ? body : cluster;
+      const baseSize = Math.max(...sizing.map((c) => c.size));
+      const baseY1 = Math.max(...sizing.map((c) => c.y1));
 
       let raw = "";
       let latex = "";
