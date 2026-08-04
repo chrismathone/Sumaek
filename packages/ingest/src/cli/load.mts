@@ -20,20 +20,7 @@ import postgres from "postgres";
 import { parseAnswers, RPM_2022_ANSWERS } from "../answers";
 import { loadQuestions } from "../load";
 import { RPM_2022 } from "../profiles/rpm-2022";
-import {
-  RPM_M1_CH1_CONCEPTS,
-  RPM_M1_CH1_TITLE_TO_CONCEPT,
-  RPM_M1_CH1_UNIT_TO_CONCEPT,
-  RPM_M1_CH2_CONCEPTS,
-  RPM_M1_CH2_TITLE_TO_CONCEPT,
-  RPM_M1_CH2_UNIT_TO_CONCEPT,
-  RPM_M1_CH3_CONCEPTS,
-  RPM_M1_CH3_TITLE_TO_CONCEPT,
-  RPM_M1_CH3_UNIT_TO_CONCEPT,
-  RPM_M1_CH4_CONCEPTS,
-  RPM_M1_CH4_TITLE_TO_CONCEPT,
-  RPM_M1_CH4_UNIT_TO_CONCEPT,
-} from "../profiles/rpm-2022-concepts";
+import { RPM_BOOKS } from "../profiles/rpm-books";
 import { extractPage } from "../segment";
 import type { SourceDump } from "../types";
 
@@ -46,64 +33,37 @@ const answersDumpPath = arg("answers");
 const organizationId = arg("org");
 const actorUserId = arg("actor");
 
-/**
- * 대단원 — 단원마다 개념 표가 다르다.
- *
- * 예전에는 1단원이 코드에 박혀 있었다. 2단원 덤프를 그대로 넣으면 문항은
- * 들어가지만 대단원이 「I. 소인수분해」로 기록되고 개념은 1단원 표를 봐서
- * 전부 못 걸린다 — **오류 없이** 그렇게 된다. 그래서 인자로 뺐고 기본값을
- * 두지 않는다.
- */
-const CHAPTERS = {
-  I: {
-    number: "I",
-    title: "소인수분해",
-    range: [1, 213] as const,
-    concepts: RPM_M1_CH1_CONCEPTS,
-    titleToConcept: RPM_M1_CH1_TITLE_TO_CONCEPT,
-    unitToConcept: RPM_M1_CH1_UNIT_TO_CONCEPT,
-  },
-  II: {
-    number: "II",
-    title: "정수와 유리수",
-    range: [214, 523] as const,
-    concepts: RPM_M1_CH2_CONCEPTS,
-    titleToConcept: RPM_M1_CH2_TITLE_TO_CONCEPT,
-    unitToConcept: RPM_M1_CH2_UNIT_TO_CONCEPT,
-  },
-  III: {
-    number: "III",
-    title: "문자와 식",
-    range: [524, 914] as const,
-    concepts: RPM_M1_CH3_CONCEPTS,
-    titleToConcept: RPM_M1_CH3_TITLE_TO_CONCEPT,
-    unitToConcept: RPM_M1_CH3_UNIT_TO_CONCEPT,
-  },
-  IV: {
-    number: "IV",
-    title: "좌표평면과 그래프",
-    range: [915, 1123] as const,
-    concepts: RPM_M1_CH4_CONCEPTS,
-    titleToConcept: RPM_M1_CH4_TITLE_TO_CONCEPT,
-    unitToConcept: RPM_M1_CH4_UNIT_TO_CONCEPT,
-  },
-} as const;
-
+/* 권과 대단원은 둘 다 인자로 받고, 둘 다 기본값이 없다 — 등록부는
+ * profiles/rpm-books.ts에 있다. 이유는 그 파일 머리말에 적었다. */
+const textbookKey = arg("textbook");
+const textbook = textbookKey ? RPM_BOOKS[textbookKey] : undefined;
 const chapterKey = arg("chapter");
-const chapter = chapterKey ? CHAPTERS[chapterKey as keyof typeof CHAPTERS] : undefined;
-if (!bookDumpPath || !answersDumpPath || !organizationId || !actorUserId || !chapter) {
+const chapter = textbook && chapterKey ? textbook.chapters[chapterKey] : undefined;
+if (
+  !bookDumpPath ||
+  !answersDumpPath ||
+  !organizationId ||
+  !actorUserId ||
+  !textbook ||
+  !chapter
+) {
   console.error(
-    "사용법: load --chapter=<I|II|III|IV> --book=<본책.json> --answers=<별책.json> \\\n" +
+    "사용법: load --textbook=<m1-1|m2-1|…> --chapter=<I|II|…> \\\n" +
+      "             --book=<본책.json> --answers=<별책.json> \\\n" +
       "             --org=<uuid> --actor=<uuid> [--range=214-523] [--dry-run]",
   );
-  if (chapterKey && !chapter) {
-    console.error(`\n  --chapter=${chapterKey} 는 없는 대단원입니다.`);
+  if (textbookKey && !textbook) {
+    console.error(`\n  --textbook=${textbookKey} 는 등록되지 않은 교재입니다.`);
   }
-  for (const [key, c] of Object.entries(CHAPTERS)) {
-    console.error(
-      `  --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(12)} ` +
-        `${String(c.range[0]).padStart(4, "0")}~${String(c.range[1]).padStart(4, "0")}`,
-    );
+  for (const [bookKey, spec] of Object.entries(RPM_BOOKS)) {
+    console.error(`\n  --textbook=${bookKey}  ${spec.title}`);
+    for (const [key, c] of Object.entries(spec.chapters)) {
+      console.error(
+        `    --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(14)} ` +
+          `${String(c.range[0]).padStart(4, "0")}~${String(c.range[1]).padStart(4, "0")}` +
+          `  (본책 ${c.pages[0]}~${c.pages[1]}쪽)`,
+      );
+    }
   }
   process.exit(1);
 }
@@ -161,9 +121,9 @@ const result = await loadQuestions(sql, {
   actorUserId,
   book: {
     publisherName: "개념원리",
-    title: "RPM 중학 수학 1-1 (2022 개정)",
+    title: textbook.title,
     schoolLevel: "middle",
-    gradeBand: "middle-1",
+    gradeBand: textbook.gradeBand,
     editionLabel: "2022 개정 학생용",
     publishedYear: 2025,
   },
