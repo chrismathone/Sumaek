@@ -293,13 +293,21 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
     timeout: 30_000,
   });
 
-  /* 인강 완료 배선 — materialId가 엉뚱한 자료로 이어지면 이 카드의 버튼이
-   * 남아 실패한다. */
-  const videoCard = card.locator("li").filter({ hasText: videoTitle });
-  await videoCard.getByRole("button", { name: "다 봤어요" }).click();
-  await expect(videoCard.getByText("완료", { exact: true })).toBeVisible({
-    timeout: 30_000,
-  });
+  /* 인강에는 「다 봤어요」가 **없다** — 눌러서 넘길 수 있으면 시청 강제가
+   * 뜻을 잃는다. 완료는 플레이어가 시청률로 찍는다. 그래서 여기서는 우리
+   * 컨트롤(재생·배속)이 붙었다는 것과 손으로 완료할 길이 없다는 것을 본다. */
+  const videoCard = card.getByRole("article", { name: `인강: ${videoTitle}` });
+  await expect(videoCard).toBeVisible({ timeout: 30_000 });
+  // exact — 영상 위 덮개 버튼의 라벨도 「… 재생」이라 부분 일치면 둘이 잡힌다
+  await expect(
+    videoCard.getByRole("button", { name: "재생", exact: true }),
+  ).toBeVisible();
+  await expect(videoCard.getByLabel("배속")).toBeVisible();
+  await expect(videoCard.getByRole("button", { name: "다 봤어요" })).toHaveCount(0);
+
+  /* 그래서 다음으로 가는 길은 **잠겨 있다** — 이 개념의 인강을 아직 안 봤다.
+   * 잠금이 풀리는 조건이 「시청 완료」임을 문구로도 못 박는다. */
+  await expect(card.getByText(/인강 \d+건을 끝까지 보면 열립니다/)).toBeVisible();
   await studentCtx.close();
 });
 
@@ -341,6 +349,13 @@ test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 �
    * 클릭해, 도착한 쪽이 정말 그 개념인지(?p로 정규화됨)까지 본다. */
   const backlink = lecture.getByRole("link", { name: "이 개념의 설명 읽기 →" });
   await expect(backlink).toHaveAttribute("href", /\/learn\/study\?c=[0-9a-f-]{36}/);
+  /* 개념 id는 **떠나기 전에** 받아 둔다 — 클릭 후에는 이 노드가 사라져
+   * getAttribute가 실패한다. 화면이 만든 값이라 하드코딩이 아니다. */
+  const conceptId = new URL(
+    (await backlink.getAttribute("href")) ?? "",
+    "http://x",
+  ).searchParams.get("c");
+  expect(conceptId).toMatch(/^[0-9a-f-]{36}$/);
   await backlink.click();
   await expect(page).toHaveURL(/\/learn\/study\?p=\d+/, { timeout: 30_000 });
 
@@ -350,25 +365,33 @@ test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 �
   await expect(
     conceptPage.getByRole("heading", { name: "가감법", exact: true }),
   ).toBeVisible({ timeout: 30_000 });
-  const lectureOnStudy = conceptPage.locator("li").filter({
-    hasText: "가감법 5분 정리",
+  /* 재생기가 붙었는지를 **우리 컨트롤**로 확인한다 — iframe은 YT IFrame
+   * API가 만들고 title도 유튜브가 붙이므로 자료 제목과 다르다. 컨트롤 묶음의
+   * aria-label에 자료 제목이 들어 있어 인강이 여럿이어도 하나만 잡힌다. */
+  const lectureCard = conceptPage.getByRole("article", {
+    name: "인강: 가감법 5분 정리",
   });
+  await expect(lectureCard).toBeVisible();
+  await expect(lectureCard.getByLabel("배속")).toBeVisible();
   await expect(
-    lectureOnStudy.locator('iframe[title="가감법 5분 정리"]'),
-  ).toBeVisible();
-  await expect(
-    lectureOnStudy.getByText("선생님이 검수한 AI 보충 강의입니다."),
+    conceptPage.getByText("선생님이 검수한 AI 보충 강의입니다."),
   ).toHaveCount(0);
 
-  /* 연습은 **쪽을 넘겨** 간다 — 개념 id를 실어 보내고(?c=), 도착한 쪽은
-   * 그 개념의 연습만 낸다. 링크가 개념을 잃으면 제목이 갈려 여기서 잡힌다. */
-  await conceptPage.getByRole("link", { name: "연습문제 풀러 가기 →" }).click();
-  await expect(page).toHaveURL(/\/learn\/practice\?c=[0-9a-f-]{36}/, {
-    timeout: 30_000,
-  });
+  /* 인강을 아직 안 봤으므로 다음 쪽은 **잠겨 있다** — 이것이 시청 강제의
+   * 실제 모습이다. 링크가 아니라 잠긴 표시와 이유만 있다. */
+  await expect(
+    conceptPage.getByRole("link", { name: "연습문제 풀러 가기 →" }),
+  ).toHaveCount(0);
+  await expect(
+    conceptPage.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
+  ).toBeVisible();
+
+  /* 연습 쪽 자체는 개념 id로 직접 연다 — 잠금은 위에서 확인했고, 여기서
+   * 볼 것은 「그 개념의 연습만 나오는가」와 지정 순서다. */
+  await page.goto(`/learn/practice?c=${conceptId}`);
   await expect(
     page.getByRole("heading", { name: "가감법 — 연습문제" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
 
   /* 지정 순서: a+b 문항이 먼저, x+y=5 문항이 나중 (생성순은 그 반대다) */
   const practice = page.locator("form").filter({ hasText: "가감법 연습 2문항" });

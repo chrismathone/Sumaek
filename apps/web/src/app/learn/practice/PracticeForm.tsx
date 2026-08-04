@@ -120,11 +120,22 @@ export function PracticeForm({
       )}
       <Title className="mt-0.5 font-medium">{title}</Title>
 
-      <ol className="mt-4 space-y-6">
+      {/* 문항을 **단으로 흘린다** — 세로로만 쌓으면 넓은 창에서 오른쪽이
+          통째로 비고 5문항을 보려고 한참 스크롤한다. CSS 다단은 창 너비에
+          따라 단 수가 알아서 바뀌고(1 → 2 → 3), 문항 높이가 제각각이어도
+          위에서 아래로 채운 뒤 다음 단으로 넘어가 빈틈이 작다.
+          break-inside-avoid가 없으면 한 문항이 단 경계에서 반토막 난다. */}
+      <ol className="mt-4 gap-x-8 [column-fill:balance] lg:columns-2 2xl:columns-3">
         {items.map((q) => {
           const verdict = state?.graded?.[q.key];
           return (
-            <li key={q.key} className="border-t border-rule-soft pt-4 first:border-0 first:pt-0">
+            /* 다단에서는 「첫 항목만 윗선 없음」이 성립하지 않는다 — 각 단의
+               첫 항목도 윗선을 달게 된다. 그래서 위가 아니라 **테두리 상자**로
+               문항을 가른다. mb-6은 다단에서 space-y가 듣지 않기 때문이다. */
+            <li
+              key={q.key}
+              className="mb-6 break-inside-avoid rounded-lg border border-rule-soft p-4"
+            >
               <div className="flex items-start gap-2">
                 <span className="font-mono text-sm text-pen">{q.number}.</span>
                 <div className="flex-1">

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { youTubeEmbedUrl } from "@/lib/youtube";
+import { parseYouTubeId } from "@/lib/youtube";
 import { CompleteMaterialButton } from "@/components/learn/MaterialCard";
+import { LecturePlayer } from "@/components/learn/LecturePlayer";
 
 /* ─────────────────────────────────────────────────────────────
  * 인강 한 건 — 개념 인강(/learn/watch)과 개념 공부(/learn/study) 공용.
@@ -30,6 +31,9 @@ export interface LectureVideo {
   videoSeconds: number | null;
   disclosure: string | null;
   progress: "none" | "in_progress" | "completed";
+  /** 여태 본 비율(0–100)과 지점(초) — 이어 보기와 잠금 판정의 근거 */
+  watchedPercent: number;
+  watchedSeconds: number;
 }
 
 function formatDuration(seconds: number | null): string | null {
@@ -58,7 +62,7 @@ export function LectureVideoCard({
 }) {
   const duration = formatDuration(video.videoSeconds);
   // 유튜브로 알아본 것만 임베드한다 — 못 알아보면 새 탭으로 물러선다
-  const embed = video.videoUrl ? youTubeEmbedUrl(video.videoUrl) : null;
+  const videoId = video.videoUrl ? parseYouTubeId(video.videoUrl) : null;
 
   return (
     <>
@@ -72,28 +76,29 @@ export function LectureVideoCard({
             <p className="mt-0.5 font-mono text-xs text-ink-soft">{duration}</p>
           )}
         </div>
-        <CompleteMaterialButton
-          materialId={video.id}
-          done={video.progress === "completed"}
-        />
+        {/* 임베드로 재생하는 영상에는 「다 봤어요」를 두지 않는다 — 눌러서
+            넘길 수 있으면 시청 강제가 뜻을 잃는다. 완료는 플레이어가
+            시청률로 찍는다. 새 탭으로 물러선 영상만 손으로 표시한다. */}
+        {!videoId && (
+          <CompleteMaterialButton
+            materialId={video.id}
+            done={video.progress === "completed"}
+          />
+        )}
       </div>
       {/* AI 고지(video.disclosure)는 학생 화면에 싣지 않는다(소유자 결정
           2026-08-04) — 출처·생성 경위는 교사 검수 화면의 정보다. 데이터는
           그대로 남아 있으므로 정책이 바뀌면 여기서 다시 켠다. */}
       {video.videoUrl &&
-        (embed ? (
-          /* 폭은 **담는 칸이 정한다** — 카드가 max-w를 박아 두면 넓은 칸에
-             놓였을 때도 영상만 작게 남는다. 좁은 화면에서는 칸 자체가 좁다. */
-          <div className="mt-3 aspect-video w-full overflow-hidden rounded-[var(--radius-control)] border border-rule">
-            <iframe
-              src={embed}
-              title={video.title}
-              className="h-full w-full"
-              allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
-              allowFullScreen
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
+        (videoId ? (
+          <LecturePlayer
+            materialId={video.id}
+            videoId={videoId}
+            title={video.title}
+            initialPercent={video.watchedPercent}
+            initialSeconds={video.watchedSeconds}
+            fallbackDuration={video.videoSeconds}
+          />
         ) : (
           <a
             href={video.videoUrl}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
@@ -8,6 +9,7 @@ import { getTodayScope } from "@/lib/learn/today-context";
 import { buildPracticeSets } from "@/lib/learn/practice-items";
 import { CompleteMaterialButton } from "@/components/learn/MaterialCard";
 import { LectureVideoCard } from "@/components/learn/LectureVideoCard";
+import { GatedNextLink, LectureGate } from "@/components/learn/LectureGate";
 import { ReadingBody } from "@/components/materials/ReadingBody";
 import { PracticeForm } from "@/app/learn/practice/PracticeForm";
 
@@ -194,6 +196,12 @@ export default async function StudyPage({
           </p>
         </div>
       ) : (
+        <LectureGate
+          videoIds={current.videos.map((v) => v.id)}
+          initialDoneIds={current.videos
+            .filter((v) => v.progress === "completed")
+            .map((v) => v.id)}
+        >
         <section className="mt-3 rounded-lg border border-rule bg-surface p-5">
           <p className="font-mono text-xs text-ink-soft">
             개념 {page}/{pages.length}
@@ -202,107 +210,104 @@ export default async function StudyPage({
             {current.conceptName}
           </h2>
 
-          {/* ── 설명 좌 · 인강 우 ──
-              lg 미만에서는 나란히 둘 자리가 없으므로 설명 → 인강 순으로 쌓는다.
-              items-start를 두는 이유: 기본값(stretch)이면 짧은 쪽 칸이 긴 쪽
-              높이만큼 늘어나 구분선이 허공까지 내려온다. */}
-          {/* items-start를 쓰지 않는다 — 칸이 내용 높이만큼만 서면 가운데
-              구분선이 짧은 쪽에서 끊긴다. 늘어난 칸(stretch) 안에서 내용만
-              sticky로 띄우면 선은 **긴 쪽 기준**으로 끝까지 내려온다. */}
-          {/* 설명 칸은 **넓히지 않는다**(40rem 상한). 글은 한 줄이 길어질수록
-              읽기 나빠진다 — 창이 커질 때 남는 폭은 전부 영상이 가져간다.
-              그래서 좌측은 고정 상한, 우측은 1fr(나머지 전부)다. */}
-          <div className="mt-4 grid gap-6 border-t border-rule-soft pt-4 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)] lg:gap-10">
-            <div>
-              <SectionTitle>설명</SectionTitle>
-              {current.readings.length === 0 ? (
-                <Missing what="설명 자료" />
-              ) : (
-                /* 한 개념에 설명이 여러 건인 경우가 실제로 있다(소인수분해·
-                 * 최대공약수는 2건). 그냥 세로로 이어 붙이면 앞 자료의 마지막
-                 * 블록과 다음 자료의 첫 블록이 붙어 **한 편의 글처럼 읽힌다**
-                 * — 학생이 「거듭제곱」을 읽다가 자기도 모르게 「소인수분해」로
-                 * 넘어간다(실측 지적). 그래서 자료마다 테두리로 경계를 긋고,
-                 * 여러 건이면 「1/2」로 몇 번째인지 못 박는다. */
-                <div className="mt-2 space-y-5">
-                  {current.readings.map((m, i) => (
-                    <article
-                      key={m.id}
-                      className="rounded-lg border border-rule bg-paper/60 p-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          {current.readings.length > 1 && (
+          {/* ── 설명 좌 · 인강 우, **행으로 짝지어** ──
+              두 갈래를 독립된 세로 열로 두면 n번째 설명과 n번째 인강의 시작
+              높이가 달라진다(앞 자료 높이가 서로 다르니까). 그러면 「설명을
+              따라 내려가며 그 강의를 본다」가 성립하지 않는다 — 실제로 2번
+              설명 옆에 1번 강의 꼬리가 걸렸다.
+
+              그래서 열이 아니라 **행**을 단위로 놓는다. 한 행 = (설명 n,
+              인강 n)이고, 행 높이는 둘 중 긴 쪽이라 둘의 윗선이 언제나 맞는다.
+              긴 쪽이 설명이면 그 행에서 영상이 sticky로 따라오다가 다음 행에서
+              놓아 준다.
+
+              세로 간격을 gap이 아니라 각 칸의 pb로 주는 이유: gap을 쓰면 행
+              사이에서 가운데 구분선이 끊겨 점선처럼 보인다.
+
+              설명 칸은 40rem 상한 — 글은 한 줄이 길수록 읽기 나쁘다. 창이
+              커질 때 남는 폭은 전부 영상이 가져간다. */}
+          <div className="mt-4 grid gap-x-10 border-t border-rule-soft pt-4 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
+            <SectionTitle>설명</SectionTitle>
+            <div className="mt-4 lg:mt-0 lg:border-l lg:border-rule-soft lg:pl-10">
+              <SectionTitle>인강</SectionTitle>
+            </div>
+
+            {Array.from({
+              length: Math.max(
+                current.readings.length,
+                current.videos.length,
+                1,
+              ),
+            }).map((_, i) => {
+              const m = current.readings[i];
+              const v = current.videos[i];
+              return (
+                <Fragment key={i}>
+                  <div className="pb-5">
+                    {m ? (
+                      <article className="rounded-lg border border-rule bg-paper/60 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            {current.readings.length > 1 && (
+                              <p className="font-mono text-[11px] text-ink-soft">
+                                설명 {i + 1}/{current.readings.length}
+                              </p>
+                            )}
+                            <h4 className="font-medium break-keep">{m.title}</h4>
+                          </div>
+                          <CompleteMaterialButton
+                            materialId={m.id}
+                            done={m.progress === "completed"}
+                          />
+                        </div>
+                        {/* AI 고지는 학생 화면에 싣지 않는다(소유자 결정
+                            2026-08-04) — 데이터는 그대로 남아 있다. */}
+                        <div className="mt-3">
+                          {/* single — 이미 반폭인 칸을 다시 둘로 쪼개면 한 줄이
+                              열 몇 자로 줄어 읽기가 오히려 나빠진다 */}
+                          <ReadingBody
+                            body={m.body}
+                            mode="publish"
+                            layout="single"
+                          />
+                        </div>
+                      </article>
+                    ) : (
+                      i === 0 && <Missing what="설명 자료" />
+                    )}
+                  </div>
+
+                  <div className="pb-5 lg:border-l lg:border-rule-soft lg:pl-10">
+                    {v ? (
+                      /* 영상은 그 행 안에서 스크롤을 따라온다 — 설명이 길어도
+                         보던 강의가 눈에서 사라지지 않는다 */
+                      <div className="lg:sticky lg:top-20">
+                        {/* article + aria-label — 한 쪽에 인강이 여럿일 때
+                            보조기기(와 테스트)가 「어느 강의의 것인지」로
+                            구획을 집을 수 있게 한다 */}
+                        <article
+                          aria-label={`인강: ${v.title}`}
+                          className="rounded-lg border border-rule bg-paper/60 p-4"
+                        >
+                          {current.videos.length > 1 && (
                             <p className="font-mono text-[11px] text-ink-soft">
-                              설명 {i + 1}/{current.readings.length}
+                              인강 {i + 1}/{current.videos.length}
                             </p>
                           )}
-                          <h4 className="font-medium break-keep">{m.title}</h4>
-                        </div>
-                        <CompleteMaterialButton
-                          materialId={m.id}
-                          done={m.progress === "completed"}
-                        />
+                          <LectureVideoCard
+                            video={v}
+                            titleAs="h4"
+                            showConcept={false}
+                          />
+                        </article>
                       </div>
-                      {/* AI 고지는 학생 화면에 싣지 않는다(소유자 결정
-                          2026-08-04). 출처·생성 경위는 교사 검수 화면의
-                          정보다 — 자료마다 같은 문구가 반복되면 학생에게는
-                          읽을 것이 늘 뿐이다. 데이터(disclosure)는 그대로
-                          남아 있으므로 정책이 바뀌면 여기서 다시 켠다. */}
-                      <div className="mt-3">
-                        {/* single — 이미 반폭인 칸을 다시 둘로 쪼개면 한 줄이
-                            열 몇 자로 줄어 읽기가 오히려 나빠진다 */}
-                        <ReadingBody body={m.body} mode="publish" layout="single" />
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 영상 칸은 **스크롤을 따라온다**(sticky).
-                설명은 길고 영상은 짧아, 가만두면 오른쪽이 통째로 빈 채로
-                남고 학생은 영상을 지나쳐 내려가 버린다. 붙여 두면 어디까지
-                읽든 영상이 늘 눈에 있어, 「읽고 나서 본다」가 아니라
-                「읽으면서 본다」가 된다. 칸 너비도 설명보다 조금 넓게 잡는다
-                (1.15fr) — 글은 좁아야 읽히고 영상은 넓어야 보인다.
-                self-start가 없으면 grid 칸이 늘어나 sticky가 걸리지 않는다.
-                top-20은 상단 고정 헤더(h-14) 아래 자리다.
-
-                완료는 자료마다 따로 찍는다 — 진도의 뜻(자료 한 건을 봤다)은
-                어느 화면에서 보든 같아야 한다. */}
-            <div className="lg:border-l lg:border-rule-soft lg:pl-10">
-              <div className="lg:sticky lg:top-20">
-                <SectionTitle>인강</SectionTitle>
-                {current.videos.length === 0 ? (
-                  <Missing what="강의 영상" />
-                ) : (
-                  /* 설명과 같은 규칙으로 경계를 긋는다 — 한 개념에 인강이
-                   * 여럿인 경우가 실제로 있고(소인수분해·최대공약수 2건),
-                   * 이어 붙이면 앞 영상 끝과 다음 영상 머리가 붙어 어디까지가
-                   * 한 강의인지 흐려진다. */
-                  <ul className="mt-2 space-y-5">
-                    {current.videos.map((v, i) => (
-                      <li
-                        key={v.id}
-                        className="rounded-lg border border-rule bg-paper/60 p-4"
-                      >
-                        {current.videos.length > 1 && (
-                          <p className="font-mono text-[11px] text-ink-soft">
-                            인강 {i + 1}/{current.videos.length}
-                          </p>
-                        )}
-                        <LectureVideoCard
-                          video={v}
-                          titleAs="h4"
-                          showConcept={false}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
+                    ) : (
+                      i === 0 && <Missing what="강의 영상" />
+                    )}
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
 
           {/* 아래 이동 — 설명·인강을 마쳤으면 **쪽을 넘겨** 연습으로 간다.
@@ -319,30 +324,24 @@ export default async function StudyPage({
             ) : (
               <span />
             )}
+            {/* 인강을 끝까지 봐야 열린다 — 남아 있으면 잠긴 버튼과 이유를
+                낸다(GatedNextLink). 영상이 0건인 개념은 잠기지 않는다. */}
             {hasPractice ? (
-              <Link
+              <GatedNextLink
                 href={`/learn/practice?c=${current.conceptId}`}
-                className="rounded-[var(--radius-control)] border border-pen bg-pen px-4 py-2 text-sm font-medium text-white"
-              >
-                연습문제 풀러 가기 →
-              </Link>
+                label="연습문제 풀러 가기 →"
+              />
             ) : page < pages.length ? (
-              <Link
+              <GatedNextLink
                 href={`/learn/study?p=${page + 1}`}
-                className="rounded-[var(--radius-control)] border border-pen bg-pen px-3 py-1.5 text-sm font-medium text-white"
-              >
-                다음 개념 →
-              </Link>
+                label="다음 개념 →"
+              />
             ) : (
-              <Link
-                href="/learn/today"
-                className="rounded-[var(--radius-control)] border border-pen px-3 py-1.5 text-sm font-medium text-pen"
-              >
-                오늘 학습으로 →
-              </Link>
+              <GatedNextLink href="/learn/today" label="오늘 학습으로 →" />
             )}
           </div>
         </section>
+        </LectureGate>
       )}
 
       <Link

@@ -73,7 +73,8 @@ export default async function PracticePage({
     nextIndex > 0 && nextIndex < order.length ? nextIndex + 1 : null;
 
   return (
-    <div>
+    /* data-wide — 문항을 여러 단으로 흘리려면 창 너비가 필요하다 */
+    <div data-wide>
       <h1 className="font-[MaruBuri] text-2xl font-semibold break-keep">
         {conceptName ? `${conceptName} — 연습문제` : "연습문제"}
       </h1>
