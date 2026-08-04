@@ -1227,8 +1227,8 @@ Set-Location ..\Su-Maek-t6-1-server-deadline
 테스트는 고정 ID를 재사용하고 아무것도 지우지 않는다. 응시·응답·채점 결정은 증거이고 `grade_decisions`는 append-only다(ADR-0015) — 처음에 지우려다 DB가 거부했고, 그 거부가 맞다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t6-1-server-deadline`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t6-1-server-deadline`
 
 ### [] Phase 6, T6.2: 빈 워크스페이스→학생 하루 완료 실워커 E2E RED→GREEN
 
