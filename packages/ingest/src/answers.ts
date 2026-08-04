@@ -903,9 +903,15 @@ export function parseAnswerPage(
         font,
         chars?.[0] ? chars[0][2] - chars[0][0] : undefined,
       );
-      if (radical !== null) {
-        /* 끝을 모르는 근호(EHboNA)는 미해독으로 올린다 — 검수함으로 간다 */
-        const flag = radical.certain ? [] : [raw];
+      /* **별책에서는 확실한 근호만 옮긴다.**
+       *
+       * 끝을 모르는 EHboNA 근호까지 `\surd`로 바꿔 봤더니 해설이 통째로
+       * 뒤엉켰다 — `=\surd x=¹^{3^{2}}^{+…}`처럼 뒤따르는 조각이 위첨자로
+       * 말려 들어간다. 본책은 한 줄에 수식 하나꼴이라 괜찮았지만 해설은
+       * 조각이 훨씬 잘게 나뉜다. 확실하지 않은 것은 손대지 않고 미해독으로
+       * 두어 검수함으로 보낸다 — 어설프게 옮기면 사람도 못 고친다. */
+      if (radical !== null && radical.certain) {
+        const flag: string[] = [];
         const last = runs[runs.length - 1];
         if (last?.kind === "math") {
           last.raw += raw;
