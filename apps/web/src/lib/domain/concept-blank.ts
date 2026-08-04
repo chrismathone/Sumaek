@@ -153,6 +153,10 @@ export async function submitBlankAnswers(input: {
   /** one·two: position → 답. full: 자유 서술 한 덩어리 */
   answers: Record<number, string>;
   essay?: string;
+  /** 글자로 못 찾은 핵심어를 **뜻으로** 다시 보는 판정자(3단계 전용).
+   *  네트워크를 쓰는 일이라 도메인이 직접 하지 않는다 — 호출자가 넣는다.
+   *  없으면 글자 판정만 쓴다. */
+  resolveMissing?: (essay: string, missing: string[]) => Promise<string[]>;
 }): Promise<BlankGradeResult> {
   const sql = getSharedSql();
   const [set] = await sql<
@@ -179,7 +183,17 @@ export async function submitBlankAnswers(input: {
     const cover = keywordCoverage(input.essay ?? "", blanks.map((b) => b.answer));
     found = cover.found;
     missing = cover.missing;
-    correct = cover.found.length;
+    /* 자기 말로 쓰는 자리다 — 글자가 없어도 **뜻이 맞으면 맞은 것**이다.
+     * 「소인수들의 곱으로 나타낸다」라고 쓴 학생이 「소인수분해」라는 낱말을
+     * 안 썼다는 이유로 틀리면, 3단계가 인출이 아니라 받아쓰기가 된다. */
+    if (missing.length > 0 && input.resolveMissing) {
+      const alsoCovered = await input.resolveMissing(input.essay ?? "", missing);
+      if (alsoCovered.length > 0) {
+        found = [...found, ...alsoCovered];
+        missing = missing.filter((m) => !alsoCovered.includes(m));
+      }
+    }
+    correct = found.length;
   } else {
     for (const b of blanks) {
       const isRight = matchesTermAnswer(

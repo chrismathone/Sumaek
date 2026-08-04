@@ -66,9 +66,16 @@ export function BlankForm({
             rows={8}
             className="mt-2 block w-full rounded-lg border border-rule bg-surface px-3 py-2 text-[15px] leading-relaxed focus:border-pen focus:outline-none"
           />
-          <VoiceInputHint targetId="essay" />
+          <VoiceInputHint
+            getTarget={() =>
+              document.getElementById("essay") as HTMLTextAreaElement | null
+            }
+          />
         </div>
       ) : (
+        /* 1·2단계는 **타이핑만**이다(소유자 결정). 칸이 여럿인 화면에서
+           마이크는 「어느 칸에 넣을지」를 학생이 먼저 정해야 해서, 한 낱말을
+           넣는 일이 되레 두 동작이 된다. 말로 하는 자리는 3단계다. */
         children
       )}
 

@@ -41,8 +41,23 @@ function createRecognition(): SpeechRecognitionLike | null {
   return Ctor ? new Ctor() : null;
 }
 
-/** 대상 입력칸(textarea·input)에 인식 결과를 **덧붙인다** */
-export function VoiceInputHint({ targetId }: { targetId: string }) {
+type Field = HTMLInputElement | HTMLTextAreaElement;
+
+/**
+ * 대상 입력칸에 인식 결과를 **덧붙인다**.
+ *
+ * 대상은 호출자가 정한다(`getTarget`). 자유 서술은 칸이 하나뿐이라 고정이지만,
+ * 빈칸 단계는 칸이 여럿이라 「방금 누른 칸」이 대상이어야 한다 — 칸마다 마이크
+ * 버튼을 두면 문장 사이에 버튼이 박혀 본문이 개념 섹션과 달라진다.
+ */
+export function VoiceInputHint({
+  getTarget,
+  idle = "타이핑이 어려우면 말해도 됩니다.",
+}: {
+  getTarget: () => Field | null;
+  /** 쉬는 동안의 안내 — 화면마다 대상을 고르는 방법이 다르다 */
+  idle?: string;
+}) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
@@ -79,10 +94,7 @@ export function VoiceInputHint({ targetId }: { targetId: string }) {
       for (let i = 0; i < e.results.length; i += 1) {
         text += e.results[i]?.[0]?.transcript ?? "";
       }
-      const el = document.getElementById(targetId) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | null;
+      const el = getTarget();
       if (el && text.trim().length > 0) {
         el.value = el.value.length > 0 ? `${el.value} ${text.trim()}` : text.trim();
         el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -113,7 +125,7 @@ export function VoiceInputHint({ targetId }: { targetId: string }) {
       <span className="text-xs break-keep text-ink-soft">
         {listening
           ? "말을 마치면 저절로 멈춥니다."
-          : "타이핑이 어려우면 말해도 됩니다."}
+          : idle}
       </span>
     </div>
   );

@@ -9,7 +9,9 @@ import {
   listStagesForConcept,
   type BlankStage,
 } from "@/lib/domain/concept-blank";
+import { listMaterials } from "@/lib/domain/learning-material";
 import { ReadingBody } from "@/components/materials/ReadingBody";
+import { LectureVideoCard } from "@/components/learn/LectureVideoCard";
 import { BlankForm } from "./BlankForm";
 
 export const metadata: Metadata = { title: "개념 확인" };
@@ -24,6 +26,11 @@ export const metadata: Metadata = { title: "개념 확인" };
  *
  * 단계는 발판을 걷어내는 순서다: one(핵심어 한둘) → two(뼈대까지) →
  * full(본문 없이 통째로 다시 쓰기).
+ *
+ * **인강은 오른쪽에 그대로 둔다.** 개념 학습 화면과 같은 배치라 화면이 바뀐
+ * 것이 아니라 왼쪽 설명이 빈칸으로 바뀐 것처럼 이어진다. 무엇보다 기억이
+ * 안 날 때 강의를 다시 볼 자리가 있어야 한다 — 없으면 학생은 뒤로 가서
+ * 찾아야 하고, 그러면 쓰던 답이 사라진다.
  * ───────────────────────────────────────────────────────────── */
 
 const STAGE_LABEL: Record<BlankStage, string> = {
@@ -66,6 +73,18 @@ export default async function BlankPage({
     }),
   ]);
   if (!view) redirect(`/learn/study?c=${conceptId}`);
+
+  /* 이 개념의 인강 — 개념 학습 화면과 같은 카드로 오른쪽에 둔다.
+   * 폼 **밖**이다: 임베드가 아닌 영상은 카드 안에 자기 폼(다 봤어요)을
+   * 갖는데, 폼 안에 폼을 넣으면 브라우저가 바깥 폼을 깨뜨린다. */
+  const videos = (
+    await listMaterials({
+      organizationId: learner.user.organizationId,
+      learnerId: learner.learnerId,
+      conceptIds: [conceptId],
+      kinds: ["video"],
+    })
+  ).filter((v) => v.conceptId === conceptId);
 
   /* 다음 목적지 — 남은 단계가 있으면 그 단계, 없으면 연습으로. */
   const idx = stages.indexOf(stage);
@@ -114,26 +133,55 @@ export default async function BlankPage({
           {STAGE_LABEL[stage]} · 빈칸 {view.total}개
         </p>
 
-        <div className="mt-3">
-          <BlankForm
-            setId={view.setId}
-            stage={stage}
-            total={view.total}
-            nextHref={nextHref}
-            nextLabel={nextLabel}
-          >
-            {/* 개념 섹션과 같은 렌더러·같은 블록 — 낱말만 입력칸이다 */}
-            <div className="space-y-6">
-              {view.bodies.map((b) => (
-                <article key={b.id}>
-                  <h2 className="font-medium break-keep">{b.title}</h2>
-                  <div className="mt-2">
-                    <ReadingBody body={b.body} mode="publish" layout="single" />
-                  </div>
-                </article>
-              ))}
+        {/* 개념 학습과 같은 배치 — 왼쪽 설명이 빈칸으로 바뀌었을 뿐이고,
+            오른쪽 인강은 그 자리에 그대로 있다. */}
+        <div className="mt-3 grid gap-x-10 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
+          <div className="pb-5">
+            <BlankForm
+              setId={view.setId}
+              stage={stage}
+              total={view.total}
+              nextHref={nextHref}
+              nextLabel={nextLabel}
+            >
+              {/* 개념 섹션과 같은 렌더러·같은 블록 — 낱말만 입력칸이다 */}
+              <div className="space-y-6">
+                {view.bodies.map((b) => (
+                  <article key={b.id}>
+                    <h2 className="font-medium break-keep">{b.title}</h2>
+                    <div className="mt-2">
+                      <ReadingBody body={b.body} mode="publish" layout="single" />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </BlankForm>
+          </div>
+
+          <div className="pb-5 lg:border-l lg:border-rule-soft lg:pl-10">
+            <div className="lg:sticky lg:top-20">
+              <h3 className="font-mono text-xs text-ink-soft">인강</h3>
+              {videos.length === 0 ? (
+                <p className="mt-2 text-sm break-keep text-ink-soft">
+                  이 개념에는 등록된 강의 영상이 없습니다.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-5">
+                  {videos.map((v) => (
+                    <li
+                      key={v.id}
+                      className="rounded-lg border border-rule bg-paper/60 p-4"
+                    >
+                      <LectureVideoCard video={v} titleAs="h4" showConcept={false} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs break-keep text-ink-soft">
+                기억이 안 나면 다시 봐도 됩니다.
+              </p>
             </div>
-          </BlankForm>
+          </div>
         </div>
 
         {/* 본문에서 자리를 못 찾은 빈칸이 있으면 조용히 넘어가지 않는다 —
