@@ -541,6 +541,16 @@ export function mergeDivisionTables(
 export function parseAnswerPage(
   page: PageDump,
   profile: AnswerProfile,
+  /**
+   * 앞 쪽에서 **답을 아직 못 받은 채** 끝난 항목. 넘겨주면 이 쪽 첫 번호가
+   * 나오기 전까지의 글이 그 항목에 이어 붙는다.
+   *
+   * 해설이 단 끝을 넘어가면 「답」 배지가 다음 쪽 첫 단에 홀로 남는다.
+   * 쪽마다 따로 읽으면 그 배지 앞에 항목이 없어 통째로 버려지고, 문항은
+   * **해설은 있는데 답만 빈** 상태가 된다 (0288·0655 등 23건 실측).
+   * 학생 채점에 바로 쓰이는 자리라 비면 그 문항은 못 낸다.
+   */
+  carry?: ParsedAnswer | null,
 ): ParsedAnswer[] {
   const columnWidth = page.width / profile.columns;
   const columnOf = (x: number): number =>
@@ -684,7 +694,9 @@ export function parseAnswerPage(
     );
 
   const out: ParsedAnswer[] = [];
-  let current: ParsedAnswer | null = null;
+  /* 넘겨받은 항목은 out에 담지 않는다 — 앞 쪽이 이미 내놓았고, 여기서는
+   * 같은 객체에 이어 쓰기만 한다. */
+  let current: ParsedAnswer | null = carry ?? null;
   let inAnswer = false;
   /** 답 뒤에 붙는 곁다리 상자 — 여기서부터는 정답이 아니다 */
   let answerClosed = false;
@@ -942,11 +954,18 @@ export function parseAnswers(
   profile: AnswerProfile,
 ): Map<string, ParsedAnswer> {
   const byNumber = new Map<string, ParsedAnswer>();
+  /* 답을 못 받은 채 쪽이 끝나면 다음 쪽으로 넘긴다. **답이 이미 있으면
+   * 넘기지 않는다** — 새 대단원이 시작하는 쪽의 머리글이 멀쩡한 항목에
+   * 달라붙지 않게 하는 최소한의 울타리다. */
+  let carry: ParsedAnswer | null = null;
   for (const page of dump.pages) {
-    for (const parsed of parseAnswerPage(page, profile)) {
+    const parsedPage = parseAnswerPage(page, profile, carry);
+    for (const parsed of parsedPage) {
       // 같은 번호가 두 번 나오면 앞엣것을 남긴다 (뒤는 「다시 풀기」 참조다)
       if (!byNumber.has(parsed.printedNumber)) byNumber.set(parsed.printedNumber, parsed);
     }
+    const last = parsedPage[parsedPage.length - 1] ?? carry;
+    carry = last && last.answer.length === 0 ? last : null;
   }
   return byNumber;
 }
