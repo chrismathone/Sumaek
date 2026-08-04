@@ -213,7 +213,15 @@ if (existingSession) {
 /* ── 개별 일정에도 얹는다 — 학생의 「오늘」은 개별 일정(learner_schedule_
  * items)이 있으면 반 세션을 **무시한다** (today-context의 우선순위). 데모
  * 학생에게는 기존 데모 일정이 이미 있어서, 여기 안 얹으면 1단원이 학생
- * 화면에 영영 안 나온다 — 실제 화면으로 확인한 함정이다. */
+ * 화면에 영영 안 나온다 — 실제 화면으로 확인한 함정이다.
+ *
+ * **10:00에 시작하는 이유** (09:00이 아니다): 09:00–10:00은 db:seed(080·081,
+ * seed_demo)와 e2e materials.spec(e2e_materials)이 같은 학생에게 쓰는 칸이다.
+ * 여기가 09:00부터 잡으면 배타 제약(learner_schedule_items_no_overlap)으로
+ * 세 도구가 서로를 죽였다 — db:seed가 통째로 실패했고(2026-08-03 실측),
+ * e2e 픽스처가 이 행을 지웠다(2026-08-04 실측). 10:00 시작이면 셋이 공존한다.
+ * 오늘 화면에는 두 칸이 다 나온다(가감법 09–10시 + 1단원 10–22시) —
+ * 그것이 맞다: 개별 일정이 여러 개면 다 오늘 몫이다. */
 const [existingItem] = await sql<{ id: string }[]>`
   select id::text from learner_schedule_items
   where organization_id = ${ORG} and learner_id = ${learner.id}
@@ -223,7 +231,9 @@ if (existingItem) {
   await sql`
     update learner_schedule_items
     set planned_node_ids = ${sql.json([nodeId] as never)},
-        session_id = ${sessionId}, updated_at = now()
+        session_id = ${sessionId},
+        starts_at = ${`${today}T10:00:00+09:00`},
+        ends_at = ${`${today}T22:00:00+09:00`}, updated_at = now()
     where id = ${existingItem.id}
   `;
 } else {
@@ -234,7 +244,7 @@ if (existingItem) {
       reason_codes, matches_group
     ) values (
       ${uuidv7()}, ${ORG}, ${learner.id}, ${groupId}, ${sessionId},
-      ${today}::date, ${TZ}, ${`${today}T09:00:00+09:00`},
+      ${today}::date, ${TZ}, ${`${today}T10:00:00+09:00`},
       ${`${today}T22:00:00+09:00`}, ${sql.json([nodeId] as never)},
       ${sql.json(["demo_unit1_verification"] as never)}, true
     )

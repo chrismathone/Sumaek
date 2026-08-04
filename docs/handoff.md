@@ -30,10 +30,10 @@
 | 권한 | `is_auto_assignable`은 여전히 전부 `false` · 사용권은 **2026-08-04 `usable`로 확정** | 아래 6절 |
 
 > **2026-08-04 소유자 판단으로 사용권이 `usable`로 확정됐고 검수도 일괄 통과했다**
-> (published 208 · 추출 결함 격리 2 — `#0106`·`#0120` · 그림 3건은 layout 검수 대기).
-> 그래서 **연습문제는 흐른다.** 다만 `is_auto_assignable`은 여전히 전부 `false`라
-> **평가 자동 출제 풀에는 안 들어가 있다** — 그 개방은 별도 판단이다. 경위·감사
-> 기록·재실측 SQL·잔여 내용 검수는 [handoff-learn.md](handoff-learn.md) 4절.
+> (published 197 · 추출 결함 격리 13 · 절단 지시문 v2 복원 12 · 그림 3건은 layout
+> 검수 대기). 그래서 **연습문제는 흐른다.** 다만 `is_auto_assignable`은 여전히 전부
+> `false`라 **평가 자동 출제 풀에는 안 들어가 있다** — 그 개방은 별도 판단이다.
+> 경위·감사 기록·재실측 SQL·잔여 내용 검수는 [handoff-learn.md](handoff-learn.md) 4절.
 
 DB 전체 문항 584개 중 371개는 시드이고, RPM 반입분은 `source_ref is not null`로
 정확히 갈린다.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { submitPracticeAction, type PracticeResult } from "./actions";
 
 /* 연습문제 한 묶음 — 한 화면에서 다 풀고 한 번에 채점받는다.
@@ -12,6 +12,51 @@ export interface PracticeItem {
   kind: string;
   bodyHtml: string;
   choices: Array<{ choiceId: string; order: number; html: string }> | null;
+  /** 정답이 ◯·△·× 기호인 문항 — 기호 칩을 보여 준다 (서버가 판정) */
+  symbolInput: boolean;
+}
+
+/* 판별 문항의 답은 키보드로 칠 수 없는 기호다(◯·△·×). 칩 셋은 고정이다 —
+ * 문항이 요구하는 둘만 보여 주면 남은 하나가 정답 후보를 좁혀 준다.
+ * 어느 둘이 유효한지는 발문이 이미 말한다. 입력창은 그대로 두어 직접
+ * 타이핑(o·x·ㅇ)도 받는다 — 채점기가 동치로 인정한다. */
+const ANSWER_SYMBOLS = ["◯", "△", "×"] as const;
+
+function ShortAnswerInput({
+  name,
+  symbolInput,
+}: {
+  name: string;
+  symbolInput: boolean;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="mt-3">
+      {symbolInput && (
+        <div className="mb-1.5 flex gap-1.5" role="group" aria-label="기호로 답하기">
+          {ANSWER_SYMBOLS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={value === s}
+              onClick={() => setValue(s)}
+              className="h-9 w-9 rounded-[var(--radius-control)] border border-rule text-base leading-none aria-pressed:border-pen aria-pressed:bg-pen-soft/30"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <input
+        name={name}
+        type="text"
+        placeholder="답"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="block w-48 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm focus:border-pen focus:outline-none"
+      />
+    </div>
+  );
 }
 
 export function PracticeForm({
@@ -68,11 +113,9 @@ export function PracticeForm({
                       ))}
                     </fieldset>
                   ) : (
-                    <input
+                    <ShortAnswerInput
                       name={`a-${q.key}`}
-                      type="text"
-                      placeholder="답"
-                      className="mt-3 block w-48 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm focus:border-pen focus:outline-none"
+                      symbolInput={q.symbolInput}
                     />
                   )}
                 </div>

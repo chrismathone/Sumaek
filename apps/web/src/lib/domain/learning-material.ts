@@ -151,6 +151,33 @@ interface PracticeQuestionRow {
   answer: unknown;
 }
 
+/* 자동 선별에서 빼는 문항 — 연습 화면의 「한 칸 입력 + 즉시 채점」과 맞지
+ * 않는 것들이다. 문제은행에는 그대로 남는다(시험지·지정 출제에는 쓸 수 있다).
+ * ① 정답 정보가 없는 문항 — 채점이 건너뛰어 「채점할 수 없었습니다」가 된다.
+ * ② 다항 나열형(⑴⑵…)·줄바꿈·긴 서술 정답 — 정확 일치 채점으로는 학생이
+ *    맞혀도 맞다고 판정할 수 없다 (RPM #0105·#0119에서 실측). */
+function autoPickable(row: PracticeQuestionRow): boolean {
+  if (row.kind === "multiple_choice") {
+    /* 복수 정답 객관식은 화면이 라디오(단일 선택)라 맞힐 방법이 없다 —
+     * 체크박스 UI가 생기기 전에는 자동 선별에서 뺀다 */
+    const correct = (row.answer as { correctChoiceIds?: unknown[] } | null)
+      ?.correctChoiceIds;
+    return Array.isArray(correct) && correct.length === 1;
+  }
+  const accepted = (row.answer as { accepted?: { value?: unknown }[] } | null)
+    ?.accepted;
+  if (!Array.isArray(accepted) || accepted.length === 0) return false;
+  return accepted.every((a) => {
+    const value = a?.value;
+    if (typeof value !== "string" || value.length === 0) return false;
+    if (/[⑴⑵⑶⑷⑸⑹\n]/.test(value)) return false;
+    /* 분수·근호 꼴 정답은 일반 텍스트 입력으로 같은 표기를 만들 수 없다 —
+     * 수식 입력 UI가 생기기 전에는 자동 선별에서 뺀다 */
+    if (/\\frac|\\sqrt/.test(value)) return false;
+    return value.length <= 40;
+  });
+}
+
 export interface PracticeQuestion {
   assessmentQuestionId: string; // 연습에서는 question_version_id를 키로 쓴다
   questionId: string;
@@ -214,27 +241,35 @@ export async function listPracticeQuestions(input: {
         from questions q
         join question_versions v on v.id = q.current_version_id
         join content_rights r on r.id = q.content_right_id and r.status = 'usable'
+        /* 미검수 AI 제안으로는 학생에게 문항을 내보내지 않는다 */
+        join question_alignments a
+          on a.question_id = q.id and a.concept_id = ${material.concept_id}
+         and a.provenance <> 'ai_suggested'
         where q.organization_id = ${input.organizationId}
           and q.review_status = 'published'
-          and exists (
-            select 1 from question_alignments a
-            where a.question_id = q.id and a.concept_id = ${material.concept_id}
-              /* 미검수 AI 제안으로는 학생에게 문항을 내보내지 않는다 */
-              and a.provenance <> 'ai_suggested'
-          )
-        order by q.created_at
-        limit ${input.limit ?? 5}
+        group by q.id, v.id
+        /* 전담 정렬(weight 1.0) 우선 — 한 문항이 여러 개념에 걸치면 weight가
+         * 분산되어(0.33…) 뒤로 밀린다. 이 정렬이 없으면 교재 맨 앞 문항이
+         * 개념과 무관하게 모든 개념의 연습에 나온다 — 소인수분해 연습에
+         * 소수 판별 문항이 나오는 것을 실제 화면에서 확인했다(2026-08-04). */
+        order by max(a.weight) desc nulls last, q.created_at
+        /* 아래 autoPickable로 걸러낼 몫까지 넉넉히 가져와 개수를 채운다 */
+        limit ${(input.limit ?? 5) * 4}
       `;
 
   /* 지정 순서 복원 — SQL의 any()는 배열 순서를 지켜 주지 않는다.
    * 검수에서 빠지거나 권한이 막힌 문항은 조용히 사라진다(위 where가 거른다).
-   * 그것이 맞다: 낼 수 없는 문항을 순서 맞추자고 낼 수는 없다. */
+   * 그것이 맞다: 낼 수 없는 문항을 순서 맞추자고 낼 수는 없다.
+   *
+   * 자동 선별에는 autoPickable을 한 겹 더 건다 — 문항이 나빠서가 아니라
+   * 이 화면과 안 맞아서다. 교사 지정(questionIds)은 거르지 않는다:
+   * 지정은 교사의 선택이고, 지정 화면이 그 결과를 함께 보여 준다. */
   const ordered =
     curated.length > 0
       ? curated
           .map((id) => rows.find((r) => r.question_id === id))
           .filter((r): r is PracticeQuestionRow => r !== undefined)
-      : rows;
+      : rows.filter(autoPickable).slice(0, input.limit ?? 5);
 
   return ordered.map((r) => ({
     assessmentQuestionId: r.version_id,

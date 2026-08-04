@@ -344,9 +344,11 @@ select id, item_date, starts_at, ends_at, reason_codes
 된다. 자기 행(같은 id)은 제외하므로 날이 바뀌면 `do update`가 정상적으로
 오늘로 옮긴다.
 
-**`materials.spec.ts`는 여전히 이 행에 걸린다.** 스펙이 양보해야 하는지
-데모 세팅이 22시까지 잡는 것이 과한지는 판단이 필요해 손대지 않았다 —
-돌리려면 지금은 위 행을 지워야 한다.
+**2026-08-04에 세 번째 길로 풀었다**: `seed-unit1-demo`의 개별 일정이
+**10:00–22:00**으로 옮겨 갔다(4.6절). 09–10시는 시드(080·081)와 materials.spec의
+칸으로 남고, 검증 세팅은 그 뒤에 붙는다 — 셋이 공존하고 아무도 양보하지 않는다.
+단 route-builder류 「개별 일정 계산」은 루트에 없는 개별 항목을 지운다(제품
+동작으로 옳다) — 검증 일정이 사라졌으면 `seed-unit1-demo`를 다시 돌리면 된다(멱등).
 
 ### 4.5 학생 오늘 학습 고도화 (2026-08-04 · `5843cd2`)
 
@@ -361,20 +363,26 @@ select id, item_date, starts_at, ends_at, reason_codes
 나머지 넷과 미구현으로 남은 **개념 중심 통합** 설계는
 [handoff-learn.md](handoff-learn.md) 1·3절.
 
-### 4.6 RPM 게이트 개방 + 1단원 연습 자료 (2026-08-04)
+### 4.6 RPM 게이트 개방 + 1단원 연습 (2026-08-04)
 
 **소유자 판단**으로 RPM 중1-1 반입분의 사용권을 확정했다 — `content_rights` 1행
-`under_review`→`usable`, 검수 210건 일괄 `published`(그림 3건 제외), 그 직후 화면
-확인에서 나온 **풀 수 없는 문항 2건(`#0106`·`#0120`, 수식 탈락)은 `quarantined`로
-격리**했다. `is_auto_assignable`은 전부 `false` 그대로라 **평가 자동 출제는 여전히
-잠겨 있고 연습만 흐른다.** 전부 `audit_events`에 남겼다(문항 id 전문 포함).
+`under_review`→`usable`, 검수 210건 일괄 `published`(그림 3건 제외). 같은 날
+소유자 지적 세 건(기호 입력 불가·지시문 없는 문항·개념 불일치 출제)으로 이어서:
 
-1단원 개념 5종의 연습 자료 행은 `seed-unit1-demo.mts` **4단계**가 됐다(멱등,
-`question_ids` 빈 배열 → 자동 선별). 학생 화면 실측: `/learn/today` 4단계
-「남은 5건」, `/learn/practice` 개념 5종 × 문항 5건.
+- **깨진 문항 13건 격리**(수식·조건 탈락, 머리글 병합, 정답 불일치 1건 — 원칙 12)
+  · **절단 지시문 12건 v2 복원**(새 버전 + 감사, 제자리 덮어쓰기 없음)
+- **연습 자동 선별 배선**: 전담 정렬(weight) 우선 — 소인수분해 연습에 소인수분해
+  문항이 나온다. 채점 불가능형(정답 없음·복수정답 객관식·다항 나열·`\frac` 정답)
+  은 자동 선별 제외
+- **판별 문항 기호 칩 입력**(◯·△·×) + 채점 동치류(◯≡O≡ㅇ 등, 기준이 기호일
+  때만) + 식 표기 관용(`2^{2}`≡`2^2`) — core 채점, 테스트 6건·변이 검증
+- 검증반 개별 일정을 **10:00–22:00**으로 옮겨 4.4절의 세 도구 충돌(시드·e2e·검증
+  세팅) 해소
 
-경위·감사 기록·재실측 SQL(기대값 213·208·208)·잔여 내용 검수(표본 결함 3건 관찰)는
-[handoff-learn.md](handoff-learn.md) 4절이 정본이다.
+`is_auto_assignable`은 전부 `false` 그대로 — **평가 자동 출제는 잠겨 있고 연습만
+흐른다.** 1단원 연습 자료 행은 `seed-unit1-demo.mts` 4단계(멱등). 화면 실측:
+개념 5종 × 5문항, 칩 채점 5/5·혼합 채점 5/5. 재실측 SQL 기대값 **213·197·197**.
+경위·감사·잔여 내용 검수는 [handoff-learn.md](handoff-learn.md) 4절이 정본이다.
 
 ---
 
@@ -443,13 +451,12 @@ docker run -d --env-file .env --restart unless-stopped su-maek-worker
    pnpm curriculum:release publish --dry-run
    ```
    절차는 [runbooks/15-curriculum-release-publish.md](runbooks/15-curriculum-release-publish.md).
-2. **RPM 213문항 권한 개방 — 됐다(2026-08-04, 4.6절).** 소유자 판단으로 사용권
-   `usable` 확정 + 검수 일괄 통과(published 208 · 격리 2 · 그림 3 대기), 1단원 연습
-   자료 5행 — 학생 연습 칸이 실제 문항을 낸다. **남은 곁일 셋**은 별도 판단·작업이다:
-   ① 그림 문항 3건([handoff.md](handoff.md) 7.2절) ② **문항 내용 검수** — 일괄
-   개방이라 내용은 안 봤고, 표본에서 글자 파편 3건·지시문 상실(`#0121~0124`)이
-   나왔다([handoff-learn.md](handoff-learn.md) 4.6절) ③ 평가 자동 출제 개방
-   (`is_auto_assignable`) 여부.
+2. **RPM 213문항 권한 개방 — 됐다(2026-08-04, 4.6절).** 사용권 `usable` 확정 +
+   검수 일괄 통과, 표면 결함 수리까지(published 197 · 격리 13 · v2 복원 12 · 그림 3
+   대기) — 학생 연습 칸이 **자기 개념의 문항을** 낸다. **남은 곁일 셋**:
+   ① 그림 문항 3건([handoff.md](handoff.md) 7.2절) ② **문항 내용 전수 검수** —
+   표면 25칸 밖은 안 봤다. 휴리스틱·검산법은 [handoff-learn.md](handoff-learn.md)
+   4.6절 ③ 평가 자동 출제 개방(`is_auto_assignable`) 여부.
 3. **[handoff.md](handoff.md) 7절의 반입 결함 4건** — 개념 매핑표 키 충돌(지금
    조용히 틀리고 있다), 그림 문항 3건, 변형 저장 경로 부재, 파서 단위 테스트 부재.
 4. **🟡 32건 승격** — 근거란에 각각 무엇이 모자란지 적혀 있다.
@@ -463,7 +470,7 @@ docker run -d --env-file .env --restart unless-stopped su-maek-worker
 - 교사 달력 `apps/web/src/app/app/calendar/page.tsx`가 월 계산 30여 줄을 그대로
   들고 있다 — `apps/web/src/lib/calendar/month.ts`로 합칠 수 있다.
 - `e2e/visual-check.mjs`에 학생 화면이 없다(교사 6화면만).
-- 4.4절의 데모 세팅 대 스펙 충돌.
+- ~~4.4절의 데모 세팅 대 스펙 충돌~~ — 2026-08-04 해소(검증 일정 10:00 이동, 4.4절).
 
 ---
 

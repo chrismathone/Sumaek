@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { symbolAnswerClass } from "@su-maek/core/grading";
 import { renderMixedText } from "@su-maek/core/math";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { todayInKst } from "@/lib/format";
@@ -26,6 +27,18 @@ function runsToText(runs: ContentRun[]): string {
   return runs
     .map((r) => (r.kind === "math" ? `$${r.math?.latex ?? ""}$` : (r.text ?? "")))
     .join("");
+}
+
+/* 정답이 전부 ◯·△·× 계열 기호인 문항인지 — 화면에는 이 **불리언만**
+ * 내려간다. 정답 값 자체는 클라이언트로 보내지 않는다. 칩 셋(◯·△·×)이
+ * 고정이므로 불리언이 정답을 좁혀 주지도 않는다. */
+function isSymbolAnswer(answerKey: unknown): boolean {
+  const accepted = (answerKey as { accepted?: { value?: unknown }[] } | null)
+    ?.accepted;
+  if (!Array.isArray(accepted) || accepted.length === 0) return false;
+  return accepted.every(
+    (a) => typeof a?.value === "string" && symbolAnswerClass(a.value) !== null,
+  );
 }
 
 function blocksToText(body: unknown): string {
@@ -60,6 +73,7 @@ export default async function PracticePage() {
         key: q.assessmentQuestionId,
         number: i + 1,
         kind: q.kind,
+        symbolInput: q.kind !== "multiple_choice" && isSymbolAnswer(q.answerKey),
         bodyHtml: renderMixedText(blocksToText(q.body), "publish").html,
         choices: Array.isArray(q.choices)
           ? (q.choices as Array<{
