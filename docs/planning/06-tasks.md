@@ -273,6 +273,7 @@ Set-Location ..\Su-Maek-t1-2-day-db
 - `packages/db/src/schema/learning.ts`
 - `packages/db/src/domain/learner-day-plan.ts`
 - `packages/db/migrations/0016a_learner_day_plans.sql` (T0.2가 선점한 번호 — 수기 SQL은 `NNNNa_`)
+- `packages/db/src/checks/invariants.sql` (I-21·I-22 실행 쿼리 추가 — 원문은 `docs/phase0/state-machines.md` §13.1에 이미 있다)
 - `packages/db/test/learner-day-plan.test.ts`
 
 **인수 조건**:
@@ -1232,7 +1233,7 @@ Set-Location ..\Su-Maek-t6-4-release
    pnpm --filter @su-maek/worker exec vitest run test/status/autonomous-flow-status.test.ts
    # Expected: PASSED
    ```
-3. **REFACTOR**: 런북·README·인수 현황을 실제 명령과 맞추고 오래된 한계 문구를 제거한다.
+3. **REFACTOR**: 런북·README·인수 현황을 실제 명령과 맞추고 오래된 한계 문구를 제거한다. **「불변 조건 20개」 문구 정합**을 포함한다 — ADR-0017이 I-21·I-22를 더해 22개가 됐고, `docs/phase0/backup-recovery.md`(3곳), `docs/runbooks/05-db-failure-pitr.md`(2곳), `docs/runbooks/README.md`, `packages/db/src/checks/invariants.sql`(헤더 주석)이 아직 20개로 적혀 있다.
 
 **산출물**:
 - `apps/worker/src/status.ts`
