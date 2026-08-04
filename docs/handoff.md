@@ -585,7 +585,8 @@ figureBoxes · figureLabels · extractedBy{profile,version}
 |---|---|---|
 | 성취기준 코드(`[9수01-01]`) | `ConceptDefinition`에 필드 자체가 없다 | 완전 신규 구축 대상 |
 | 원본 PDF 객체 스토리지 업로드 | `storage_path`가 `local:…` | 미구현 |
-| `books`·`book_editions` 유니크 색인 | 없음 — 동시 실행 시 중복 생성 가능 | 실무상 문제 없었음 |
+| `books`·`book_editions` 유니크 색인 | 없음 | 판 중복은 안 났지만 **문항은 중복됐다** — 아래 |
+| `load`를 **두 번 겹쳐 돌리면 문항이 중복된다** | 멱등 검사(`printed_number`)가 트랜잭션 밖이라 둘 다 「없다」를 본다. 2026-08-05에 중3-2가 673 대신 1075가 됐다 — 배경 작업을 중지해도 자식 프로세스가 살아 있었던 탓이다 | `delete-ingested --textbook=…` 후 **한 번만** 다시 넣는다 |
 | drizzle 스냅샷 | `meta/_journal.json`이 0000~0005만 — 수기 SQL 12개(0001a·0002a·0004a·0005a·0006a~0013a)가 빠져 있다. 그중 `0001a_rls_core.sql`이 3.1절이 기대는 외래키를 만든다 | `drizzle-kit push` **금지** |
 
 ---
