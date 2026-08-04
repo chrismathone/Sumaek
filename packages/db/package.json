@@ -12,6 +12,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text",
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/index.ts",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "3.2.7",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.0",
     "tsx": "^4.19.0",

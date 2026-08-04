@@ -1,7 +1,7 @@
 -- ============================================================
 -- 시스템 불변 조건 검증 하네스
 --
--- 근거: docs/phase0/state-machines.md 13장(불변 조건 20개)
+-- 근거: docs/phase0/state-machines.md 13장(불변 조건 22개)
 --       docs/phase0/backup-recovery.md 5.1 V-1
 --       docs/runbooks/05-db-failure-pitr.md 4-5·6장 V-1
 --
@@ -11,6 +11,7 @@
 --       psql "$DATABASE_URL" -f 로 통째로 실행해도 같은 결과가 나온다.
 --
 -- 구성: I-01~I-20 = 골프롬프트 2E 불변 조건 20개
+--       I-21~I-22 = 하루 완료·반 마감 분리 (ADR-0017, 0016a 마이그레이션 이후)
 --       R-01~R-08 = 복구 검증용 보조 검사 (참조 무결성·테넌시·시각·큐 위생)
 --
 -- 주의: 이 파일은 실제 스키마(packages/db/src/schema/*.ts)의 컬럼명을 따른다.
@@ -573,6 +574,59 @@ select
 from integration_connections ic
 where ic.status = 'connected'
   and (ic.allowed_fields is null or jsonb_array_length(ic.allowed_fields) = 0);
+
+
+-- CHECK: I-21 학습자 하루 완료가 반 sessions를 직접 바꾸지 않는가
+-- 근거: state-machines.md I-21, ADR-0017 §1. 반 마감은 progress_events를
+-- 반드시 남긴다 — 남기지 않은 완료 수업은 학생 완료가 넘어온 것이다.
+-- 한 학생의 클릭이 반 30명의 미래 일정을 잠그면 I-05가 그 반의 재계산을 막는다.
+select
+  '교사 마감 기록 없이 완료된 수업'::text as issue,
+  s.id::text as session_id,
+  s.session_date::text as session_date
+from sessions s
+where s.status = 'completed'
+  and not exists (select 1 from progress_events pe where pe.session_id = s.id);
+
+
+-- CHECK: I-22 하루 완료가 불변이고 이벤트가 1회인가
+-- 근거: state-machines.md I-22, ADR-0017 §6. completed_at을 지우고 다시 채우는
+-- 설계는 소비자(숙련도·일정 엔진)에게 같은 날을 두 번 흘려보낸다.
+select
+  '완료 계획 1건에 LearnerDayCompleted 2회 이상'::text as issue,
+  (payload->>'learner_day_plan_id')::text as plan_id,
+  count(*)::text as occurrences
+from outbox_events
+where event_type = 'LearnerDayCompleted'
+group by 1, 2
+having count(*) > 1
+union all
+select
+  '필수 항목이 남았는데 완료로 표시됨'::text,
+  p.id::text,
+  p.plan_date::text
+from learner_day_plans p
+where p.status = 'completed'
+  and exists (
+    select 1 from learner_day_plan_items i
+    where i.learner_day_plan_id = p.id
+      and i.required
+      and i.status not in ('completed', 'exempted')
+  )
+union all
+select
+  'completed인데 완료 시각 없음'::text,
+  p.id::text,
+  p.plan_date::text
+from learner_day_plans p
+where p.status = 'completed' and p.completed_at is null
+union all
+select
+  '완료된 적 없는데 재개방 기록만 있음'::text,
+  p.id::text,
+  p.plan_date::text
+from learner_day_plans p
+where p.reopened_at is not null and p.completed_at is null;
 
 
 -- ============================================================

@@ -356,6 +356,147 @@ export const makeupSessionStatus = pgEnum("makeup_session_status", [
   "cancelled",
 ]);
 
+/* ─────────────────────────────────────────────────────────────
+ * 학생 실행층 (③) — ADR-0018 §1·§2.
+ *
+ * 위의 learner_schedule_items(②)를 **대체하지 않는다.** ②는 "이 학생이
+ * 언제 어떤 노드를 하나"까지만 답하는 엔진 산출물이고, 일정이 바뀔 때마다
+ * 덮어써야 한다. ③은 "이 학생이 오늘 무엇을 하고 끝냈나"이고 완료 이력이
+ * 역행하면 안 된다. 한 테이블에 두면 재계산마다 「덮어써도 되는 행」과
+ * 「건드리면 안 되는 행」을 런타임에 갈라야 하고, 그 판단이 틀리는 순간
+ * 학생의 완료 기록이 사라진다.
+ *
+ * ②의 노드 목록을 자료·평가·복습·숙제 항목으로 **펼친** 결과가 ③이다.
+ * 펼치는 규칙은 노드 실행기(packages/core/src/learning)가 가진다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 하루 계획이 어디서 나왔나 — ②가 있으면 ①을 섞지 않는다 */
+export const learnerDayPlanSource = pgEnum("learner_day_plan_source", [
+  "learner_schedule", // learner_schedule_items (개인 경로)
+  "group_session", // sessions (반 공통 fallback)
+  "review_only", // 수업 없는 날의 복습만
+]);
+
+/**
+ * 하루 상태. `empty`는 저장하지 않는다 — 항목이 없는 날은 행 자체가 없거나
+ * 항목이 0건이며, 화면이 파생으로 계산한다 (packages/core decideDayStatus).
+ */
+export const learnerDayPlanStatus = pgEnum("learner_day_plan_status", [
+  "not_started",
+  "in_progress",
+  "blocked",
+  "completed",
+]);
+
+export const learnerDayPlanItemKind = pgEnum("learner_day_plan_item_kind", [
+  "reading",
+  "video",
+  "practice",
+  "assessment",
+  "review",
+  "book_range",
+  "homework",
+]);
+
+/**
+ * 항목 상태. `blocked`(고쳐야 할 사고)와 `exempted`(교사의 판단)를 합치지
+ * 않는다 — 합치면 자료를 안 올린 사고가 「면제됨」으로 위장된다 (ADR-0017 §2).
+ */
+export const learnerDayPlanItemStatus = pgEnum("learner_day_plan_item_status", [
+  "pending",
+  "in_progress",
+  "completed",
+  "blocked",
+  "exempted",
+]);
+
+/** 학생 하루 실행 계획 — 한 학생·한 날짜에 하나 */
+export const learnerDayPlans = pgTable(
+  "learner_day_plans",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    learnerId: uuid("learner_id").notNull(),
+    /** 워크스페이스 시간대(KST) 기준 날짜 — 시간대 ID와 함께 보존 (I-14) */
+    planDate: date("plan_date").notNull(),
+    timezone: text("timezone").notNull(),
+    /** 복습만 있는 날이면 null */
+    learningGroupId: uuid("learning_group_id"),
+    source: learnerDayPlanSource("source").notNull(),
+    /** learner_schedule_items.id 또는 sessions.id */
+    sourceRefId: uuid("source_ref_id"),
+    status: learnerDayPlanStatus("status").notNull().default("not_started"),
+    /** 학생이 그날 처음 연 시각 — 이후 필수 분모는 늘지 않는다 (ADR-0017 §4) */
+    materializedAt: timestamp("materialized_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** 설정 후 불변 (I-22). 완료 취소도 이 값을 지우지 않는다 */
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** 교사의 완료 취소 — completed_at을 지우는 대신 이것을 더한다 */
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+    reopenedBy: uuid("reopened_by"),
+    reopenReason: text("reopen_reason"),
+    /** 같은 입력이면 같은 값 — 투영 결정론 검증 (I-12 계열) */
+    projectionHash: text("projection_hash").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("learner_day_plans_uq").on(
+      t.organizationId,
+      t.learnerId,
+      t.planDate,
+    ),
+    // 교사 현황판(T4.4)이 날짜·상태로 훑는다
+    index("learner_day_plans_date_status_idx").on(
+      t.organizationId,
+      t.planDate,
+      t.status,
+    ),
+    index("learner_day_plans_group_date_idx").on(
+      t.organizationId,
+      t.learningGroupId,
+      t.planDate,
+    ),
+  ],
+);
+
+/** 하루 계획의 항목 — 노드를 펼친 결과 */
+export const learnerDayPlanItems = pgTable(
+  "learner_day_plan_items",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    learnerDayPlanId: uuid("learner_day_plan_id").notNull(),
+    /**
+     * 투영기가 만드는 안정 키(`kind:refId` 꼴). 재투영 멱등의 기준이라
+     * 같은 항목은 언제 투영해도 같은 키를 가져야 한다.
+     */
+    itemKey: text("item_key").notNull(),
+    ordinal: integer("ordinal").notNull().default(0),
+    kind: learnerDayPlanItemKind("kind").notNull(),
+    required: boolean("required").notNull(),
+    /** 복습처럼 노드에서 나오지 않는 항목은 null */
+    routeNodeId: uuid("route_node_id"),
+    refType: text("ref_type"),
+    refId: uuid("ref_id"),
+    /** 그날 학생이 실제로 본 문구 — 원본 제목이 바뀌어도 기록은 그대로 (I-08 성질) */
+    titleSnapshot: text("title_snapshot").notNull(),
+    status: learnerDayPlanItemStatus("status").notNull().default("pending"),
+    /** 준비도 게이트(T2.4)와 같은 코드 레지스트리를 쓴다 */
+    blockedReason: text("blocked_reason"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** 확정 후에 붙은 항목은 선택이다 — 왜 선택인지를 데이터로 남긴다 */
+    addedAfterMaterialization: boolean("added_after_materialization")
+      .notNull()
+      .default(false),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("learner_day_plan_items_uq").on(t.learnerDayPlanId, t.itemKey),
+    index("learner_day_plan_items_order_idx").on(t.learnerDayPlanId, t.ordinal),
+  ],
+);
+
 /** 보강 수업 — 원 수업과 대상 학습자를 연결 */
 export const makeupSessions = pgTable(
   "makeup_sessions",
