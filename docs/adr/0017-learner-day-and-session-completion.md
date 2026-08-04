@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 상태 | **채택됨** (2026-08-04) |
+| 상태 | **제안됨** (2026-08-04) — 제품 책임자 승인 대기 (T0.1 완료 조건 4) |
 | 결정자 | 수맥 팀 |
 | 관련 | `docs/planning/06-tasks.md` T0.1 · [ADR-0018](./0018-daily-plan-projection-and-assessment-scheduler.md) · `docs/phase0/state-machines.md` §12·§13 · `docs/phase0/event-catalog.md` E-02·E-16 |
 

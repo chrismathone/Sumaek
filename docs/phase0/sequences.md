@@ -1,6 +1,7 @@
 # 핵심 흐름 시퀀스 다이어그램
 
 > 골프롬프트 2A(최소 시퀀스 다이어그램 대상 8종) 이행 문서.
+> S-9·S-10은 [ADR-0017](../adr/0017-learner-day-and-session-completion.md)·[ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 더한 것으로 **아직 구현 전**이다(T1.3·T4.1·T4.2).
 > 관련: [api-contract.md](./api-contract.md) · [event-catalog.md](./event-catalog.md) · [state-machines.md](./state-machines.md)
 
 ## 참여자 표기
@@ -212,6 +213,12 @@ sequenceDiagram
     DB->>DB: INSERT assignments (학생별, delivery, due_at)
     Note over DB: 배정 후 스냅샷은 불변.<br/>이후 원본 문항이 바뀌어도 이 시험은 바뀌지 않는다.
 ```
+
+---
+
+> **미구현 (2026-08-04)**: 이 시퀀스의 `W:스케줄러`가 **아직 없다.** `apps/worker/src/registry.ts`에 `assessment.*` 핸들러가 등록돼 있지 않고, 지금은 교사가 `/app/tests`에서 버튼을 눌러야 생성된다. T3.2가 채운다.
+>
+> **⚠ 둘째 겹 멱등이 반 공통 평가에는 걸리지 않는다.** 위 `jobs` 유니크는 정상이지만, 그 뒤를 받치는 `assessment_instances`의 `assessments_idempotent_uq`는 `learning_group_id`·`learner_id`가 nullable이라 `learner_id IS NULL`인 반 공통 평가의 중복을 막지 못한다(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다). 위 다이어그램의 `idempotency_key`가 학생을 포함하는 것은 맞는 설계이고, **DB 인덱스 쪽이 그 설계를 따라가지 못한 상태**다. 수정 SQL은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §5, 태스크는 T3.2(G-15).
 
 ---
 
@@ -580,6 +587,104 @@ sequenceDiagram
 
 ---
 
+## S-9. 학생 하루 계획 확정과 완주
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor S as 학생
+    participant Web as /learn/today
+    participant Proj as 하루 계획 투영기
+    participant DB
+    participant Core as core:day-plan
+
+    S->>Web: 로그인 후 오늘 학습 열기
+    Web->>Proj: projectDay(learner, today KST)
+    Proj->>DB: SELECT learner_schedule_items WHERE item_date = today
+    alt 개인 일정 있음
+        Note over Proj: source='learner_schedule'
+    else 개인 일정 없음
+        Proj->>DB: SELECT sessions WHERE session_date = today<br/>JOIN 내가 속한 활성 반
+        Note over Proj: source='group_session'<br/>②가 있으면 ①을 섞지 않는다
+    end
+    Proj->>DB: 노드 → 자료·평가·복습·숙제로 펼치기 (노드 실행기)
+    Note over Proj,DB: 오늘 배정만. 미래 평가는 「예정」 표시일 뿐<br/>필수 분모에 넣지 않는다 (G-01 수정)
+
+    Proj->>DB: BEGIN
+    Proj->>DB: INSERT learner_day_plans (materialized_at=now)<br/>ON CONFLICT (org, learner, plan_date) DO NOTHING
+    Proj->>DB: UPSERT learner_day_plan_items<br/>ON CONFLICT (plan_id, kind, ref_id)
+    Proj->>DB: COMMIT
+    Note over Proj,DB: 재투영해도 행이 늘지 않는다.<br/>완료 계획은 재투영 대상에서 제외
+
+    Proj->>Core: decideDayStatus(items)
+    Core-->>Proj: blocked > completed > in_progress > not_started
+    Proj-->>Web: DayPlan view model
+    Web-->>S: 필수 항목만 순서대로 · 차단 항목은 사유와 함께
+
+    loop 항목마다
+        S->>Web: 자료 읽기 / 영상 / 연습 / 응시 / 숙제 확인
+        Web->>DB: 항목 status → completed (+ completed_at)
+        Web->>Proj: 해당 항목만 재투영
+    end
+
+    alt 필수 항목이 전부 completed | exempted
+        Web->>DB: BEGIN
+        Web->>DB: UPDATE learner_day_plans SET status='completed', completed_at=now<br/>WHERE status <> 'completed'  (CAS)
+        Web->>DB: INSERT outbox (LearnerDayCompleted)
+        Web->>DB: COMMIT
+        Note over Web,DB: CAS라 중복 호출은 0행 갱신 → outbox도 없다 (I-22)<br/>sessions는 건드리지 않는다 (I-21)
+    else 필수에 blocked 있음
+        Web-->>S: 「선생님께 알려 주세요」 + 차단 사유
+        Note over Web: 완료로 넘어가지 않는다
+    end
+```
+
+**교사 미리보기는 이 시퀀스를 타지 않는다.** `/app/readiness`(T5.4)는 투영기를 **읽기 전용 모드**로 호출해 `learner_day_plans` 행을 만들지 않는다 — 교사가 미리 본 것 때문에 학생의 `materialized_at`이 앞당겨지면 ADR-0017 §4의 스냅샷 시점이 무너진다.
+
+---
+
+## S-10. 교사 마감과 다음 일정 변경안
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as 선생님
+    participant Web as /app/classes/{id}
+    participant DB
+    participant WP as W:planning-engine
+    participant Core as core:scheduling
+
+    T->>Web: 반 현황 열기
+    Web->>DB: SELECT learner_day_plans WHERE plan_date = today<br/>GROUP BY status
+    Web-->>T: 완료 n · 진행 n · 막힘 n · 미시작 n<br/>(막힘은 사유별로)
+    Note over Web,T: 전원 완료여도 자동 마감하지 않는다 (ADR-0017 §1)
+
+    T->>Web: 실제 진행 범위 확인·수정 후 마감
+    Web->>DB: BEGIN
+    Web->>DB: UPDATE sessions SET status='completed', completed_at=now,<br/>actual_progress=... WHERE status <> 'completed'  (CAS)
+    Web->>DB: INSERT progress_events (node_completed | node_partial | node_skipped)
+    Web->>DB: INSERT outbox (SessionCompleted)
+    Web->>DB: COMMIT
+    Note over Web,DB: 셋이 한 트랜잭션. 재마감은 CAS가 0행으로 막는다
+
+    DB->>WP: SessionCompleted
+    DB->>WP: LearnerDayCompleted (학생별, 이미 쌓인 것)
+    DB->>WP: LearningAvailabilityChanged (불참 있으면)
+    WP->>DB: 미진행 노드 · 숙련도 · 불참 · 보강 조회
+    WP->>Core: calculateSchedule(baseline_at=now, 실제 진도 반영)
+    Note over Core: 과거·완료·잠금은 결과에서 제외 (I-05)<br/>학생 오버라이드는 반 루트를 바꾸지 않는다 (I-04)
+    Core-->>WP: 변경안 + risk 등급
+    alt 저위험
+        WP->>DB: 자동 적용 (정책이 auto일 때만)
+    else 고위험
+        WP->>DB: INSERT schedule_change_proposals (status='proposed')
+        WP->>DB: INSERT outbox (ScheduleProposalCreated)
+        Note over WP,DB: 승인 전에는 sessions가 바뀌지 않는다
+    end
+```
+
+---
+
 ## 시퀀스별 검증 대응표
 
 각 시퀀스가 어떤 테스트로 지켜지는지.
@@ -594,3 +699,5 @@ sequenceDiagram
 | S-6 | 미통과 → 보충 경로 → 재합류 | — | 오버라이드가 반 루트·타 학생 불변 |
 | S-7 | OCR → 정규화 → 게이트 → 게시 | 워커 중단·재시작 시 중복 산출물 0 | 정규화 멱등성·결정성 |
 | S-8 | 격리 + 재채점 영향 분석 | 격리와 평가 게시 경합 | 과거 기록 행 수 불변 |
+| S-9 | 하루 계획 확정 → 항목 완료 → 하루 완료 | 같은 학생·날짜 완료 10회 → outbox 1건 | 같은 입력 재투영 → 항목 행 수 불변 / 91일·89일 전 완료가 오늘 판정에 무관 |
+| S-10 | 교사 마감 → progress_events → SessionCompleted | 두 교사 동시 마감 → 1회 전이 | 전원 완료로도 sessions 불변 (I-21) / 승인 전 미래 세션 불변 |

@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 상태 | **채택됨** (2026-08-04) |
+| 상태 | **제안됨** (2026-08-04) — ADR-0017 승인과 함께 확정 |
 | 결정자 | 수맥 팀 |
 | 관련 | `docs/planning/06-tasks.md` T0.2 · [ADR-0017](./0017-learner-day-and-session-completion.md) · `docs/phase0/erd.md` §2 · `docs/phase0/event-catalog.md` E-16·E-17 · `packages/db/src/domain/learner-schedule.ts` |
 
@@ -138,11 +138,48 @@ T0.2의 원안은 `LearnerDayCompleted`, `DailyAssessmentGenerationRequested`, `
         키   (organization_id, learning_group_id, plan_date, purpose)
 ```
 
-**멱등은 두 겹이다.**
+**멱등은 두 겹이어야 한다.**
 1. `jobs`의 dedupe 키가 같은 작업의 중복 enqueue를 막는다.
-2. `assessment_instances`의 `UNIQUE (organization_id, learning_group_id, scheduled_date, purpose)`가 작업이 중복 실행돼도 평가가 둘 생기는 것을 막는다 — 이 유니크는 `apps/web/src/lib/domain/assessment.ts`가 이미 전제하고 있다.
+2. `assessment_instances`의 유니크 인덱스가 작업이 중복 실행돼도 평가가 둘 생기는 것을 막는다.
 
 한 겹으로 줄이지 않는 이유: ①만 있으면 워커 재시작 중 claim된 작업이 다시 돌 때 평가가 둘 생긴다. ②만 있으면 중복 작업이 매번 DB까지 가서 충돌하고 실패 로그를 남긴다.
+
+#### ⚠ 둘째 겹이 지금 반 공통 평가에는 걸리지 않는다
+
+현재 인덱스(`packages/db/migrations/0000_zippy_ender_wiggin.sql:1446`)는 이렇다.
+
+```sql
+CREATE UNIQUE INDEX assessments_idempotent_uq
+  ON assessment_instances (organization_id, learning_group_id, learner_id, scheduled_date, purpose)
+  WHERE status <> 'cancelled' AND scheduled_date IS NOT NULL;
+```
+
+`learning_group_id`와 `learner_id`는 **둘 다 nullable**이다(`packages/db/src/schema/assessment.ts:125,127`). 그런데 PostgreSQL의 유니크 인덱스는 기본적으로 **NULL을 서로 다른 값으로 취급**한다. 반 공통 일일테스트는 `learner_id IS NULL`이므로, 같은 `(org, group, date, purpose)` 행이 **몇 개든 들어간다.** 이 인덱스는 그 경우 아무것도 막지 않는다.
+
+지금 이것이 사고로 드러나지 않는 이유는 `apps/web/src/lib/domain/assessment.ts:88-99`가 INSERT 전에 SELECT로 먼저 확인하기 때문이다. 그러나 그것은 **SELECT-then-INSERT 경합**이다. 교사 버튼 한 개일 때는 좀처럼 겹치지 않지만, T3.2가 워커에 재시도와 재시작을 붙이는 순간 정확히 이 경로가 동시에 두 번 돈다.
+
+**T3.2가 고친다** (`0018a_assessment_idempotency_fix.sql`). NULL을 결정적 값으로 접어 인덱스에 넣는다 — PostgreSQL 버전에 의존하지 않는다.
+
+```sql
+DROP INDEX IF EXISTS assessments_idempotent_uq;
+CREATE UNIQUE INDEX assessments_idempotent_uq ON assessment_instances (
+  organization_id,
+  coalesce(learning_group_id, '00000000-0000-0000-0000-000000000000'::uuid),
+  coalesce(learner_id,        '00000000-0000-0000-0000-000000000000'::uuid),
+  scheduled_date,
+  purpose
+) WHERE status <> 'cancelled' AND scheduled_date IS NOT NULL;
+```
+
+대안은 PG15+의 `NULLS NOT DISTINCT`지만, 서버 버전에 묶이고 `SHOW server_version`으로 먼저 확인해야 한다. `coalesce` 쪽은 그 확인이 필요 없다.
+
+**작업 멱등 키는 인덱스와 같은 모양이어야 한다.**
+
+```
+assessment.generate:{org}:{group ?? '-'}:{learner ?? '-'}:{plan_date}:{purpose}
+```
+
+`docs/phase0/sequences.md` S-3(179행)이 `H(org,group,student,kind,scheduled_on)`으로 이미 학생을 키에 넣고 있다 — 그쪽이 맞다. 학생 개별 보충 평가와 반 공통 일일테스트가 같은 날 같은 반에 공존할 수 있기 때문이다. 반 공통은 학생 자리가 `-`(NULL)로 접힌다.
 
 **kill switch**: 기존 `kill_switches` 메커니즘을 그대로 쓴다. 꺼져 있는 동안 생산자는 작업을 만들지 **않고**, 이미 만들어진 작업은 `pending`으로 남아 재개 후 실행된다(작업을 버리지 않는다).
 

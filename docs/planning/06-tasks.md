@@ -42,6 +42,7 @@
 | G-12 | 담당 교사 `scoped` 메뉴와 실제 데이터 필터가 분리되어 있음 | 읽기·쓰기 모두 담당 범위 필터 집행 | P1 | T5.3 |
 | G-13 | `/learn` 8개 화면 중 4개만 오늘 범위를 공유해 완료 상태가 화면마다 갈릴 수 있음 | 모든 학생 화면이 같은 하루 계획을 읽음 | P0 | T1.3, T1.4 |
 | G-14 | 학생별 날짜 투영(`learner_schedule_items`)이 이미 있는데 새 계획 테이블과 관계가 미정 | 계획층·실행층 역할을 계약으로 분리 | P0 | T0.2 |
+| G-15 | `assessments_idempotent_uq`가 nullable 컬럼을 포함해 **반 공통 평가의 중복을 못 막는다**(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다). 지금은 SELECT-then-INSERT가 가리고 있으나 워커가 붙으면 경합이 드러난다 | DB 수준 멱등이 실제로 걸림 | P0 | T3.2 |
 
 ---
 
@@ -122,7 +123,7 @@
 
 ## M0: 제품 계약과 설계 기준선
 
-### [] Phase 0, T0.1: 하루 완료·수업 완료 제품 계약 확정
+### [~] Phase 0, T0.1: 하루 완료·수업 완료 제품 계약 확정
 
 **담당**: backend-specialist + product-owner
 
@@ -145,7 +146,7 @@
 - [ ] 과거·오늘·미래 평가의 노출 및 완료 판정 규칙이 명시됨
 - [ ] 제품 책임자의 승인 기록이 남음
 
-### [] Phase 0, T0.2: 데이터·이벤트·마이그레이션 설계 확정
+### [~] Phase 0, T0.2: 데이터·이벤트·마이그레이션 설계 확정
 
 **담당**: database-specialist + backend-specialist
 
@@ -165,6 +166,7 @@
 - `docs/phase0/event-catalog.md` (기존 갱신 — E-16~E-18 추가, 「이벤트 15종」 제목·소비자 등록부 갱신)
 - `packages/db/migrations/0016a_learner_day_plans.sql` **번호 선점** (T1.2가 채운다)
 - `packages/db/migrations/0017a_teacher_scope_rls.sql` **번호 선점** (T5.3이 채운다)
+- `packages/db/migrations/0018a_assessment_idempotency_fix.sql` **번호 선점** (T3.2가 채운다 — G-15)
 
 **완료 조건**:
 - [ ] `learner_schedule_items`와의 관계가 ADR에 근거와 함께 확정됨
@@ -175,7 +177,7 @@
 - [ ] 멱등·재시도·kill switch·DLQ 설계가 포함됨
 - [ ] 마이그레이션 번호 2개가 선점되어 병렬 태스크가 충돌하지 않음
 
-### [] Phase 0, T0.3: 사용자 흐름·수락 테스트 기준선 작성
+### [~] Phase 0, T0.3: 사용자 흐름·수락 테스트 기준선 작성
 
 **담당**: test-specialist + frontend-specialist
 
@@ -631,14 +633,21 @@ Set-Location ..\Su-Maek-t3-2-assessment-worker
    ```
 3. **REFACTOR**: lookahead, batch size, 재시도 간격을 운영 파라미터로 분리하고 heartbeat 상태에 생산자 상태를 포함한다.
 
+**선행 수리 (G-15)**: 착수 첫 커밋으로 `assessments_idempotent_uq`를 고친다. 현재 인덱스는 `learning_group_id`·`learner_id`가 nullable이라 **반 공통 평가(`learner_id IS NULL`)의 중복을 전혀 막지 못한다** — PostgreSQL은 유니크 인덱스에서 NULL을 서로 다른 값으로 본다. 지금은 `apps/web/src/lib/domain/assessment.ts:88-99`의 SELECT-then-INSERT가 가리고 있으나, 워커에 재시도·재시작이 붙는 순간 그 경합이 드러난다. 수정 SQL은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §5에 있다.
+
 **산출물**:
+- `packages/db/migrations/0018a_assessment_idempotency_fix.sql` (T0.2가 선점한 번호)
 - `apps/worker/src/handlers/assessment.ts`
 - `apps/worker/src/registry.ts`
 - `apps/worker/src/loop.ts`
 - `apps/worker/test/handlers/assessment-generation.test.ts`
+- `packages/db/test/assessment-idempotency.test.ts`
 
 **인수 조건**:
+- [ ] **인덱스 수리 검증**: 반 공통 평가(`learner_id IS NULL`)를 같은 `(org, group, date, purpose)`로 두 번 INSERT하면 두 번째가 DB에서 거부됨 — 수리 전에는 통과한다(RED로 먼저 확인)
 - [ ] 같은 반·날짜·목적은 작업과 평가가 각각 1건만 생성됨
+- [ ] 작업 멱등 키가 인덱스와 같은 모양임 (`{org}:{group ?? '-'}:{learner ?? '-'}:{date}:{purpose}`)
+- [ ] 학생 개별 보충 평가와 반 공통 일일테스트가 같은 날 같은 반에 공존 가능함
 - [ ] 수업일 전에 설정된 시점에 작업이 생성됨
 - [ ] kill switch 중에는 작업이 보존되고 재개 후 실행됨
 - [ ] 워커 재시작 후 누락·중복 없이 이어짐
