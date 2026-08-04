@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
+import { ensureDefaultAssessmentPolicies } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -112,8 +113,19 @@ export async function createLearningGroup(
     }
   });
   await audit(user.organizationId, user.userId, "settings.create-group", "learning_group", groupId, parsed.data.name);
+
+  /* 학원 기본 평가 정책을 여기서 보장한다 (T5.1 · T3.3에서 실측).
+   *
+   * 정책이 없으면 자동 생성이 **첫 실행에서** 실패하고, 그 실패 문구는
+   * 정책을 만들 수 없는 화면을 가리킨다. 지금까지 정책을 만드는 곳은
+   * 데모 시드뿐이라 새 학원은 전부 그 상태로 시작했다. 반이 생기는
+   * 순간이 정책이 필요해지는 순간이므로 여기서 채운다 — 멱등이라
+   * 두 번째 반부터는 아무 일도 하지 않는다. */
+  await ensureDefaultAssessmentPolicies(sql, user.organizationId);
+
   revalidatePath("/app/settings");
   revalidatePath("/app/classes");
+  revalidatePath("/app/setup");
   return {
     ok: true,
     message: `반 "${parsed.data.name}"을 만들었습니다 (주 ${weekdays.length}회 수업).`,
