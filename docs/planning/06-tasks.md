@@ -1030,7 +1030,7 @@ Set-Location ..\Su-Maek-t5-1-onboarding
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t5-1-onboarding`
 
-### [] Phase 5, T5.2: 학생 계정 제한 위임·일괄 발급·재설정 RED→GREEN
+### [x] Phase 5, T5.2: 학생 계정 제한 위임·일괄 발급·재설정 RED→GREEN
 
 **담당**: backend-specialist + frontend-specialist
 
@@ -1056,17 +1056,25 @@ Set-Location ..\Su-Maek-t5-2-student-accounts
 3. **REFACTOR**: 초기 비밀번호 1회 표시, 감사, rate limit, 부분 실패 결과를 공통 서비스로 정리한다.
 
 **산출물**:
-- `packages/core/src/authz/matrix.ts` 또는 operation capability 모듈
-- `apps/web/src/lib/domain/learner-account.ts`
-- `apps/web/src/app/app/students/accounts/page.tsx`
-- `apps/web/test/integration/student-account-admin.test.ts`
+- `packages/core/src/authz/capabilities.ts` — 작업 단위 권한(메뉴보다 좁은 단위)
+- `apps/web/src/lib/domain/learner-account.ts` — `listManageableLearners`·`issueLearnerAccounts`
+- `apps/web/src/app/app/students/accounts/{page.tsx,AccountsForm.tsx,actions.ts}` · `apps/web/src/lib/nav.ts`
+- `packages/core/test/authz/capabilities.test.ts` (6) · `apps/web/test/integration/student-account-admin.test.ts` (12)
 
 **인수 조건**:
-- [ ] 일반 교사가 settings 전체 권한 없이 담당 학생 계정만 관리 가능함
-- [ ] 타반·타조직 계정 발급은 거부됨
-- [ ] 초기 비밀번호는 저장·재표시되지 않음
-- [ ] 일괄 처리의 성공·실패가 학생별로 보고됨
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 일반 교사가 settings 전체 권한 없이 담당 학생 계정만 관리 가능함 — `settings` 쓰기는 여전히 없다
+- [x] 타반·타조직 계정 발급은 거부됨 — 목록과 집행이 **같은 조건**을 쓴다. 화면에 안 보이는 학생은 액션으로도 안 된다
+- [x] 초기 비밀번호는 저장·재표시되지 않음 — `users`·`learners` **행 전체**를 문자열로 훑어 확인한다(특정 컬럼만 보면 새 컬럼에 새는 것을 놓친다)
+- [x] 일괄 처리의 성공·실패가 학생별로 보고됨 — 한 명이 실패해도 나머지는 진행한다
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `capabilities.ts` 100% · `learner-account.ts` 83%
+
+**설계 판단**: 메뉴 권한을 넓혀서는 풀 수 없다. `settings` 쓰기를 교사에게 주면 조직 설정·킬 스위치·정책까지 함께 열린다. 계정 발급은 메뉴보다 **좁은** 단위라 그 단위를 새로 만들었다. 메뉴 매트릭스를 대체하지 않는다 — 화면 노출과 읽기 게이트는 그대로 메뉴가 정하고, 능력은 「그 화면 안에서 이 작업을 해도 되는가」만 정한다.
+
+능력이 **범위와 함께** 답한다(`assigned` / `organization` / `none`). 「할 수 있다」와 「누구에게 할 수 있다」를 화면이 두 걸음으로 물으면 한쪽을 빠뜨린다 — 학생 흐름에 실제로 그런 결손이 있었다(스코프 없는 저장 경로).
+
+거절 문구는 「담당 학생이 아닙니다」 하나로 뭉갠다. 담당 밖·타조직·보관됨을 구분해 알려 주면 담당이 아닌 반의 학생 존재 여부가 새어 나간다.
+
+**함께 채운 것**: `unlinkLearnerAccount`에 테스트가 하나도 없었다 — 학생에게서 로그인을 빼앗는 조작이라 조용히 틀리면 그 학생이 개학일 아침에 못 들어온다. 조직 격리를 포함해 3건을 더했다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

@@ -50,6 +50,8 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { href: "/app/classes", label: "반·학습 그룹", menu: "groups" },
       { href: "/app/students", label: "학습자", menu: "learners" },
+      /* 계정 발급은 learners 메뉴 안이되 권한은 작업 단위로 따로 본다 (T5.2). */
+      { href: "/app/students/accounts", label: "학생 계정", menu: "learners" },
       { href: "/app/analytics", label: "개념 숙련도", menu: "mastery" },
       { href: "/app/reports", label: "리포트", menu: "reports" },
     ],

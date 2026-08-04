@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "@su-maek/db";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { CapabilityScope } from "@su-maek/core/authz";
 
 /* ─────────────────────────────────────────────────────────────
  * 학습자 ↔ 로그인 계정 연결 (4장).
@@ -224,5 +225,161 @@ export async function unlinkLearnerAccount(input: {
   return {
     ok: true,
     message: `${learner.display_name} 학습자의 계정 연결을 해제했습니다. 로그인 계정 자체는 삭제되지 않았습니다.`,
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 일괄 발급과 담당 범위 (T5.2 · G-07).
+ *
+ * 반 하나에 서른 명이면 계정도 서른 개다. 한 명씩 폼을 여는 동안 교사는
+ * 반드시 몇 명을 빠뜨리고, 빠뜨린 학생은 **개학일 아침에** 드러난다.
+ *
+ * 범위 집행이 여기 있는 이유: 권한 확인과 대상 확인을 화면이 두 걸음으로
+ * 하면 한쪽을 빠뜨린다. 실제로 학생 흐름에 그런 결손이 있었다(남의 응시에
+ * 답을 쓸 수 있었다). 그래서 이 함수가 **둘을 함께** 본다.
+ * ───────────────────────────────────────────────────────────── */
+
+export interface ManageableLearner {
+  learnerId: string;
+  displayName: string;
+  learningGroupName: string | null;
+  email: string | null;
+  hasAccount: boolean;
+}
+
+/**
+ * 이 사용자가 계정을 다룰 수 있는 학생.
+ *
+ * `assigned`(담당 교사)면 자기가 맡은 반의 학생만 나온다. 목록과 집행이
+ * 같은 조건을 쓰므로, 화면에 보이지 않는 학생은 액션으로도 건드릴 수 없다.
+ */
+export async function listManageableLearners(input: {
+  organizationId: string;
+  actorUserId: string;
+  scope: CapabilityScope;
+}): Promise<ManageableLearner[]> {
+  if (input.scope === "none") return [];
+  const sql = getSharedSql();
+  const assignedOnly = input.scope === "assigned";
+
+  const rows = await sql<
+    {
+      learner_id: string;
+      display_name: string;
+      group_name: string | null;
+      email: string | null;
+      has_account: boolean;
+    }[]
+  >`
+    select l.id::text as learner_id, l.display_name,
+           max(g.name) as group_name,
+           max(u.email) as email,
+           (l.user_id is not null) as has_account
+    from learners l
+    left join learning_group_memberships m
+      on m.learner_id = l.id and m.status = 'active'
+    left join learning_groups g on g.id = m.learning_group_id
+    left join users u on u.id = l.user_id
+    where l.organization_id = ${input.organizationId}
+      and l.status = 'active'
+      and (
+        ${!assignedOnly}
+        or exists (
+          select 1
+          from learning_group_memberships m2
+          join learning_groups g2 on g2.id = m2.learning_group_id
+          where m2.learner_id = l.id and m2.status = 'active'
+            and g2.home_teacher_user_id = ${input.actorUserId}
+        )
+      )
+    group by l.id, l.display_name, l.user_id
+    order by l.display_name, l.id
+  `;
+
+  return rows.map((r) => ({
+    learnerId: r.learner_id,
+    displayName: r.display_name,
+    learningGroupName: r.group_name,
+    email: r.email,
+    hasAccount: r.has_account,
+  }));
+}
+
+export interface IssueOutcome {
+  learnerId: string;
+  displayName: string;
+  ok: boolean;
+  message: string;
+  /** 새로 만든 경우에만. **한 번 보여 주고 저장하지 않는다.** */
+  temporaryPassword?: string;
+}
+
+export interface BulkIssueResult {
+  outcomes: IssueOutcome[];
+  succeeded: number;
+  failed: number;
+}
+
+/**
+ * 여러 학생에게 계정을 한 번에 발급한다.
+ *
+ * **한 명이 실패해도 나머지는 진행한다.** 전부 되돌리면 스물아홉 명이
+ * 이미 받은 비밀번호가 무효가 되고, 그 비밀번호는 다시 볼 수 없으므로
+ * 교사는 처음부터 다시 나눠 줘야 한다. 그래서 학생별로 결과를 낸다 —
+ * 「일부 실패」를 통째 실패로 뭉개지 않는다.
+ */
+export async function issueLearnerAccounts(input: {
+  organizationId: string;
+  actorUserId: string;
+  scope: CapabilityScope;
+  /** learnerId → 이메일 */
+  targets: ReadonlyArray<{ learnerId: string; email: string }>;
+}): Promise<BulkIssueResult> {
+  const allowed = new Map(
+    (
+      await listManageableLearners({
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        scope: input.scope,
+      })
+    ).map((l) => [l.learnerId, l]),
+  );
+
+  const outcomes: IssueOutcome[] = [];
+  for (const t of input.targets) {
+    const learner = allowed.get(t.learnerId);
+    if (!learner) {
+      /* 담당 밖·타조직·보관된 학생. 셋을 한 문구로 뭉갠다 — 어느 쪽인지
+       * 알려 주면 담당이 아닌 반의 학생 존재 여부가 새어 나간다. */
+      outcomes.push({
+        learnerId: t.learnerId,
+        displayName: t.learnerId,
+        ok: false,
+        message: "담당 학생이 아닙니다.",
+      });
+      continue;
+    }
+
+    const result = await linkLearnerAccount({
+      organizationId: input.organizationId,
+      learnerId: t.learnerId,
+      email: t.email,
+      actorUserId: input.actorUserId,
+    });
+    outcomes.push({
+      learnerId: t.learnerId,
+      displayName: learner.displayName,
+      ok: result.ok,
+      message: result.message,
+      ...(result.temporaryPassword
+        ? { temporaryPassword: result.temporaryPassword }
+        : {}),
+    });
+  }
+
+  return {
+    outcomes,
+    succeeded: outcomes.filter((o) => o.ok).length,
+    failed: outcomes.filter((o) => !o.ok).length,
   };
 }
