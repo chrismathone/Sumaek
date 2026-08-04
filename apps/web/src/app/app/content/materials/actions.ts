@@ -5,6 +5,10 @@ import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
 import {
+  blockingMessage,
+  checkMaterialReadiness,
+} from "@/lib/domain/learning-readiness";
+import {
   collectReadingContent,
   hasStructuredBlocks,
 } from "@su-maek/contracts/content";
@@ -480,6 +484,16 @@ export async function setMaterialStatusAction(
   }
 
   if (status === "published") {
+    /* 실행 가능성 — 문항 0개 연습 자료는 게시하면 학생이 「할 차례」를
+     * 눌러 빈 화면을 본다. 그 자료 하나가 하루 완료를 영원히 막는데
+     * 학생은 손쓸 방법이 없다 (G-06). */
+    const readiness = await checkMaterialReadiness({
+      organizationId: user.organizationId,
+      materialId,
+    });
+    if (!readiness.ok) {
+      return { ok: false, message: blockingMessage(readiness) };
+    }
     /* 추출본은 어떤 경로로도 게시되지 않는다 — 지면 사본이라 표현이
      * 출판사 것이다 (원칙 9). 설계 문서가 이름 붙인 사고: "상태 하나
      * 바꾸는 것으로" 원칙을 깨게 되는 그 버튼이 여기다. */

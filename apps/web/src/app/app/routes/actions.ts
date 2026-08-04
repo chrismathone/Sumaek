@@ -6,6 +6,10 @@ import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { NODE_KINDS } from "./shared";
 import { parseNodePayload } from "./node-payload";
+import {
+  blockingMessage,
+  checkRouteReadiness,
+} from "@/lib/domain/learning-readiness";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import {
@@ -740,6 +744,24 @@ export async function publishRoute(
     };
   }
   const validation = version.validation_report;
+
+  /* 실행 가능성 게이트 (T2.4).
+   *
+   * 기존 검증(validateDraft)은 선수 공백·커버리지처럼 **교육과정 쪽**을 본다.
+   * 여기서 보는 것은 다른 질문이다: 학생이 그날 실제로 할 수 있는가.
+   * 자료가 없는 개념 차시, 문항 0개 연습, 쪽 범위가 빈 교재 노드는
+   * 교육과정 검증을 통과하고도 학생 화면에서 빈자리가 된다.
+   *
+   * 판정은 노드 실행기를 그대로 돌린다 — 교사가 지금 보는 사유와 학생이
+   * 당일 만나는 사유가 같은 코드여야 복구 링크가 이어진다. */
+  const readiness = await checkRouteReadiness({
+    organizationId: user.organizationId,
+    routeVersionId: version.id,
+    learningGroupId: plan.learning_group_id,
+  });
+  if (!readiness.ok) {
+    return { ok: false, message: `게시 전 확인이 필요합니다 — ${blockingMessage(readiness)}` };
+  }
 
   const nodeCountRows = await sql<{ cnt: number }[]>`
     select count(*)::int as cnt from route_nodes where route_version_id = ${version.id}

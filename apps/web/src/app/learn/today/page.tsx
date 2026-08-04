@@ -10,6 +10,7 @@ import {
 } from "@/lib/domain/learning-material";
 import { listDueReviewConcepts } from "@/lib/domain/review";
 import { projectToday } from "@/lib/domain/day-plan";
+import { studentBlockText } from "@/lib/domain/learning-readiness";
 import {
   badgeLabel,
   conceptSpan,
@@ -34,15 +35,6 @@ const DONE_ATTEMPT_STATUSES = [
 
 export const metadata: Metadata = { title: "오늘 학습" };
 
-/** 차단 사유 코드 → 학생이 읽을 문장. 코드는 준비도 게이트(T2.4)와 같은 것을 쓴다. */
-const BLOCK_REASON_TEXT: Record<string, string> = {
-  no_questions: "연습문제나 시험에 문항이 아직 등록되지 않았습니다.",
-  material_missing: "오늘 개념에 연결된 자료가 아직 없습니다.",
-  rights_expired: "교재 사용 권한이 만료되어 열 수 없습니다.",
-  account_unlinked: "학습자 계정 연결이 끝나지 않았습니다.",
-  assessment_generation_failed: "오늘 시험이 아직 만들어지지 않았습니다.",
-  unknown: "지금 열 수 없는 항목이 있습니다.",
-};
 
 /* ─────────────────────────────────────────────────────────────
  * 학생의 하루 (18장) — **순서 있는 단계**로 낸다.
@@ -511,9 +503,7 @@ export default async function LearnTodayPage() {
             오늘 학습 중 지금 할 수 없는 항목이 있습니다.
           </p>
           <p className="mt-1 text-sm break-keep text-ink-soft">
-            {blockedReasons
-              .map((code) => BLOCK_REASON_TEXT[code] ?? BLOCK_REASON_TEXT.unknown)
-              .join(" · ")}
+            {blockedReasons.map(studentBlockText).join(" · ")}
           </p>
           <p className="mt-1 text-sm break-keep text-ink-soft">
             학생이 해결할 수 있는 문제가 아닙니다 — 선생님께 알려 주세요.
