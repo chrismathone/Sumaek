@@ -158,20 +158,20 @@ CREATE UNIQUE INDEX assessments_idempotent_uq
 
 지금 이것이 사고로 드러나지 않는 이유는 `apps/web/src/lib/domain/assessment.ts:88-99`가 INSERT 전에 SELECT로 먼저 확인하기 때문이다. 그러나 그것은 **SELECT-then-INSERT 경합**이다. 교사 버튼 한 개일 때는 좀처럼 겹치지 않지만, T3.2가 워커에 재시도와 재시작을 붙이는 순간 정확히 이 경로가 동시에 두 번 돈다.
 
-**T3.2가 고친다** (`0018a_assessment_idempotency_fix.sql`). NULL을 결정적 값으로 접어 인덱스에 넣는다 — PostgreSQL 버전에 의존하지 않는다.
+**T3.2가 고쳤다** (`0018a_assessment_idempotency_fix.sql`).
+
+> **정정 (T3.2 착수 후)**: 처음 설계는 위 두 컬럼의 NULL을 모두 `coalesce`로 접어 인덱스 **하나**로 덮는 것이었다. 실제 DB에 적용해 보니 그 인덱스는 **한 학생에게 같은 날 서로 다른 평가 둘**도 막았고, 그런 행이 실측 40건 있었다(반 없는 학습자 대상 — 보충·재시험). 그것은 결손이 아니라 정당한 사용이다. 막아야 할 것은 **반 공통 생성물의 중복** 하나뿐이므로 그 경우에만 걸리는 부분 유니크를 더한다. 기존 인덱스는 (반·학생이 모두 있는) 경우를 여전히 덮으므로 그대로 둔다.
 
 ```sql
-DROP INDEX IF EXISTS assessments_idempotent_uq;
-CREATE UNIQUE INDEX assessments_idempotent_uq ON assessment_instances (
-  organization_id,
-  coalesce(learning_group_id, '00000000-0000-0000-0000-000000000000'::uuid),
-  coalesce(learner_id,        '00000000-0000-0000-0000-000000000000'::uuid),
-  scheduled_date,
-  purpose
-) WHERE status <> 'cancelled' AND scheduled_date IS NOT NULL;
+CREATE UNIQUE INDEX assessments_group_idempotent_uq
+  ON assessment_instances (organization_id, learning_group_id, scheduled_date, purpose)
+  WHERE status <> 'cancelled'
+    AND scheduled_date IS NOT NULL
+    AND learner_id IS NULL          -- 반 공통 생성물만
+    AND learning_group_id IS NOT NULL;
 ```
 
-대안은 PG15+의 `NULLS NOT DISTINCT`지만, 서버 버전에 묶이고 `SHOW server_version`으로 먼저 확인해야 한다. `coalesce` 쪽은 그 확인이 필요 없다.
+마이그레이션은 기존 반 공통 중복이 있으면 **멈추고 목록을 알려 준다.** 평가는 학습 이력이고 응시·채점이 매여 있어, 어느 쪽이 진짜인지는 사람이 판단해야 한다 — 자동으로 지우지 않는다.
 
 **작업 멱등 키는 인덱스와 같은 모양이어야 한다.**
 

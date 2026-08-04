@@ -198,6 +198,28 @@ describe.skipIf(!hasDb)("평가 블루프린트 생성 (라이브 DB)", () => {
         where organization_id = ${ids.org} and aggregate_id = ${generatedAssessmentId}
       `;
     }
+    /* 남긴 행이 불변 검사를 깨뜨리지 않게 한다.
+     *
+     * 증거 계열은 지우지 않는 것이 이 저장소의 원칙이지만, **게시 상태로**
+     * 남기면 다른 이야기가 된다: I-08(게시 평가는 문항 스냅샷을 가진다)과
+     * R-01·R-05(활성 포인터가 살아 있는 버전을 가리킨다)가 매 실행마다
+     * 위반 행을 쌓는다. 실제로 verify:recovery가 그것을 잡았다.
+     * 지우는 대신 **취소**한다 — 부분 유니크·불변 검사가 모두 취소본을
+     * 대상에서 뺀다. */
+    await sql`
+      update assessment_instances set status = 'cancelled'
+      where organization_id = ${ids.org} and status = 'published'
+        and not exists (
+          select 1 from assessment_questions q where q.assessment_id = assessment_instances.id
+        )
+    `;
+    await sql`
+      update route_plans set active_version_id = null
+      where organization_id = ${ids.org} and active_version_id is not null
+        and not exists (
+          select 1 from route_versions v where v.id = route_plans.active_version_id
+        )
+    `;
   });
 
   it("일일테스트 생성이 블루프린트를 만들어 인스턴스에 잇는다", async () => {

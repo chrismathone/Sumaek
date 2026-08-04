@@ -122,6 +122,13 @@ describe.skipIf(!hasDb)("학생 흐름 결손 수정", () => {
      * 전용 연결계정만 치운다. 예전에는 여기서 **데모 학생 계정을 돌려주는**
      * 일까지 했는데, 이제 빌리지 않으므로 돌려줄 것도 없다. */
     if (!sql) return;
+    /* 문항 없는 게시 평가는 I-08 위반으로 남는다 — 지우지 않고 취소한다.
+     * (blueprint-chain.test.ts와 같은 이유·같은 방식) */
+    await sql`
+      update assessment_instances set status = 'cancelled'
+      where organization_id = ${ORG_ID} and status = 'published'
+        and id in (${ids.todayAssessment}, ${ids.futureAssessment})
+    `;
     await sql`update learners set user_id = null where user_id = ${ids.linkUser}`;
     await sql`delete from memberships where user_id = ${ids.linkUser}`;
     await sql`delete from users where id = ${ids.linkUser}`;

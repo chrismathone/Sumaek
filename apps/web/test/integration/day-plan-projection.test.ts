@@ -57,13 +57,24 @@ async function makeAssessment(input: {
   attemptStatus?: "in_progress" | "finalized";
   /** 문항을 한 개 붙인다 — 없으면 문항 0개라 차단으로 나온다 */
   withQuestion?: boolean;
+  /**
+   * 학생 단위 평가로 만든다(반 없음).
+   *
+   * 반 공통 평가는 (조직·반·날짜·목적)당 하나뿐이다 —
+   * `assessments_group_idempotent_uq`(0018a). 같은 날 여러 건이 필요한
+   * 스펙은 보충·재시험과 같은 학생 단위로 만든다.
+   */
+  learnerScoped?: boolean;
 }): Promise<string> {
   const id = uuidv7();
   assessmentIds.push(id);
   await sql`
     insert into assessment_instances
-      (id, organization_id, purpose, title, learning_group_id, scheduled_date, status, published_at)
-    values (${id}, ${ORG}, 'formative', ${input.title}, ${GROUP},
+      (id, organization_id, purpose, title, learning_group_id, learner_id,
+       scheduled_date, status, published_at)
+    values (${id}, ${ORG}, 'formative', ${input.title},
+            ${input.learnerScoped ? null : GROUP},
+            ${input.learnerScoped ? LEARNER : null},
             ${input.scheduledDate}, 'published', now())
   `;
   await sql`
@@ -219,6 +230,7 @@ describe.skipIf(!hasDb)("날짜 경계 — 90일은 경계가 아니다", () => 
     const id = await makeAssessment({
       scheduledDate: TODAY,
       title: "풀던 시험",
+      learnerScoped: true,
       attemptStatus: "in_progress",
       withQuestion: true,
     });
@@ -242,6 +254,7 @@ describe.skipIf(!hasDb)("날짜 경계 — 90일은 경계가 아니다", () => 
     const id = await makeAssessment({
       scheduledDate: TODAY,
       title: "오늘 끝낸 시험",
+      learnerScoped: true,
       attemptStatus: "finalized",
       withQuestion: true,
     });
