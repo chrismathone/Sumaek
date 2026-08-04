@@ -37,6 +37,13 @@ import { gotoTableRow } from "../lib/table";
  * 앞이 깨지면 뒤를 건너뛰므로, 실패한 이름 하나가 곧 「여기까지는 됐다」다.
  * 워크스페이스는 describe 하나당 하나이고, `--repeat-each`는 매번 새로
  * 만든다 — 두 번째 실행이 첫 번째의 흔적 위에서 돌면 「빈 학원」이 아니다.
+ *
+ * ── 아는 한계: 자정 ─────────────────────────────────────
+ * 과정 기간 시작일과 오늘 수업은 ①이 도는 시점의 KST 날짜로 정해진다.
+ * 실행이 자정을 넘기면 그 날짜가 어제가 되어 학생의 오늘이 비고 ⑤가
+ * 깨진다. 한 바퀴가 1~2분이므로 하루 중 1분 남짓만 그렇고, 막으려면
+ * 앱의 시계를 스펙이 조작해야 한다 — 그 대가가 더 크다. 자정 직전 실행이
+ * 깨지면 이것을 먼저 의심할 것.
  * ───────────────────────────────────────────────────────────── */
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa"];
@@ -388,7 +395,7 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       await expectNoHorizontalScroll(page);
 
       /* 5) 키보드만으로 다음 화면에 닿는다 — 학생 화면은 링크가 전부다 */
-      await expect(await tabToLink(page, "지난 기록")).toBe(true);
+      expect(await tabToLink(page, "지난 기록")).toBe(true);
 
       /* 6) axe — 색 하나로만 말하는 상태가 없는지까지 본다 */
       const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -459,12 +466,16 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
     await expect(teacher.getByText("수업 마감됨")).toBeVisible();
 
     /* 여기서도 클릭이 없다 — 마감이 낸 이벤트를 워커가 받아 다시 계산하고,
-     * 위험한 변경은 적용하지 않고 승인함에 올린다 (T4.3). */
+     * 위험한 변경은 적용하지 않고 승인함에 올린다 (T4.3).
+     *
+     * 「0건이 아니다」로 재지 않는다. 카드가 통째로 사라지거나 값이 비어도
+     * 그 단언은 통과한다 — 없는 것을 세는 검사가 되는 셈이다. 1 이상의
+     * 건수가 **있는 것**을 본다. */
     await expect(async () => {
       await teacher.goto("/app/today");
       await expect(
         teacher.getByText("승인 대기 일정 변경").locator(".."),
-      ).not.toContainText("0건", { timeout: 5_000 });
+      ).toContainText(/[1-9]\d*건/, { timeout: 5_000 });
     }).toPass({ timeout: 120_000, intervals: [3_000] });
   });
 });
