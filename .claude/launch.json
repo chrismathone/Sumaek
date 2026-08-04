@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@su-maek/web", "dev"],
       "port": 3000
+    },
+    {
+      "name": "web-3100",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@su-maek/web", "exec", "next", "dev", "--port", "3100"],
+      "port": 3100
     }
   ]
 }
