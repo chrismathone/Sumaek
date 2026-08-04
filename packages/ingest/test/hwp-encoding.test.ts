@@ -147,6 +147,20 @@ describe("분수 — 안쪽은 분모·분자 교대다", () => {
     expect(decodeHwpMath(raw).latex).toBe(expected);
   });
 
+  it("분수 안의 위첨자 표식은 무시한다 — 분자 글리프는 원래 폭이 0이다", () => {
+    // 개념서 p.104 「a %=a/100」 · p.208 반비례 「y=a/x」
+    const mark = (s: string): string =>
+      s.replace(/A/g, "A").replace(/B/g, "B");
+    expect(decodeHwpMath(mark(";10A0;")).latex).toBe("\\frac{a}{100}");
+    expect(decodeHwpMath(mark(";[A;")).latex).toBe("\\frac{a}{x}");
+    expect(decodeHwpMath(mark(";1A;")).latex).toBe("\\frac{a}{1}");
+    expect(decodeHwpMath(mark(";cB;")).latex).toBe("\\frac{b}{c}");
+  });
+
+  it("¥ 는 8이다 — 마지막 한 자리 (개념서 p.89 「-8/15」)", () => {
+    expect(decodeHwpMath(";1¥5;").latex).toBe("\\frac{8}{15}");
+  });
+
   it("분수가 잇달아 와도 뒤엣것을 삼키지 않는다", () => {
     // 닫는 기호가 `;;`를 통째로 먹으면 1/3이 조용히 사라진다
     expect(decodeHwpMath(";2!;;3!;").latex).toBe("\\frac{1}{2}\\frac{1}{3}");

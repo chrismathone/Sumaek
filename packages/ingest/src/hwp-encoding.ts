@@ -104,8 +104,9 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
  * 여러 자리가 서로 맞물려 확인됐다 — p.39 「42/7」이 ¢=4와 ª=2를 동시에,
  * p.49 「54/9」가 °=5와 ¢=4를 동시에 건다.
  *
- * **8에 해당하는 글리프는 이 단원들에 나오지 않아 넣지 않았다.** 코드가
- * 연속 배치가 아니므로(¼=BC·Á=C1·ª=AA) 빈자리를 추론으로 메울 수 없다.
+ * 8만 RPM 본책 II~IV단원에 나오지 않아 한동안 비어 있었는데, 개념서
+ * p.89 「-8/15」에서 확인해 채웠다(`;1¥5;`). 코드가 연속 배치가 아니라
+ * (¼=BC·Á=C1·ª=AA·¥=A5) 빈자리를 추론으로 메울 수는 없었다.
  */
 const FRACTION_NUMERATOR: ReadonlyMap<string, string> = new Map([
   ["¼", "0"],
@@ -116,6 +117,7 @@ const FRACTION_NUMERATOR: ReadonlyMap<string, string> = new Map([
   ["°", "5"],
   ["¤", "6"],
   ["¦", "7"],
+  ["¥", "8"], // 개념서 p.89 「(-5/3)×(-8/15)」
   ["»", "9"],
 ]);
 
@@ -326,6 +328,14 @@ function decodeFraction(inner: string): string | null {
   let denominator = "";
   let numerator = "";
   for (const ch of chars) {
+    /* 좌표가 붙여 준 위첨자 표식은 분수 안에서 **뜻이 없다.**
+     *
+     * 분자 글리프는 앞 글자에 겹쳐 찍히느라 폭이 0인데, markSuperscripts가
+     * 그걸 보고 위첨자로 표를 해 둔다. 분수 안에서는 그 표가 오히려
+     * 방해가 된다 — `;10A0;`(a/100)의 A가 표식에 싸여 들어와 분수 전체가
+     * 안 풀렸다(개념서 p.104·156, 반비례 y=a/x도 같은 이유로 전부 실패).
+     * 분수 안에 진짜 지수가 오는 경우는 지면에서 확인한 바 없다. */
+    if (ch === SUP_OPEN || ch === SUP_CLOSE) continue;
     /* 평문 숫자·소문자는 그 자리에서 자기 자신이다 — 분모로 간다
      * (p.128 「a/b」의 b, 「b/a」의 a). */
     if (/[0-9a-z]/.test(ch)) {

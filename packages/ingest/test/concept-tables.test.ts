@@ -15,6 +15,13 @@ import {
   normalizeConceptKey,
 } from "../src/profiles/rpm-2022-concepts";
 import type { ConceptDefinition, ConceptWeight } from "../src/profiles/rpm-2022-concepts";
+import {
+  KWR_M11_CH1_TARGETS,
+  KWR_M11_CH2_TARGETS,
+  KWR_M11_CH3_TARGETS,
+  KWR_M11_CH4_TARGETS,
+  conceptTargetKey,
+} from "../src/profiles/kwr-2022";
 
 /* 이 표들이 틀리면 **화면에는 아무 표시가 나지 않는다.** 문항은 멀쩡히
  * 들어가고 학생도 정상으로 푸는데, 숙련도 증거만 엉뚱한 개념에 쌓인다.
@@ -95,6 +102,39 @@ describe("개념 slug는 교재 전체에서 하나의 이름만 갖는다", () 
         byslug.set(c.slug, c.name);
       }
     expect(clash).toEqual([]);
+  });
+});
+
+describe("개념서 → 정본 개념 표 (kwr-2022)", () => {
+  const TARGETS = [
+    { name: "I", targets: KWR_M11_CH1_TARGETS, concepts: RPM_M1_CH1_CONCEPTS },
+    { name: "II", targets: KWR_M11_CH2_TARGETS, concepts: RPM_M1_CH2_CONCEPTS },
+    { name: "III", targets: KWR_M11_CH3_TARGETS, concepts: RPM_M1_CH3_CONCEPTS },
+    { name: "IV", targets: KWR_M11_CH4_TARGETS, concepts: RPM_M1_CH4_CONCEPTS },
+  ];
+
+  it.each(TARGETS)("$name단원 — 가리키는 개념이 전부 정의돼 있다", ({ targets, concepts }) => {
+    const slugs = new Set(concepts.map((c) => c.slug));
+    expect([...targets].filter(([, s]) => !slugs.has(s))).toEqual([]);
+  });
+
+  it("열쇠에 쪽이 들어가 소단원 제목이 겹쳐도 갈린다", () => {
+    /* p.111 「일차식의 계산 (1)」의 개념1과 p.117 「(2)」의 개념1은 소단원
+     * 제목이 같다 — (1)·(2)가 다른 글꼴이라 추출된 제목에서 빠진다.
+     * 쪽이 없으면 다항식 설명이 동류항 개념에 붙는다. */
+    expect(conceptTargetKey(111, "일차식의 계산", "1")).not.toBe(
+      conceptTargetKey(117, "일차식의 계산", "1"),
+    );
+    expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(111, "일차식의 계산", "1"))).toBe(
+      "m1-polynomial-linear",
+    );
+    expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(117, "일차식의 계산", "1"))).toBe(
+      "m1-linear-expression-calc",
+    );
+  });
+
+  it("열쇠는 공백을 눌러 비교한다", () => {
+    expect(conceptTargetKey(50, "  정수와   유리수 ", "1")).toBe("50|정수와 유리수|1");
   });
 });
 
