@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   adaptInstructionForChoice,
+  markSymbolGlyphs,
+  splitInstructionLine,
+  SYMBOL_MARK_CLOSE,
+  SYMBOL_MARK_OPEN,
   symbolOptionsFromBodyText,
 } from "@/lib/learn/symbol-answer";
+
+const mark = (s: string) => `${SYMBOL_MARK_OPEN}${s}${SYMBOL_MARK_CLOSE}`;
 
 /* 판별 문항의 화면 적응 — 지면 발문(써넣으시오)을 고르기 발문으로 표시
  * 전환하고, 칩은 발문이 언급한 기호만 낸다. RPM 1단원의 실제 발문 세 꼴을
@@ -61,5 +67,53 @@ describe("칩은 발문이 언급한 기호만", () => {
       "△",
       "×",
     ]);
+  });
+});
+
+/* 판별 대상이 발문 뒤에 붙어 있으면 문장 꼬리처럼 묻힌다 — 「…고르시오. 11」의
+ * 11이 그랬다. 줄을 가르는 자리는 발문이 끝나는 「…시오.」다. */
+describe("발문과 판별 대상을 줄로 가르기", () => {
+  it("「…고르시오. $11$」의 대상이 다음 줄로 간다", () => {
+    expect(
+      splitInstructionLine("다음 수가 소수이면 ◯, 합성수이면 △를 고르시오. $11$"),
+    ).toEqual(["다음 수가 소수이면 ◯, 합성수이면 △를 고르시오.", "$11$"]);
+  });
+
+  it("대상이 문장이어도 가른다(진술 판별)", () => {
+    expect(
+      splitInstructionLine(
+        "다음 설명이 옳으면 ◯, 옳지 않으면 ×를 고르시오. 소수의 약수는 2개이다.",
+      ),
+    ).toEqual([
+      "다음 설명이 옳으면 ◯, 옳지 않으면 ×를 고르시오.",
+      "소수의 약수는 2개이다.",
+    ]);
+  });
+
+  it("발문뿐이면 가르지 않는다 — 빈 줄이 생기면 안 된다", () => {
+    const only = "다음 중 소수인 것을 고르시오.";
+    expect(splitInstructionLine(only)).toEqual([only]);
+  });
+});
+
+/* 같은 뜻의 기호가 발문에서는 글자, 칩에서는 그림으로 나와 무게가 달랐다.
+ * 여기서는 자리만 표시하고, 그리는 것은 화면(QuestionLine)의 몫이다. */
+describe("발문 속 기호 표시", () => {
+  it("발문의 기호를 정본 글자로 통일해 표시한다", () => {
+    expect(markSymbolGlyphs("소수이면 ○, 합성수이면 ▲를 고르시오.")).toBe(
+      `소수이면 ${mark("◯")}, 합성수이면 ${mark("△")}를 고르시오.`,
+    );
+  });
+
+  it("수식 안은 건드리지 않는다 — 거기의 ×는 곱셈이다", () => {
+    expect(markSymbolGlyphs("옳으면 ◯를 고르시오. $2 \\times 3$")).toBe(
+      `옳으면 ${mark("◯")}를 고르시오. $2 \\times 3$`,
+    );
+  });
+
+  it("숫자 사이의 ×도 곱셈이다 — 표시하지 않는다", () => {
+    expect(markSymbolGlyphs("옳으면 ◯를 고르시오. 2×3=6이다.")).toBe(
+      `옳으면 ${mark("◯")}를 고르시오. 2×3=6이다.`,
+    );
   });
 });

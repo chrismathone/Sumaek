@@ -42,6 +42,61 @@ export function adaptInstructionForChoice(bodyText: string): string {
     .trimEnd();
 }
 
+/**
+ * 발문과 판별 대상을 **줄로 가른다.**
+ *
+ * 「다음 수가 소수이면 ◯, 합성수이면 △를 고르시오. 11」을 한 줄에 두면 11이
+ * 발문의 꼬리처럼 읽혀서, 정작 판별할 수가 문장 끝에 묻힌다. 지면에서도
+ * 판별 대상은 발문 아래에 따로 놓인다.
+ *
+ * 가르는 자리는 발문이 끝나는 「…시오.」다. 그 뒤에 남는 것이 없으면(본문이
+ * 전부 발문인 객관식 따위) 그냥 한 줄이다.
+ */
+export function splitInstructionLine(line: string): string[] {
+  const m = /^([\s\S]*?시오\.)[ \t]*(\S[\s\S]*)$/.exec(line);
+  return m ? [m[1]!, m[2]!] : [line];
+}
+
+/* ── 발문 속 기호를 그림으로 그릴 자리 표시 ──────────────────────
+ *
+ * 발문의 ◯·△·×는 글자로 찍히고 답 칩은 그림(SVG)으로 그려서, 같은 뜻의
+ * 기호가 한 문항 안에서 두 가지 모습으로 나왔다. 게다가 글자 쪽은 폰트
+ * 글리프라 ◯는 크고 ×는 작게 나온다 — 문항마다 무게가 제각각이었다.
+ *
+ * 여기서는 **자리만 표시**한다. 렌더러(renderMixedText)가 HTML을 이스케이프
+ * 하므로 SVG를 글자에 섞어 넣을 수 없지만, 사설 영역 문자는 그대로 통과한다.
+ * 화면(QuestionLine)이 그 표식을 칩과 **같은 컴포넌트**로 바꿔 그린다.
+ * 빈칸 표식(blank-render.ts)과 같은 수법이고, 겹치지 않는 부호를 쓴다. */
+export const SYMBOL_MARK_OPEN = "";
+export const SYMBOL_MARK_CLOSE = "";
+
+/** 숫자 사이에 낀 ×는 곱셈이다 — 판별 기호로 보고 그림을 그리면 안 된다 */
+function isBetweenDigits(text: string, at: number): boolean {
+  return /[0-9]/.test(text[at - 1] ?? "") && /[0-9]/.test(text[at + 1] ?? "");
+}
+
+/**
+ * 본문 글자 속 ◯·△·×를 표식으로 감싼다(정본 글자로 통일).
+ * 수식(`$…$`) 안은 건드리지 않는다 — 거기의 `\times`는 곱셈이다.
+ */
+export function markSymbolGlyphs(text: string): string {
+  return text
+    .split(/(\$[^$]*\$)/g)
+    .map((part) => {
+      if (part.startsWith("$")) return part;
+      let out = part;
+      for (const { chip, mentions } of SYMBOL_CHIPS) {
+        out = out.replace(new RegExp(mentions.source, "g"), (ch, at: number) =>
+          isBetweenDigits(out, at)
+            ? ch
+            : `${SYMBOL_MARK_OPEN}${chip}${SYMBOL_MARK_CLOSE}`,
+        );
+      }
+      return out;
+    })
+    .join("");
+}
+
 /** 정답이 전부 ◯·△·× 계열 기호인 답인가 — 값 자체는 화면으로 내보내지 않는다 */
 export function isSymbolAnswerKey(
   answerKey: unknown,
