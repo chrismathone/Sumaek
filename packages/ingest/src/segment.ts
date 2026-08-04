@@ -3,6 +3,7 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  overlineLastName,
   isOverlineOnly,
   mergeRaised,
   markSuperscripts,
@@ -474,22 +475,6 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         j += 1;
       }
 
-      /* 따로 선 윗줄 글리프(`AB` + `Ó`)는 앞 조각에 붙여 읽는다 —
-       * 혼자서는 씌울 글자가 없어 미해독으로 나간다 */
-      for (let k = cluster.length - 1; k > 0; k -= 1) {
-        if (!isOverlineOnly(cluster[k]!.text)) continue;
-        const prev = cluster[k - 1]!;
-        const mark = cluster[k]!;
-        /* 글자 상자도 함께 이어야 markSuperscripts가 자릿수를 맞춘다 —
-         * 어긋나면 그 조각의 겹쳐 찍은 위첨자를 통째로 놓친다 */
-        const chars =
-          prev.chars && mark.chars ? [...prev.chars, ...mark.chars] : undefined;
-        cluster[k - 1] = chars
-          ? { ...prev, text: prev.text + mark.text, chars }
-          : { ...prev, text: prev.text + mark.text };
-        cluster.splice(k, 1);
-      }
-
       /* 덩어리의 기준 크기·기준선. 위첨자는 이보다 작고 위에 있다. */
       const baseSize = Math.max(...cluster.map((c) => c.size));
       const baseY1 = Math.max(...cluster.map((c) => c.y1));
@@ -498,6 +483,20 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
       let latex = "";
       const unknown: string[] = [];
       for (const span of cluster) {
+        /* 윗줄 글리프만 담긴 조각 — 씌울 글자를 찾아 준다. 앞의 조각과
+         * 이미 이어졌으면 그 결과에, 이 덩어리가 윗줄로 시작하면 바로 앞
+         * 수식 조각에 씌운다. 혼자서는 아무 뜻이 없고, 그냥 두면 화면에
+         * 낯선 글자가 나가면서 선분 표시는 사라진다. */
+        if (isOverlineOnly(span.text)) {
+          raw += span.text;
+          if (latex !== "") {
+            latex = overlineLastName(latex);
+          } else {
+            const owner = [...runs].reverse().find((r) => r.kind === "math");
+            if (owner?.kind === "math") owner.latex = overlineLastName(owner.latex);
+          }
+          continue;
+        }
         if (span.system) {
           /* `\begin{cases}`는 왼쪽에 큰 중괄호를 세우고 줄을 왼끝으로
            * 맞춘다 — 지면 그대로다. 줄 사이는 `\\`로 가른다. */

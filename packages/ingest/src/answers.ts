@@ -3,6 +3,7 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  attachOverline,
   isOverlineOnly,
   mergeRaised,
   markSuperscripts,
@@ -253,21 +254,31 @@ export function mergeStackedFractions(
   const merged: PageDump["spans"] = [];
 
   for (const bar of bars) {
+    /* 좌우로 넓히지 않는다. handoff 7.6a는 「부호가 분수 밖에 찍혀
+     * 분자 span이 막대보다 왼쪽에서 시작한다」를 원인으로 적어 두었는데,
+     * 실제로 왼쪽을 7pt 넓혀 보니 **더 나빠졌다**(중1-1 49→52 · 중2-2
+     * 13→16). 옆 수식을 물고 오면서 다른 분수의 짝을 빼앗는다.
+     * 진짜 원인은 세로 판정이었다 — 아래 near() 주석 참고. */
     const within = (s: PageDump["spans"][number]): boolean =>
       s.x0 >= bar.x0 - 2 && s.x1 <= bar.x1 + 2;
+    /* 가까운지는 **가운데**로 잰다. 끝점으로 재면 지수가 든 분모가
+     * 탈락한다 — `10/(3×5²)`의 분모 상자는 위첨자 때문에 위로 7pt 더
+     * 올라와 있어 `y0 >= bar.y1 - 4`를 못 넘겼고, 그 결과 분자 `10`이
+     * 혼자 한 줄에 남았다(중2-1 별책 99건 · 중2-2 22건). 본책 파서는
+     * 이미 가운데로 재고 있었다 — 두 파서가 어긋나 있었던 것이다. */
+    const near = (center: number, edge: number): boolean =>
+      Math.abs(center - edge) <= 16;
     const above = math
-      .filter(
-        (s) =>
-          !used.has(s) && within(s) &&
-          (s.y0 + s.y1) / 2 < bar.y0 && s.y1 <= bar.y0 + 4 && s.y1 >= bar.y0 - 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s) && within(s) && center < bar.y0 && near(center, bar.y0);
+      })
       .sort((a, b) => b.y1 - a.y1);
     const below = math
-      .filter(
-        (s) =>
-          !used.has(s) && within(s) &&
-          (s.y0 + s.y1) / 2 > bar.y1 && s.y0 >= bar.y1 - 4 && s.y0 <= bar.y1 + 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s) && within(s) && center > bar.y1 && near(center, bar.y1);
+      })
       .sort((a, b) => a.y0 - b.y0);
 
     const numerator = above[0];
@@ -887,12 +898,24 @@ export function parseAnswerPage(
       /* 따로 선 윗줄 글리프(`AB` + `Ó`)는 앞 조각의 글자에 씌운다 —
        * 혼자서는 씌울 글자가 없어 미해독으로 나간다 */
       const previous = runs[runs.length - 1];
-      if (isOverlineOnly(raw) && adjacent && previous?.kind === "math") {
-        const rewritten = decodeHwpMath(previous.raw + raw, font);
-        previous.raw += raw;
-        previous.latex = rewritten.latex;
-        previous.unknown.push(...rewritten.unknown);
-        return;
+      /* 윗줄 글리프는 혼자서는 아무 뜻이 없다 — 씌울 글자를 찾아 준다.
+       *
+       * 맞닿았는지는 보지 않는다. 폭이 0이라 뒤따르는 글자와 x가 같고,
+       * 정렬에서 한참 밀려 「OC‾=OD‾, ∠CPO」가 `OC‾=OD` · `, ∠` · `Ó` ·
+       * `CPO`로 오기도 한다(별책 도형 해설). 사이에 한글이 끼어도 **읽는
+       * 순서상 바로 앞의 수식**이 임자다. 그냥 두면 화면에 낯선 글자가
+       * 나가고 선분 표시는 사라진다.
+       *
+       * previous가 text일 수 있으므로 뒤에서부터 수식을 찾는다. */
+      if (isOverlineOnly(raw)) {
+        const owner = [...runs].reverse().find((r) => r.kind === "math");
+        if (owner?.kind === "math") {
+          const rewritten = decodeHwpMath(attachOverline(owner.raw, raw), font);
+          owner.raw += raw;
+          owner.latex = rewritten.latex;
+          owner.unknown.push(...rewritten.unknown);
+          return;
+        }
       }
       const decoded = stacked
         ? (() => {

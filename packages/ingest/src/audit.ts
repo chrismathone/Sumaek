@@ -24,6 +24,8 @@ export interface Finding {
 export type FindingKind =
   | "미해독-글리프"
   | "위첨자-소실"
+  | "이중-위첨자"
+  | "연립-뭉개짐"
   | "수식-조각남"
   | "수식-빈칸"
   | "분수-납작해짐"
@@ -42,6 +44,24 @@ const SAFE_MATH = /^[\x20-\x7e\s\\{}^_×÷≤≥≠≒∴∵…√°∠△□○
 
 /** 지면의 위첨자가 본문 글자로 떨어진 자리 — `2b`, `5c`처럼 */
 const LOST_SUPERSCRIPT = /(?<![\\a-zA-Z])(\d)([a-z])(?![a-zA-Z0-9])/;
+
+/**
+ * 지수가 두 번 잇달아 선 자리 — `x^{1}^{0}`.
+ *
+ * LaTeX에서 성립하지 않는 꼴이라 렌더 검사에도 걸리지만, **왜 그런지가
+ * 여기서만 드러난다.** 조판기가 한 지수를 여러 조각으로 나눠 보내는데
+ * 조각마다 `^{}`를 씌워 생긴다. 중2-1 별책 해설 259건이 이 꼴이었다.
+ */
+const DOUBLE_SUPERSCRIPT = /\^\{[^{}]*\}\s*\^\{/;
+
+/**
+ * 연립방정식이 한 줄로 뭉개진 자리 — `\left\{x+y=83x+y=16`.
+ *
+ * 큰 중괄호가 짝 없이 열린 채로 뒤에 등호가 둘 이상 오면, 위아래 두 식이
+ * 이어 붙은 것이다. **렌더 실패보다 나쁘다** — 8과 3이 붙어 83이 되므로
+ * 우연히 그려지면 학생이 없는 식을 푼다.
+ */
+const CRUSHED_SYSTEM = /\\left\\\{(?![^]*\\right)[^]*=[^]*=/;
 
 /** 구매자 식별 도장 — 학생 화면에 절대 나가면 안 된다 */
 const PURCHASER = /[\w.+-]+@[\w-]+\.[\w.]+/;
@@ -126,11 +146,38 @@ function inspect(
         excerpt: latex.slice(0, 120),
       });
     }
-    /* **같은 식 안에 제대로 올라간 지수가 있을 때만** 의심한다.
-     * 그 조건이 없으면 `120m`(120미터)·`800m` 같은 단위를 전부 물고 온다 —
-     * 여덟 건이 그랬다. 조판이 이 식에서 지수를 썼다는 증거가 있어야
-     * 「여기 하나가 안 올라갔다」는 말에 근거가 생긴다. */
-    const lost = latex.includes("^{") ? LOST_SUPERSCRIPT.exec(latex) : null;
+    /* **같은 글자가 이 식 어딘가에서 제대로 지수로 서 있을 때만** 의심한다.
+     *
+     * 처음에는 「식에 지수가 하나라도 있으면」으로 두었는데, 그러면
+     * 단항식 단원이 통째로 걸린다 — `3a×2a²`의 `3a`는 계수와 문자이지
+     * 떨어진 지수가 아니다(중2-1 II단원에서만 241건이 이 꼴로 잡혔다).
+     * 원래 잡으려던 결함은 **같은 글자**가 한 자리에서는 지수로, 다른
+     * 자리에서는 본문 글자로 온 것이다: 지면 `2^a×3^b`가 `2b×3^{b}`로
+     * 왔다(0160). `b`가 `^{b}`로도 나타나는 것이 근거다. */
+    if (DOUBLE_SUPERSCRIPT.test(latex)) {
+      push({
+        printedNumber,
+        where,
+        kind: "이중-위첨자",
+        detail: "지수가 두 번 잇달아 섰다 — 한 지수가 조각난 것이다",
+        excerpt: latex.slice(0, 120),
+      });
+    }
+    if (CRUSHED_SYSTEM.test(latex)) {
+      push({
+        printedNumber,
+        where,
+        kind: "연립-뭉개짐",
+        detail: "짝 없는 큰 중괄호 뒤에 등호가 둘 — 연립의 두 식이 이어 붙었다",
+        excerpt: latex.slice(0, 120),
+      });
+    }
+    const candidate = LOST_SUPERSCRIPT.exec(latex);
+    const lost =
+      candidate &&
+      new RegExp(`\\^\\{[^}]*${candidate[2]}[^}]*\\}`).test(latex)
+        ? candidate
+        : null;
     if (lost) {
       push({
         printedNumber,

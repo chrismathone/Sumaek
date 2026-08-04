@@ -561,6 +561,11 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    *      p.130 「△ABC=1/2×BC‾×OA‾」). 앞의 대문자 1~3자를 데려간다.
    *      LaTeX 명령을 만들어야 하므로 자리표시자로 치워 둔다 — 3)단계의
    *      글자별 통과 검사는 역슬래시를 모른다. */
+  /* 윗줄 글리프가 제 자리를 벗어난 것을 먼저 되돌린다. 폭이 0이라
+   * 뒤따르는 글자와 x가 같고, 정렬에서 밀려 `PB=Ó`처럼 등호 뒤로 가는
+   * 일이 잦다(별책 해설). 윗줄은 선분 이름 위에 그어지므로 바로 앞의
+   * 대문자 묶음이 임자다. */
+  work = work.replace(/([A-Z]{1,3})([^A-ZÓÕ]*)([ÓÕ])/g, "$1$3$2");
   work = work.replace(/([A-Z]{1,3})[ÓÕ]/g, (_m, letters: string) =>
     stash(`\\overline{${letters}}`),
   );
@@ -764,6 +769,32 @@ export function joinLatex(left: string, right: string): string {
  */
 export function isOverlineOnly(text: string): boolean {
   return /^[ÓÕ]+$/.test(text);
+}
+
+/**
+ * 따로 선 윗줄 글리프를 앞 조각의 **마지막 대문자 뒤**에 끼워 넣는다.
+ *
+ * 그냥 뒤에 붙이면 안 된다 — 폭이 0이라 뒤따르는 글자와 x가 같고, 정렬에서
+ * 밀려 `PB=` 다음에 오는 일이 잦다(별책 해설 312건). 그대로 이으면
+ * `PB=Ó`가 되어 씌울 글자를 못 찾는다. 윗줄은 선분 이름 위에 그어지므로
+ * 마지막 대문자 묶음이 그 이름이다.
+ */
+export function attachOverline(text: string, mark: string): string {
+  const at = /([A-Z]{1,3})([^A-Z]*)$/.exec(text);
+  if (!at) return text + mark;
+  return `${text.slice(0, at.index)}${at[1]}${mark}${at[2]}`;
+}
+
+/**
+ * 이미 LaTeX이 된 조각의 **마지막 선분 이름**에 윗줄을 씌운다.
+ *
+ * 조각이 span 경계를 넘어 조립된 뒤에야 윗줄 글리프가 오는 자리가 있다
+ * (`CB=` · `Ó`). 그때는 원문으로 되돌아갈 수 없으므로 결과 쪽에서 씌운다.
+ * 이미 `\overline{AB}`인 자리는 건드리지 않는다 — 대문자 바로 뒤가 `}`면
+ * 그것이 이미 씌워졌다는 표시다.
+ */
+export function overlineLastName(latex: string): string {
+  return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, "\\overline{$1}$2");
 }
 
 export function mergeRaised(latex: string, inner: string): string {
