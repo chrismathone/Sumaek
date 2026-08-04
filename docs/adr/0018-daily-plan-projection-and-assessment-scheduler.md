@@ -2,7 +2,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 상태 | **제안됨** (2026-08-04) — ADR-0017 승인과 함께 확정 |
+| 상태 | **채택됨** (2026-08-04) — ADR-0017과 함께 승인 |
 | 결정자 | 수맥 팀 |
 | 관련 | `docs/planning/06-tasks.md` T0.2 · [ADR-0017](./0017-learner-day-and-session-completion.md) · `docs/phase0/erd.md` §2 · `docs/phase0/event-catalog.md` E-16·E-17 · `packages/db/src/domain/learner-schedule.ts` |
 
