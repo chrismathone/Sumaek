@@ -107,6 +107,9 @@ async function ensureTodayScope(): Promise<void> {
 test.beforeAll(ensureTodayScope);
 
 test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", async ({ browser }) => {
+  /* 저작→게시를 읽기·인강 두 번 돌므로 기본 30초가 빠듯하다(실측: 데스크톱
+   * 21→30초대, dev 서버 재컴파일이 겹치면 초과). 왕복 두 개 분량으로 늘린다. */
+  test.setTimeout(90_000);
   const stamp = Date.now().toString(36).slice(-5);
   const title = `E2E자료-${stamp}`;
   const fixedTitle = `${title} 고친제목`;
