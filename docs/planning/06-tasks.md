@@ -153,7 +153,7 @@
 - **[최우선] `learner_schedule_items`와 `learner_day_plans`의 관계를 확정한다.** 「기존 자산과 3층 모델」의 계약(②는 계획층·재계산 가능, ③은 실행층·완료 불변)을 검증하고, 흡수·확장·분리 중 무엇인지 근거와 함께 못박는다. 이 결정 없이 T1.2를 시작하면 학생별 날짜 투영이 두 개가 된다.
 - 재계산(②)이 이미 투영된 하루 계획(③)을 어떻게 다루는지 정한다 — 미완료 재투영, 완료 보존, 진행 중 항목의 처리.
 - `learner_day_plans`와 `learner_day_plan_items`의 키, 상태, 스냅샷, 완료 시각, 차단 사유를 설계한다.
-- `LearnerDayCompleted`, `DailyAssessmentGenerationRequested`, `DailyAssessmentGenerationFailed` 이벤트 계약을 설계한다. 이벤트 번호는 `docs/phase0/event-catalog.md`의 E-15 다음(E-16~E-18)을 잇고, §1.2 소비자 등록부에 이미 예약된 `assessment-generator`·`session-execution` 소비자를 재사용한다.
+- 이벤트 계약을 설계한다. 번호는 `docs/phase0/event-catalog.md`의 E-15 다음을 잇고, §1.2 소비자 등록부에 이미 있는 소비자를 재사용한다(새 소비자 없음). **작업(job)과 이벤트를 구분한다** — 원안의 `DailyAssessmentGenerationRequested`는 이벤트가 아니라 `jobs` 행이므로 만들지 않는다(ADR-0018 §4). 결과: **E-16 `LearnerDayCompleted`, E-17 `DailyAssessmentGenerationFailed` 둘만 추가.** 성공은 기존 E-04 `AssessmentPublished`가 나른다.
 - 기존 `sessions.actual_progress`, `progress_events`, `SessionCompleted`와의 관계를 정의한다.
 - `/learn/records`(`apps/web/src/lib/learn/record-days.ts`)가 하루 이력을 별도로 계산한다 — 하루 계획으로 옮길지, 응시 이력 기반을 유지할지 정한다. 두 곳이 각자 날짜를 풀면 "끝냈다"의 정의가 화면마다 갈린다.
 - 기존 학생 데이터 백필, 롤백, RLS, 불변 조건과 보존 정책을 설계한다. 배포된 조직이 이미 있으므로 백필은 **과거 완료 이력을 만들어내지 않는 방향**(오늘 이후만 투영)을 기본으로 검토한다.
