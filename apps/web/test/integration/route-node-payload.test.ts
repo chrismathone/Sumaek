@@ -42,6 +42,7 @@ const { getSharedSql } = await import("@su-maek/db");
 const { addRouteNode } = await import("@/app/app/routes/actions");
 const { NODE_KINDS } = await import("@/app/app/routes/shared");
 const { payloadFieldsFor } = await import("@/app/app/routes/node-payload");
+const { ROUTE_NODE_KINDS } = await import("@su-maek/core/learning");
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const ORG = "00000000-0000-7000-8000-000000000001";
@@ -117,17 +118,28 @@ afterAll(async () => {
   claims.sub = null;
 });
 
+async function enumKinds(): Promise<string[]> {
+  const rows = await sql<{ label: string }[]>`
+    select unnest(enum_range(null::route_node_kind))::text as label
+  `;
+  return rows.map((r) => r.label);
+}
+
 describe.skipIf(!hasDb)("도달 가능한 노드 종류", () => {
   it("daily_test가 선택지에 있다 — 자동 평가 생성의 출발점", () => {
     expect(NODE_KINDS).toContain("daily_test");
   });
 
   it("선택지가 DB enum의 부분집합이다 — 없는 종류를 내밀지 않는다", async () => {
-    const rows = await sql<{ label: string }[]>`
-      select unnest(enum_range(null::route_node_kind))::text as label
-    `;
-    const dbKinds = rows.map((r) => r.label);
+    const dbKinds = await enumKinds();
     for (const kind of NODE_KINDS) expect(dbKinds).toContain(kind);
+  });
+
+  it("실행기의 종류 목록이 DB enum과 정확히 같다", async () => {
+    /* packages/core는 DB를 읽을 수 없어 enum을 손으로 옮겨 적는다. 그 사본이
+     * 낡으면 새 종류가 실행기 없이 흘러들고, 그 노드는 학생 화면에서 조용히
+     * 사라진다. enum에 한 종류가 늘면 **이 스펙이 먼저 깨진다.** */
+    expect([...ROUTE_NODE_KINDS].sort()).toEqual((await enumKinds()).sort());
   });
 });
 

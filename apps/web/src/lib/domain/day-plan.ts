@@ -7,7 +7,7 @@ import {
   type DayPlanItem,
   type DayPlanItemInput,
 } from "@su-maek/core/learning";
-import type { IsoDate } from "@su-maek/core/shared";
+import { KST, type IsoDate } from "@su-maek/core/shared";
 import { conceptIdsForNodes, listMaterials } from "@/lib/domain/learning-material";
 import { nodeIdList } from "@/lib/learn/node-titles";
 
@@ -340,7 +340,7 @@ export async function projectToday(input: {
       organizationId: learner.organizationId,
       learnerId: learner.learnerId,
       planDate: today,
-      timezone: "Asia/Seoul",
+      timezone: KST,
       learningGroupId: scope.learningGroupId,
       source: scope.source,
       sourceRefId: scope.sourceRefId,
