@@ -27,7 +27,8 @@
 | 인수 회계 | 62개 시나리오 ✅26 / 🟡32 / 📋4 / ❌0 ([acceptance-status.md](acceptance-status.md)) |
 
 DB 실측(2026-08-03): 문항 833(그중 RPM 반입 213) · 학습자료 24 · 정본 개념 372 ·
-성취기준 60.
+성취기준 60. 2026-08-04: RPM 게이트 개방 + 1단원 연습 자료 5행(4.6절) — 학생
+연습 칸이 실제 문항을 낸다.
 
 ---
 
@@ -134,7 +135,8 @@ docs              Phase 0 설계, ADR 16, 런북 15, 인수 회계
 | `/learn/study` · `/learn/watch` · `/learn/practice` · `/learn/tests/[id]` · `/learn/review` | 개념 공부·인강·연습·응시·복습 |
 
 학생 화면 갈래를 이어받는다면 [handoff-learn.md](handoff-learn.md) — 화면 구조,
-개념 중심 통합 설계(미구현), 그리고 연습문제가 하나도 안 나오는 이유의 실측.
+개념 중심 통합 설계(미구현), 그리고 연습 게이트 개방 경위(2026-08-04)와 잔여
+내용 검수.
 
 ### 2.3 자주 쓰는 명령
 
@@ -359,6 +361,21 @@ select id, item_date, starts_at, ends_at, reason_codes
 나머지 넷과 미구현으로 남은 **개념 중심 통합** 설계는
 [handoff-learn.md](handoff-learn.md) 1·3절.
 
+### 4.6 RPM 게이트 개방 + 1단원 연습 자료 (2026-08-04)
+
+**소유자 판단**으로 RPM 중1-1 반입분의 사용권을 확정했다 — `content_rights` 1행
+`under_review`→`usable`, 검수 210건 일괄 `published`(그림 3건 제외), 그 직후 화면
+확인에서 나온 **풀 수 없는 문항 2건(`#0106`·`#0120`, 수식 탈락)은 `quarantined`로
+격리**했다. `is_auto_assignable`은 전부 `false` 그대로라 **평가 자동 출제는 여전히
+잠겨 있고 연습만 흐른다.** 전부 `audit_events`에 남겼다(문항 id 전문 포함).
+
+1단원 개념 5종의 연습 자료 행은 `seed-unit1-demo.mts` **4단계**가 됐다(멱등,
+`question_ids` 빈 배열 → 자동 선별). 학생 화면 실측: `/learn/today` 4단계
+「남은 5건」, `/learn/practice` 개념 5종 × 문항 5건.
+
+경위·감사 기록·재실측 SQL(기대값 213·208·208)·잔여 내용 검수(표본 결함 3건 관찰)는
+[handoff-learn.md](handoff-learn.md) 4절이 정본이다.
+
 ---
 
 ## 5. 검증과 배포
@@ -426,17 +443,13 @@ docker run -d --env-file .env --restart unless-stopped su-maek-worker
    pnpm curriculum:release publish --dry-run
    ```
    절차는 [runbooks/15-curriculum-release-publish.md](runbooks/15-curriculum-release-publish.md).
-2. **RPM 213문항 권한 개방 — 사람 판단이 필요하다.** 전부 `is_auto_assignable=false`,
-   `content_rights.status='under_review'`라 **출제 풀에 0건**이다. 사람이 저작권을
-   확인해 `usable`로 올려야 연습·테스트 검증을 할 수 있다(원칙 9).
-
-   2026-08-04 실측: 213건이 **오늘 배우는 1단원 개념 5개에 전부 정렬되어 있다.**
-   추출은 끝났고 게이트만 닫혀 있다는 뜻이다 — `review_status`는 `review_required`
-   210 / `layout_review_required` 3, `content_rights.status`는 213 전부
-   `under_review`. 그래서 학생 화면의 연습문제 단계가 언제나 「없음」이다.
-   **연습문제만 열려면 `is_auto_assignable`은 필요 없다** —
-   `listPracticeQuestions`는 그 플래그를 보지 않는다(검수 + 사용권만 본다).
-   수치를 다시 뽑는 SQL과 여는 절차는 [handoff-learn.md](handoff-learn.md) 4절.
+2. **RPM 213문항 권한 개방 — 됐다(2026-08-04, 4.6절).** 소유자 판단으로 사용권
+   `usable` 확정 + 검수 일괄 통과(published 208 · 격리 2 · 그림 3 대기), 1단원 연습
+   자료 5행 — 학생 연습 칸이 실제 문항을 낸다. **남은 곁일 셋**은 별도 판단·작업이다:
+   ① 그림 문항 3건([handoff.md](handoff.md) 7.2절) ② **문항 내용 검수** — 일괄
+   개방이라 내용은 안 봤고, 표본에서 글자 파편 3건·지시문 상실(`#0121~0124`)이
+   나왔다([handoff-learn.md](handoff-learn.md) 4.6절) ③ 평가 자동 출제 개방
+   (`is_auto_assignable`) 여부.
 3. **[handoff.md](handoff.md) 7절의 반입 결함 4건** — 개념 매핑표 키 충돌(지금
    조용히 틀리고 있다), 그림 문항 3건, 변형 저장 경로 부재, 파서 단위 테스트 부재.
 4. **🟡 32건 승격** — 근거란에 각각 무엇이 모자란지 적혀 있다.

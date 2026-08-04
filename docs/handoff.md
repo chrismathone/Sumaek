@@ -27,10 +27,13 @@
 | 개념 미지정 | **0** | `load` 출력 |
 | 수식 검수 격리 | **0건** (`formula_review_required`) | `select review_status, count(*)` |
 | 레이아웃 검수 격리 | 3건 (그림 문항) | 같은 쿼리 |
-| 권한 | 213문항 전부 `is_auto_assignable = false`, `content_rights.status = under_review` | 아래 6절 |
+| 권한 | `is_auto_assignable`은 여전히 전부 `false` · 사용권은 **2026-08-04 `usable`로 확정** | 아래 6절 |
 
-> **213문항은 아직 자동 출제 풀에 들어가 있지 않다.** 사람이 저작권을 확인해
-> `content_rights.status`를 `usable`로 올리고 검수를 마쳐야 열린다(원칙 9).
+> **2026-08-04 소유자 판단으로 사용권이 `usable`로 확정됐고 검수도 일괄 통과했다**
+> (published 208 · 추출 결함 격리 2 — `#0106`·`#0120` · 그림 3건은 layout 검수 대기).
+> 그래서 **연습문제는 흐른다.** 다만 `is_auto_assignable`은 여전히 전부 `false`라
+> **평가 자동 출제 풀에는 안 들어가 있다** — 그 개방은 별도 판단이다. 경위·감사
+> 기록·재실측 SQL·잔여 내용 검수는 [handoff-learn.md](handoff-learn.md) 4절.
 
 DB 전체 문항 584개 중 371개는 시드이고, RPM 반입분은 `source_ref is not null`로
 정확히 갈린다.

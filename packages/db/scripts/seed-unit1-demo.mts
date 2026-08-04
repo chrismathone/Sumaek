@@ -11,6 +11,8 @@
  * 2. 루트(발행) + 차시 노드(1단원 개념 5종) + **오늘**(Asia/Seoul) 세션
  * 3. 정제본(draft) 게시 — 추출본은 절대 게시하지 않는다 (게시 게이트와
  *    같은 기준: source_ref.extractedBy가 있으면 건너뛴다)
+ * 4. 개념마다 연습 자료(kind='practice') 1행 — question_ids를 비워
+ *    자동 선별에 맡긴다. 이미 행이 있는 개념은 건드리지 않는다
  *
  * 몇 번을 다시 돌려도 같은 상태로 수렴한다 (E2E 멱등 원칙). 세션 날짜만
  * 실행일로 이동한다 — "오늘"이어야 학생 화면에 나오기 때문이다.
@@ -268,6 +270,62 @@ for (const m of refinedDrafts) {
   });
 }
 
+/* ── 연습 자료 행 — 개념과 연습 칸을 잇는다 ───────────────────
+ *
+ * question_ids를 비워 두면 listPracticeQuestions가 그 개념의 출제 가능
+ * 문항(published + usable)에서 자동으로 골라 온다(learning-material.ts).
+ * 개념당 1행이면 충분하고, **이미 행이 있는 개념은 어떤 상태든 건드리지
+ * 않는다** — 교사가 문항을 지정했거나 보관한 결정을 시드가 되돌리면
+ * 안 된다. 제목에 문항 수를 넣지 않는 이유: 자동 선별은 풀이 줄면 함께
+ * 줄어드는데 제목의 숫자는 따라 줄지 않는다. */
+const withPractice = await sql<{ concept_id: string }[]>`
+  select distinct concept_id::text as concept_id from learning_materials
+  where organization_id = ${ORG} and kind = 'practice'
+    and concept_id = any(${conceptIds}::uuid[])
+`;
+const havePractice = new Set(withPractice.map((r) => r.concept_id));
+let createdPractice = 0;
+for (const slug of CONCEPT_SLUGS) {
+  const concept = concepts.find((c) => c.slug === slug)!;
+  if (havePractice.has(concept.id)) continue;
+  const [order] = await sql<{ next: number }[]>`
+    select coalesce(max(sort_order), 0)::int + 1 as next
+    from learning_materials
+    where organization_id = ${ORG} and concept_id = ${concept.id}
+  `;
+  const materialId = uuidv7();
+  const title = `${concept.name} 연습`;
+  await sql.begin(async (tx) => {
+    await tx`
+      insert into learning_materials (
+        id, organization_id, concept_id, kind, title, question_ids,
+        sort_order, status, created_by
+      ) values (
+        ${materialId}, ${ORG}, ${concept.id}, 'practice', ${title},
+        '[]'::jsonb, ${order!.next}, 'published', ${teacher.id}
+      )
+    `;
+    /* 초안 단계 없이 게시로 만든다 — before 없이 after에 초기 상태 전부 */
+    await tx`
+      insert into audit_events (
+        id, organization_id, actor_type, actor_id, action, target_type, target_id,
+        reason, after
+      ) values (
+        ${uuidv7()}, ${ORG}, 'user', ${teacher.id},
+        'material.create', 'learning_material', ${materialId},
+        ${`${concept.name} — ${title} (데모 1단원 검증 세팅, 자동 선별)`},
+        ${tx.json({
+          kind: "practice",
+          conceptId: concept.id,
+          status: "published",
+          questionIds: [],
+        } as never)}
+      )
+    `;
+  });
+  createdPractice++;
+}
+
 /* ── 연습문제 상태 보고 (자동으로 바꾸지 않는다) ──────────────── */
 const [practice] = await sql<{ usable: number; total: number }[]>`
   select
@@ -289,12 +347,20 @@ const publishedNow = await sql<{ cnt: number }[]>`
   where organization_id = ${ORG} and kind = 'reading' and status = 'published'
     and concept_id = any(${conceptIds}::uuid[])
 `;
+const practiceNow = await sql<{ cnt: number }[]>`
+  select count(*)::int as cnt from learning_materials
+  where organization_id = ${ORG} and kind = 'practice' and status = 'published'
+    and concept_id = any(${conceptIds}::uuid[])
+`;
 
 console.log(`오늘(${TZ}) = ${today}`);
 console.log(`반 «${GROUP_NAME}» · 학습자 «${learner.name}» 소속 active`);
 console.log(`차시 노드 개념 ${conceptIds.length}종 → 오늘 세션 연결`);
 console.log(
   `읽기 자료: 이번에 게시 ${refinedDrafts.length}건 · 현재 published ${publishedNow[0]!.cnt}건`,
+);
+console.log(
+  `연습 자료: 이번에 생성 ${createdPractice}건 · 현재 published ${practiceNow[0]!.cnt}건`,
 );
 console.log(
   `연습문제(1단원 개념 정렬): 출제 가능 ${practice!.usable} / 전체 ${practice!.total}` +
