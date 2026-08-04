@@ -14,7 +14,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const DEFAULT_KEYS = ["NEIS_API_KEY", "DATA_GO_KR_API_KEY"];
+const DEFAULT_KEYS = [
+  "NEIS_API_KEY",
+  "DATA_GO_KR_API_KEY",
+  /* 인강 빈칸 — 음성 입력(전사)과 분석 */
+  "ASSEMBLYAI_API_KEY",
+  "DEEPSEEK_API_KEY",
+];
 const TARGET = "production";
 
 const keys = process.argv.slice(2).length > 0 ? process.argv.slice(2) : DEFAULT_KEYS;

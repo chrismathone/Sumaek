@@ -106,12 +106,38 @@ async function ensureTodayScope(): Promise<void> {
  * 스펙 쪽이다. */
 test.beforeAll(ensureTodayScope);
 
+/* 세우고 나면 **치운다.**
+ *
+ * 이 픽스처는 데모 학생의 오늘에 가감법(중2) 차시를 꽂는다. 남겨 두면 E2E를
+ * 한 번 돌릴 때마다 데모 계정의 「오늘」이 중1(1단원) 데모와 섞인 채로 남는다
+ * — 실측으로 그 상태를 사람이 먼저 발견했다. 스펙이 만든 것은 스펙이 지운다.
+ *
+ * 지우기만 하면 중1 데모 일정(seed-unit1-demo의 10:00–22:00)은 그대로 남아
+ * 데모 계정은 중1로 돌아간다. 그 항목까지 지웠다면 재시드가 필요했을 것이다. */
+test.afterAll(async () => {
+  config({ path: ["../.env", ".env"] });
+  if (!process.env.DATABASE_URL) return;
+  const sql = createSql();
+  try {
+    await sql`delete from learner_schedule_items where id = ${SCHEDULE_ITEM}`;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+});
+
 test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", async ({ browser }) => {
+  /* 저작→게시를 읽기·인강 두 번 돌므로 기본 30초가 빠듯하다(실측: 데스크톱
+   * 21→30초대, dev 서버 재컴파일이 겹치면 초과). 왕복 두 개 분량으로 늘린다. */
+  test.setTimeout(90_000);
   const stamp = Date.now().toString(36).slice(-5);
   const title = `E2E자료-${stamp}`;
   const fixedTitle = `${title} 고친제목`;
   const disclosure = `E2E 고지-${stamp} · AI가 만든 자료입니다.`;
-  const videoTitle = `E2E인강-${stamp}`;
+  /* 제목이 `E2E자료-`로 시작해야 티어다운이 지운다 (purge-test-data의
+   * MATERIAL_TITLE_PATTERN). 다른 접두사를 쓰면 게시된 자료가 실행마다
+   * 시드 개념에 쌓여 데모·수동 확인 화면을 오염시킨다 — 실측으로 7건이
+   * 쌓인 뒤에야 드러났다. */
+  const videoTitle = `E2E자료-${stamp} 인강`;
 
   const teacherCtx = await browser.newContext();
   const teacher = await teacherCtx.newPage();
@@ -223,103 +249,164 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
   await login(student, STUDENT);
   await expect(student).toHaveURL(/\/learn\/today/, { timeout: 30_000 });
 
-  /* 개념 공부는 **한 번에 한 자료만** 낸다 — 방금 만든 자료가 기본 쪽이라는
-   * 보장이 없으므로(첫 미완료 자료가 기본이다) 번호 차례에서 제목으로 찾아
-   * 연다. 번호 링크의 title이 「개념 — 제목」이다. */
+  /* 개념 학습은 **한 쪽에 한 개념**을 낸다 — 방금 만든 자료의 개념이 기본
+   * 쪽이라는 보장이 없으므로(첫 미완료 개념이 기본이다) 개념 차례에서
+   * 개념명으로 찾아 연다. */
   await student.goto("/learn/study");
   const pageLink = student.locator(
-    `nav[aria-label="자료 차례"] a[title="${CONCEPT} — ${fixedTitle}"]`,
+    `nav[aria-label="개념 차례"] a[title="${CONCEPT}"]`,
   );
   await expect(pageLink).toBeVisible({ timeout: 30_000 });
   await pageLink.click();
 
+  /* **이 스펙의 요지**: 방금 만든 읽기 자료와 인강이 **같은 쪽**에 함께 있다.
+   * 개념이 쪽의 단위이므로 둘은 갈릴 수 없다 — 갈리면 여기서 깨진다. */
   const card = student.locator("section").filter({ hasText: fixedTitle });
+  /* exact — 이 쪽의 제목은 전부 「가감법」으로 시작한다(자료 제목·인강 제목·
+   * 연습 묶음 제목). 부분 일치로 두면 넷이 잡혀 strict mode로 죽는다. */
+  await expect(
+    card.getByRole("heading", { name: CONCEPT, exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
   // 고친 제목이 그대로 도달한다 (재생성이었다면 진도가 갈렸을 자리다)
-  await expect(card.getByRole("heading", { name: fixedTitle })).toBeVisible({
-    timeout: 30_000,
-  });
-  // AI 고지가 본문 위에 보인다 — 읽고 난 뒤에 알리는 것은 알린 것이 아니다
-  await expect(card.getByText(disclosure)).toBeVisible();
+  await expect(card.getByRole("heading", { name: fixedTitle })).toBeVisible();
+  await expect(card.getByRole("heading", { name: videoTitle })).toBeVisible();
+  // 설명과 인강이 한 쪽에 나란히 — 연습은 다음 쪽이다
+  for (const section of ["설명", "인강"]) {
+    await expect(
+      card.getByRole("heading", { name: section, exact: true }),
+    ).toBeVisible();
+  }
+  /* AI 고지는 학생 화면에 **싣지 않는다**(소유자 결정 2026-08-04) — 출처·
+   * 생성 경위는 교사 검수 화면의 정보다. 교사 상세에는 남아 있는 것을 위
+   * 3단계에서 이미 지났다. 데이터는 그대로이므로 정책이 바뀌면 여기가
+   * 먼저 깨진다. */
+  await expect(card.getByText(disclosure)).toHaveCount(0);
 
   /* 「다 봤어요」 → 완료. 진도는 자료 id에 매달린다.
-   * 같은 화면에 이 개념의 인강 카드도 있어 버튼·「완료」 배지가 여럿일 수
-   * 있다 — 시드 인강의 진도는 실행 간 잔존하므로, 아무 「완료」나 잡으면
-   * 클릭과 무관하게 이미 떠 있던 배지로 공허하게 통과한다(실측 지적).
-   * 읽기 자료의 버튼·배지는 섹션의 첫 직계 div(머리줄)에만 있으니 거기로
-   * 좁힌다. exact — 알림 문구("완료로 표시했습니다")와 구분. */
-  const readingHeader = card.locator(":scope > div").first();
-  await readingHeader.getByRole("button", { name: "다 봤어요" }).click();
-  await expect(readingHeader.getByText("완료", { exact: true })).toBeVisible({
+   * 한 쪽에 읽기·인강 카드가 함께 있어 버튼·「완료」 배지가 여럿이다 —
+   * 시드 인강의 진도는 실행 간 잔존하므로 아무 「완료」나 잡으면 클릭과
+   * 무관하게 이미 떠 있던 배지로 공허하게 통과한다(실측 지적). 그래서
+   * 제목으로 좁힌 자료 안에서만 버튼→배지 전환을 본다. */
+  const readingArticle = card.locator("article").filter({ hasText: fixedTitle });
+  await readingArticle.getByRole("button", { name: "다 봤어요" }).click();
+  await expect(readingArticle.getByText("완료", { exact: true })).toBeVisible({
     timeout: 30_000,
   });
 
-  /* 인강 완료 배선 — 같은 결합 화면에서 방금 게시한 우리 인강을 완료한다.
-   * 제목으로 좁힌 카드 안에서 버튼이 배지로 바뀌는 것을 단언하므로,
-   * materialId가 엉뚱한 자료로 이어지면 이 카드의 버튼이 남아 실패한다. */
-  const videoCard = card.locator("li").filter({ hasText: videoTitle });
-  await expect(videoCard).toBeVisible();
-  await videoCard.getByRole("button", { name: "다 봤어요" }).click();
-  await expect(videoCard.getByText("완료", { exact: true })).toBeVisible({
-    timeout: 30_000,
-  });
+  /* 인강에는 「다 봤어요」가 **없다** — 눌러서 넘길 수 있으면 시청 강제가
+   * 뜻을 잃는다. 완료는 플레이어가 시청률로 찍는다. 그래서 여기서는 우리
+   * 컨트롤(재생·배속)이 붙었다는 것과 손으로 완료할 길이 없다는 것을 본다. */
+  const videoCard = card.getByRole("article", { name: `인강: ${videoTitle}` });
+  await expect(videoCard).toBeVisible({ timeout: 30_000 });
+  // exact — 영상 위 덮개 버튼의 라벨도 「… 재생」이라 부분 일치면 둘이 잡힌다
+  await expect(
+    videoCard.getByRole("button", { name: "재생", exact: true }),
+  ).toBeVisible();
+  await expect(videoCard.getByLabel("배속")).toBeVisible();
+  await expect(videoCard.getByRole("button", { name: "다 봤어요" })).toHaveCount(0);
+
+  /* 그래서 다음으로 가는 길은 **잠겨 있다** — 이 개념의 인강을 아직 안 봤다.
+   * 잠금이 풀리는 조건이 「시청 완료」임을 문구로도 못 박는다.
+   * 이동 바는 섹션 밖(화면 아래 고정)이라 페이지 범위로 본다. */
+  await expect(
+    student.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
+  ).toBeVisible();
   await studentCtx.close();
 });
 
 /**
- * 시드가 넣은 자료가 학생 화면 세 갈래에 그대로 도달하는지 — 인강의 AI 고지,
- * **개념 공부 화면에 같은 개념의 인강이 함께 나오는 것**, 연습문제의 **지정
- * 순서**가 요지다. 지정 순서는 자동 선정(생성순)과 일부러 반대로 시드해
- * 두었으므로, 순서가 무시되면 이 단언이 먼저 깨진다.
- *
- * 알려진 공백: 개념 공부의 「읽기 자료는 없고 인강만 있는 날」 분기는 어떤
- * 자동 검증도 지나가지 않는다 — 오늘 개념(가감법)에 시드 읽기 자료가 늘
- * 게시돼 있어, 그 분기를 밟으려면 별도 개념·노드·일정을 통째로 세워야
- * 한다. 그 비용을 낼 만큼 분기가 크지 않아(공용 카드 재사용 + 조건 하나)
- * 공백으로 남긴다 — 분기를 키우게 되면 이 주석이 스펙을 요구하는 자리다.
+ * 시드가 넣은 자료가 학생에게 그대로 도달하는지 — 오늘 하루가 **개념 학습
+ * 한 단계**로 서는 것, 한 개념 쪽에 설명·인강·연습이 함께 있는 것, 인강의
+ * AI 고지, 연습문제의 **지정 순서**가 요지다. 지정 순서는 자동 선정(생성순)과
+ * 일부러 반대로 시드해 두었으므로, 순서가 무시되면 이 단언이 먼저 깨진다.
  */
-test("시드 자료: 인강 고지와 연습문제 지정 순서가 학생에게 그대로 간다", async ({
+test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 지정 순서가 지켜진다", async ({
   page,
 }) => {
   await ensureTodayScope();
   await login(page, STUDENT);
   await expect(page).toHaveURL(/\/learn\/today/, { timeout: 30_000 });
 
-  /* 인강 — AI 고지, 그리고 같은 개념의 설명으로 가는 길 */
+  /* 하루의 구조 — 설명·인강·연습이 각각 단계가 아니라 「개념 학습」 하나다.
+   * 단계를 다시 쪼개면 분모(4)와 이 단언이 함께 깨진다. */
+  await expect(page.getByRole("list", { name: "오늘 학습 4단계" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "개념 학습", exact: true }),
+  ).toBeVisible();
+  for (const gone of ["개념 공부", "개념 인강", "연습문제"]) {
+    await expect(page.getByRole("heading", { name: gone, exact: true })).toHaveCount(
+      0,
+    );
+  }
+
+  /* 인강 화면 — 같은 개념의 설명으로 가는 길. AI 고지는 학생 화면에
+   * 싣지 않으므로(소유자 결정 2026-08-04) 없는 것을 단언한다. */
   await page.goto("/learn/watch");
   const lecture = page.locator("li").filter({ hasText: "가감법 5분 정리" });
   await expect(lecture).toBeVisible({ timeout: 30_000 });
   await expect(
     lecture.getByText("선생님이 검수한 AI 보충 강의입니다."),
-  ).toBeVisible();
+  ).toHaveCount(0);
   /* 역링크는 쪽 번호가 아니라 **개념**을 싣는다(?c=) — 번호는 렌더 시점
    * 순번이라 클릭 시점의 목록과 어긋날 수 있어서다. 형식만 보지 않고 실제로
-   * 클릭해, 도착한 화면이 정말 그 개념의 설명 쪽(?p로 정규화됨)인지까지
-   * 본다 — 매핑이 어긋나면 도착 캡션의 개념명이 갈려 여기서 잡힌다. */
+   * 클릭해, 도착한 쪽이 정말 그 개념인지(?p로 정규화됨)까지 본다. */
   const backlink = lecture.getByRole("link", { name: "이 개념의 설명 읽기 →" });
   await expect(backlink).toHaveAttribute("href", /\/learn\/study\?c=[0-9a-f-]{36}/);
+  /* 개념 id는 **떠나기 전에** 받아 둔다 — 클릭 후에는 이 노드가 사라져
+   * getAttribute가 실패한다. 화면이 만든 값이라 하드코딩이 아니다. */
+  const conceptId = new URL(
+    (await backlink.getAttribute("href")) ?? "",
+    "http://x",
+  ).searchParams.get("c");
+  expect(conceptId).toMatch(/^[0-9a-f-]{36}$/);
   await backlink.click();
   await expect(page).toHaveURL(/\/learn\/study\?p=\d+/, { timeout: 30_000 });
-  await expect(page.getByText(/가감법 · \d+\/\d+/)).toBeVisible();
 
-  /* 개념 공부 — 설명과 **같은 화면**에 그 개념의 인강이 함께 나온다.
-   * 오늘 자료는 전부 가감법이므로 어느 쪽을 열어도 이 인강이 붙는다.
-   * 고지는 영상 위에 그대로, 유튜브 주소는 임베드로 나온다. */
-  const lectureOnStudy = page.locator("li").filter({ hasText: "가감법 5분 정리" });
-  await expect(lectureOnStudy).toBeVisible({ timeout: 30_000 });
+  /* 개념 학습 — 한 쪽에 설명과 인강이 **함께** 온다. 도착한 쪽이 가감법
+   * 쪽이라는 것과, 그 쪽 안에 인강이 임베드로 있다는 것을 같이 본다. */
+  const conceptPage = page.locator("section").filter({ hasText: "가감법 5분 정리" });
   await expect(
-    lectureOnStudy.getByText("선생님이 검수한 AI 보충 강의입니다."),
-  ).toBeVisible();
+    conceptPage.getByRole("heading", { name: "가감법", exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  /* 재생기가 붙었는지를 **우리 컨트롤**로 확인한다 — iframe은 YT IFrame
+   * API가 만들고 title도 유튜브가 붙이므로 자료 제목과 다르다. 컨트롤 묶음의
+   * aria-label에 자료 제목이 들어 있어 인강이 여럿이어도 하나만 잡힌다. */
+  const lectureCard = conceptPage.getByRole("article", {
+    name: "인강: 가감법 5분 정리",
+  });
+  await expect(lectureCard).toBeVisible();
+  await expect(lectureCard.getByLabel("배속")).toBeVisible();
   await expect(
-    lectureOnStudy.locator('iframe[title="가감법 5분 정리"]'),
+    conceptPage.getByText("선생님이 검수한 AI 보충 강의입니다."),
+  ).toHaveCount(0);
+
+  /* 인강을 아직 안 봤으므로 다음 쪽은 **잠겨 있다** — 이것이 시청 강제의
+   * 실제 모습이다. 링크가 아니라 잠긴 표시와 이유만 있다.
+   * 이동 바는 섹션 **밖**(화면 아래 고정)이라 page 범위로 본다. */
+  await expect(
+    page.getByRole("link", { name: "연습문제 풀러 가기 →" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/인강 \d+건을 끝까지 보면 열립니다/),
   ).toBeVisible();
 
-  /* 연습문제 — 지정한 순서 그대로 */
-  await page.goto("/learn/practice");
+  /* 연습 쪽 자체는 개념 id로 직접 연다 — 잠금은 위에서 확인했고, 여기서
+   * 볼 것은 「그 개념의 연습만 나오는가」와 지정 순서다. */
+  await page.goto(`/learn/practice?c=${conceptId}`);
+  await expect(
+    page.getByRole("heading", { name: "가감법 — 연습문제" }),
+  ).toBeVisible({ timeout: 30_000 });
+
+  /* 지정 순서: a+b 문항이 먼저, x+y=5 문항이 나중 (생성순은 그 반대다) */
   const practice = page.locator("form").filter({ hasText: "가감법 연습 2문항" });
   await expect(practice).toBeVisible({ timeout: 30_000 });
   const items = practice.locator("ol > li");
   await expect(items).toHaveCount(2);
-  // 지정 순서: a+b 문항이 먼저, x+y=5 문항이 나중 (생성순은 그 반대다)
   await expect(items.nth(0)).toContainText("값을 구하시오");
   await expect(items.nth(1)).toContainText("해를 구하시오");
+
+  // 흐름이 이어진다 — 설명·인강으로 돌아가는 길과 다음으로 가는 길
+  await expect(
+    page.getByRole("link", { name: "← 설명·인강 다시 보기" }),
+  ).toBeVisible();
 });

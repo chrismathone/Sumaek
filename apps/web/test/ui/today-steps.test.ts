@@ -25,9 +25,7 @@ import type { IsoDate } from "@su-maek/core/shared";
 const day = (over: Partial<DayInput> = {}): DayInput => ({
   blocked: false,
   hasSession: true,
-  reading: "none",
-  video: "none",
-  practice: "none",
+  concept: "none",
   test: "none",
   review: "none",
   ...over,
@@ -35,25 +33,30 @@ const day = (over: Partial<DayInput> = {}): DayInput => ({
 
 describe("오늘의 판정 (readDay)", () => {
   it("할 차례는 언제나 하나 — 배우는 순서에서 앞선 것이 이긴다", () => {
-    const r = readDay(
-      day({ reading: "todo", video: "todo", practice: "todo", review: "todo" }),
-    );
-    expect(r.active).toBe("reading");
+    const r = readDay(day({ concept: "todo", test: "todo", review: "todo" }));
+    expect(r.active).toBe("concept");
     expect(r.verdict).toBe("active");
   });
 
   it("앞 단계를 마치면 다음 단계가 할 차례가 된다", () => {
-    expect(readDay(day({ reading: "done", video: "todo" })).active).toBe("video");
+    expect(readDay(day({ concept: "done", test: "todo" })).active).toBe("test");
     expect(
-      readDay(day({ reading: "done", video: "done", test: "todo" })).active,
-    ).toBe("test");
-    expect(
-      readDay(day({ reading: "done", practice: "none", review: "todo" })).active,
+      readDay(day({ concept: "done", test: "done", review: "todo" })).active,
     ).toBe("review");
+    expect(readDay(day({ concept: "none", review: "todo" })).active).toBe(
+      "review",
+    );
+  });
+
+  /* 설명·인강·연습은 **한 단계**다(ActionKey "concept"). 셋이 각각 단계였을
+   * 때는 학생이 같은 개념을 배우면서 세 단계를 지나야 했고, 화면도 셋으로
+   * 갈려 있었다. 단계를 다시 쪼개면 이 단언이 컴파일에서 먼저 깨진다. */
+  it("설명·인강·연습은 한 단계로 묶여 있다", () => {
+    expect(ACTION_ORDER).toEqual(["concept", "test", "review"]);
   });
 
   it("할 일이 있었고 전부 마친 날에만 완주를 선언한다", () => {
-    const r = readDay(day({ reading: "done", test: "done" }));
+    const r = readDay(day({ concept: "done", test: "done" }));
     expect(r.active).toBeNull();
     expect(r.verdict).toBe("finished");
   });
@@ -102,7 +105,7 @@ describe("오늘의 판정 (readDay)", () => {
 
   it("오늘 할 일을 마쳤으면 예정이 남아 있어도 완주다", () => {
     // 내일 볼 테스트가 오늘의 완주를 막지 않는다
-    expect(readDay(day({ reading: "done", test: "upcoming" })).verdict).toBe(
+    expect(readDay(day({ concept: "done", test: "upcoming" })).verdict).toBe(
       "finished",
     );
   });
@@ -113,7 +116,7 @@ describe("차단된 날 (readDay)", () => {
     /* 이 화면이 하는 거짓말 중 가장 나쁜 것이다. 자료를 안 올렸거나 문항이
      * 0개라 학생이 할 수 없는 항목이 남아 있는데 「다 마쳤습니다」가 뜨면,
      * 학생은 자기 몫을 끝냈다고 믿고 화면을 닫는다. */
-    const r = readDay(day({ reading: "done", blocked: true }));
+    const r = readDay(day({ concept: "done", blocked: true }));
     expect(r.verdict).toBe("blocked");
     expect(r.verdict).not.toBe("finished");
     expect(r.active).toBeNull();
@@ -121,13 +124,13 @@ describe("차단된 날 (readDay)", () => {
 
   it("할 차례가 남아 있으면 차단이 있어도 그것부터 한다", () => {
     /* 차단은 완주를 막을 뿐 나머지 일을 막지 않는다 (ADR-0017 §3). */
-    const r = readDay(day({ reading: "todo", test: "done", blocked: true }));
+    const r = readDay(day({ concept: "todo", test: "done", blocked: true }));
     expect(r.verdict).toBe("active");
-    expect(r.active).toBe("reading");
+    expect(r.active).toBe("concept");
   });
 
   it("차단이 없으면 종전대로 완주다", () => {
-    expect(readDay(day({ reading: "done", blocked: false })).verdict).toBe(
+    expect(readDay(day({ concept: "done", blocked: false })).verdict).toBe(
       "finished",
     );
   });
@@ -145,16 +148,27 @@ describe("계획 → 단계 상태 (planToDayInput)", () => {
   const from = (items: DayPlanItemInput[]) =>
     planToDayInput(buildDayPlan({ planDate: TODAY, items }));
 
-  it("자료 종류가 그대로 단계가 된다", () => {
+  it("설명·인강·연습은 한 단계로 접힌다", () => {
+    /* 계획 항목은 여전히 셋으로 나뉘어 있다(자료의 갈래가 셋이므로).
+     * 접히는 것은 **단계**이고, 하나라도 남아 있으면 그 단계가 할 차례다 —
+     * 셋 중 둘을 끝냈다고 「개념 학습 완료」라고 하면 학생은 남은 하나를
+     * 찾지 않는다. */
     const d = from([
       item({ kind: "reading", status: "completed" }),
       item({ kind: "video", status: "pending" }),
       item({ kind: "practice", status: "in_progress" }),
     ]);
-    expect(d.reading).toBe("done");
-    expect(d.video).toBe("todo");
-    expect(d.practice).toBe("todo");
+    expect(d.concept).toBe("todo");
     expect(d.test).toBe("none");
+  });
+
+  it("자료를 전부 끝내야 개념 학습이 done이다", () => {
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "video", status: "completed" }),
+      item({ kind: "practice", status: "exempted" }),
+    ]);
+    expect(d.concept).toBe("done");
   });
 
   it("평가와 복습이 각자 단계로 간다", () => {
@@ -181,7 +195,9 @@ describe("계획 → 단계 상태 (planToDayInput)", () => {
       item({ kind: "reading", status: "completed" }),
       item({ kind: "practice", status: "blocked", blockedReason: "no_questions" }),
     ]);
-    expect(d.practice).not.toBe("todo");
+    /* 같은 단계 안의 다른 자료를 다 끝냈어도 막힌 것이 남으면 할 차례가
+     * 아니다 — 눌러 봐야 학생이 할 수 있는 일이 없다. */
+    expect(d.concept).not.toBe("todo");
     expect(d.blocked).toBe(true);
     expect(readDay(d).verdict).toBe("blocked");
   });

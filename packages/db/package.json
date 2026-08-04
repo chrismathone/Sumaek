@@ -25,7 +25,8 @@
     "queue-status": "tsx scripts/queue-status.mts",
     "requeue-outbox": "tsx scripts/requeue-outbox.mts",
     "verify-recovery": "tsx scripts/verify-recovery.mts",
-    "rebuild-read-models": "tsx scripts/rebuild-read-models.mts"
+    "rebuild-read-models": "tsx scripts/rebuild-read-models.mts",
+    "propose-blanks": "tsx scripts/propose-blanks.mts"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",

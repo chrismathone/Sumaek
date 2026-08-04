@@ -56,7 +56,7 @@ export default async function LearnLayout({
         본문으로 건너뛰기
       </a>
       <header className="sticky top-0 z-40 border-b border-rule-soft bg-surface">
-        <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4 group-has-[[data-wide]]:max-w-6xl">
+        <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4 group-has-[[data-wide]]:max-w-[120rem]">
           <Link href="/learn/today" aria-label="수맥 오늘의 학습" className="shrink-0">
             <SumaekLogo
               variant="header"
@@ -74,11 +74,13 @@ export default async function LearnLayout({
           </div>
         </div>
       </header>
-      {/* 기본은 좁은 한 줄(한 화면에 한 행동). 읽기 위주 화면만 data-wide로
-       * 넓힌다 — 개념 공부가 넓은 화면에서 2단으로 흐르기 위한 스위치. */}
+      {/* 기본은 좁은 한 줄(한 화면에 한 행동). 개념 학습만 data-wide로
+       * 넓힌다 — 설명|인강 2단이 창 너비를 실제로 쓰기 때문이다.
+       * 상한을 120rem으로 둔 이유: 무한정 늘리면 초광폭 모니터에서 설명
+       * 한 줄이 눈이 못 따라갈 만큼 길어진다. 좌우 여백은 px-4만 남긴다. */}
       <main
         id="main-content"
-        className="mx-auto max-w-2xl px-4 py-6 has-[[data-wide]]:max-w-6xl"
+        className="mx-auto max-w-2xl px-4 py-6 has-[[data-wide]]:max-w-[120rem]"
       >
         {children}
       </main>

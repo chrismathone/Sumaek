@@ -357,3 +357,81 @@ export const learnerMaterialProgress = pgTable(
     ),
   ],
 );
+
+/* ─────────────────────────────────────────────────────────────
+ * 개념 빈칸 (0016a) — 인강을 보고 넘어가는 것이 아니라 인출하게.
+ *
+ * 자료에서 파생하지 않고 따로 저장한다: 빈칸은 적은 수를 정확한 자리에
+ * 놓아야 인출이 되고, 많으면 받아쓰기가 된다. 그 판단은 검수 대상이므로
+ * 자료와 같은 draft → published 흐름을 탄다. 자세한 근거는 마이그레이션
+ * 0016a_concept_blanks.sql의 머리글에 있다.
+ * ───────────────────────────────────────────────────────────── */
+
+export const conceptBlankStage = pgEnum("concept_blank_stage", [
+  "one",
+  "two",
+  "full",
+]);
+
+export const conceptBlankStatus = pgEnum("concept_blank_status", [
+  "draft",
+  "published",
+  "archived",
+]);
+
+export const conceptBlankSets = pgTable(
+  "concept_blank_sets",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    conceptId: uuid("concept_id").notNull(),
+    stage: conceptBlankStage("stage").notNull(),
+    /** 빈칸이 뚫린 본문 — 자리는 {{1}}·{{2}}. full 단계에는 없다 */
+    templateText: text("template_text"),
+    /** [{position, answer, hint, alternatives[]}] */
+    blanks: jsonb("blanks").notNull().default([]),
+    /** 어느 자료에서 왔는가 — 원본 변경을 검수에서 대조할 근거 */
+    sourceMaterialId: uuid("source_material_id"),
+    status: conceptBlankStatus("status").notNull().default("draft"),
+    createdBy: uuid("created_by"),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("concept_blank_sets_uq").on(
+      t.organizationId,
+      t.conceptId,
+      t.stage,
+    ),
+    index("concept_blank_sets_concept_idx").on(
+      t.organizationId,
+      t.conceptId,
+      t.status,
+    ),
+  ],
+);
+
+export const learnerBlankProgress = pgTable(
+  "learner_blank_progress",
+  {
+    id: id(),
+    organizationId: organizationId(),
+    learnerId: uuid("learner_id").notNull(),
+    blankSetId: uuid("blank_set_id").notNull(),
+    status: materialProgressStatus("status").notNull().default("in_progress"),
+    /** 최고 기록 — 다시 풀어 더 틀려도 내려가지 않는다 */
+    bestCorrect: integer("best_correct").notNull().default(0),
+    totalCount: integer("total_count").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    result: jsonb("result"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("learner_blank_progress_uq").on(t.learnerId, t.blankSetId),
+    index("learner_blank_progress_learner_idx").on(
+      t.organizationId,
+      t.learnerId,
+      t.status,
+    ),
+  ],
+);

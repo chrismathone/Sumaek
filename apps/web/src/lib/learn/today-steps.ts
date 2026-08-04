@@ -26,17 +26,17 @@ export type StepState = "todo" | "done" | "upcoming" | "none";
 /** 궤도에서 어디인가 — StepState와 축이 다르다 */
 export type OrbitState = "past" | "here" | "ahead" | "empty";
 
-/** 활성 단계가 될 수 있는 단계 — 1단계(오늘 배울 것)는 학생이 할 일이 아니다 */
-export type ActionKey = "reading" | "video" | "practice" | "test" | "review";
+/** 활성 단계가 될 수 있는 단계 — 1단계(오늘 배울 것)는 학생이 할 일이 아니다.
+ *
+ * `concept`는 **읽기·인강·연습을 합친 한 단계**다. 예전에는 셋이 각각
+ * 단계였는데, 학생은 같은 개념을 배우면서 세 단계와 세 화면을 오갔다 —
+ * 「개념을 열어 놓고 인강을 보고 그대로 연습까지」가 제품이 하려던 것이고,
+ * 단계가 갈려 있는 한 화면이 아무리 이어져도 하루의 구조가 그것을 부정한다.
+ * 화면(/learn/study)이 개념 단위로 한 쪽에 셋을 이어 붙이므로 단계도 하나다. */
+export type ActionKey = "concept" | "test" | "review";
 
 /** 배우는 순서 그대로 — 앞 단계가 남아 있으면 그것이 먼저다 */
-export const ACTION_ORDER: readonly ActionKey[] = [
-  "reading",
-  "video",
-  "practice",
-  "test",
-  "review",
-];
+export const ACTION_ORDER: readonly ActionKey[] = ["concept", "test", "review"];
 
 export type DayVerdict =
   /** 지금 할 차례가 있다 */
@@ -183,9 +183,12 @@ export function solidBelow(
 
 /** 계획 항목 종류 → 궤도 정거장. 아직 정거장이 없는 종류는 null. */
 const STOP_OF: Record<string, ActionKey | null> = {
-  reading: "reading",
-  video: "video",
-  practice: "practice",
+  /* 설명·인강·연습이 한 단계다 — 계획 항목은 여전히 셋으로 나뉘어 있고
+   * (자료의 갈래가 셋이므로) 단계만 합친다. 셋을 각각 단계로 두면 학생이
+   * 같은 개념을 배우면서 세 단계와 세 화면을 오간다. */
+  reading: "concept",
+  video: "concept",
+  practice: "concept",
   assessment: "test",
   review: "review",
   // 교재 범위·숙제는 T2.3이 /learn/homework 정거장을 만든다. 그때까지는
@@ -215,9 +218,7 @@ export function planToDayInput(plan: PlanLike): DayInput {
   const day = {
     hasSession: false,
     blocked: plan.required.blocked > 0,
-    reading: "none",
-    video: "none",
-    practice: "none",
+    concept: "none",
     test: "none",
     review: "none",
   } as DayInput;

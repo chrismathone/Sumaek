@@ -1,124 +1,115 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { symbolAnswerClass } from "@su-maek/core/grading";
-import { renderMixedText } from "@su-maek/core/math";
-import {
-  adaptInstructionForChoice,
-  isSymbolAnswerKey,
-  symbolOptionsFromBodyText,
-} from "@/lib/learn/symbol-answer";
 import { getCurrentLearner } from "@/lib/auth/current-learner";
 import { todayInKst } from "@/lib/format";
-import {
-  listMaterials,
-  listPracticeQuestions,
-} from "@/lib/domain/learning-material";
+import { listMaterials, type MaterialRow } from "@/lib/domain/learning-material";
 import { getTodayScope } from "@/lib/learn/today-context";
-import { PracticeForm, type PracticeItem } from "./PracticeForm";
+import { buildPracticeSets } from "@/lib/learn/practice-items";
+import { PracticeForm } from "./PracticeForm";
 
 export const metadata: Metadata = { title: "연습문제" };
 
-/* 연습문제 — 오늘 개념의 문항을 풀어 본다.
+/* ─────────────────────────────────────────────────────────────
+ * 연습문제 — 개념 학습의 **다음 쪽**.
+ *
+ * 설명·인강을 마친 학생이 `/learn/study?p=N`에서 쪽을 넘겨 온다
+ * (`?c=개념id`). 「배우기」와 「풀기」는 학생이 머리를 다르게 쓰는 일이라
+ * 쪽을 나눈다 — 한 쪽에 다 실으면 연습이 본문 끝에 묻힌다.
+ *
+ * `?c`가 없으면 오늘 연습을 **전부** 낸다 — 몰아서 풀 때의 목적지로 남긴다.
+ *
+ * 개념 순서는 study와 같은 정렬(listMaterials)이라 「다음 개념」이 두 화면에서
+ * 같은 것을 가리킨다. 쪽 **번호**가 아니라 개념 id로 오가는 이유도 같다:
+ * 번호는 보내는 쪽이 굳힌 순번이라 그 사이 자료가 늘거나 줄면 어긋난다.
+ *
  * 점수로 남지 않고 숙련도에도 반영되지 않는다. 그 사실을 화면에 적는다 —
- * 학생이 "이것도 성적에 들어가나" 걱정하면 연습이 연습이 아니게 된다. */
+ * 학생이 "이것도 성적에 들어가나" 걱정하면 연습이 연습이 아니게 된다.
+ * ───────────────────────────────────────────────────────────── */
 
-interface ContentRun {
-  kind: "text" | "math";
-  text?: string;
-  math?: { latex: string };
+/** 오늘 개념의 순서 — study의 쪽 순서와 같아야 한다 */
+function conceptOrder(materials: MaterialRow[]): string[] {
+  const seen: string[] = [];
+  for (const m of materials) {
+    if (!seen.includes(m.conceptId)) seen.push(m.conceptId);
+  }
+  return seen;
 }
 
-function runsToText(runs: ContentRun[]): string {
-  return runs
-    .map((r) => (r.kind === "math" ? `$${r.math?.latex ?? ""}$` : (r.text ?? "")))
-    .join("");
-}
-
-function blocksToText(body: unknown): string {
-  if (!Array.isArray(body)) return "";
-  return body
-    .map((block: { type?: string; text?: string; runs?: ContentRun[] }) => {
-      if (block.type === "text") return block.text ?? "";
-      if (block.type === "paragraph") return runsToText(block.runs ?? []);
-      return "";
-    })
-    .join("\n");
-}
-
-export default async function PracticePage() {
+export default async function PracticePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const learner = (await getCurrentLearner())!;
   const today = todayInKst();
   const scope = await getTodayScope(learner, today);
-  const materials = await listMaterials({
+  const all = await listMaterials({
     organizationId: learner.user.organizationId,
     learnerId: learner.learnerId,
     conceptIds: scope.conceptIds,
-    kinds: ["practice"],
   });
 
-  const sets = await Promise.all(
-    materials.map(async (m) => {
-      const questions = await listPracticeQuestions({
-        organizationId: learner.user.organizationId,
-        materialId: m.id,
-      });
-      const items: PracticeItem[] = questions.map((q, i) => {
-        /* 판별 문항이면 발문을 고르기 발문으로 표시 전환하고, 발문이 언급한
-         * 기호만 칩으로 낸다. 정답 값은 화면으로 내려가지 않는다 —
-         * 기호 쌍은 발문 자체에 이미 적혀 있다. */
-        const symbolAnswer =
-          q.kind !== "multiple_choice" &&
-          isSymbolAnswerKey(q.answerKey, (s) => symbolAnswerClass(s) !== null);
-        let bodyText = blocksToText(q.body);
-        if (symbolAnswer) bodyText = adaptInstructionForChoice(bodyText);
-        return {
-          key: q.assessmentQuestionId,
-          number: i + 1,
-          kind: q.kind,
-          symbolOptions: symbolAnswer ? symbolOptionsFromBodyText(bodyText) : [],
-          bodyHtml: renderMixedText(bodyText, "publish").html,
-          choices: Array.isArray(q.choices)
-            ? (q.choices as Array<{
-                choiceId: string;
-                order: number;
-                content?: ContentRun[];
-              }>).map((c) => ({
-                choiceId: c.choiceId,
-                order: c.order,
-                html: renderMixedText(runsToText(c.content ?? []), "publish").html,
-              }))
-            : null,
-        };
-      });
-      return { material: m, items };
-    }),
+  const raw = await searchParams;
+  const conceptParam = typeof raw.c === "string" ? raw.c : null;
+  const order = conceptOrder(all);
+  /* 넘어온 개념이 오늘 범위에 없으면(자료가 내려갔거나 링크가 낡았다)
+   * 전체 보기로 물러선다 — 빈 화면을 내는 것보다 낫다. */
+  const scoped = conceptParam && order.includes(conceptParam) ? conceptParam : null;
+  const conceptName = scoped
+    ? (all.find((m) => m.conceptId === scoped)?.conceptName ?? null)
+    : null;
+
+  const practiceMaterials = all.filter(
+    (m) => m.kind === "practice" && (!scoped || m.conceptId === scoped),
   );
-  const usable = sets.filter((s) => s.items.length > 0);
+  const usable = await buildPracticeSets({
+    organizationId: learner.user.organizationId,
+    materials: practiceMaterials,
+  });
+
+  /* 다음 목적지 — 이 개념 다음의 개념 쪽으로. 마지막이면 오늘 학습으로. */
+  const nextIndex = scoped ? order.indexOf(scoped) + 1 : -1;
+  const nextConcept =
+    nextIndex > 0 && nextIndex < order.length ? nextIndex + 1 : null;
 
   return (
-    <div>
-      <h1 className="font-[MaruBuri] text-2xl font-semibold">연습문제</h1>
-      <p className="mt-1 text-sm text-ink-soft">
-        오늘 배우는 개념을 직접 풀어 봅니다.{" "}
+    /* data-wide — 문항을 여러 단으로 흘리려면 창 너비가 필요하다 */
+    <div data-wide>
+      <h1 className="font-[MaruBuri] text-2xl font-semibold break-keep">
+        {conceptName ? `${conceptName} — 연습문제` : "연습문제"}
+      </h1>
+      <p className="mt-1 text-sm break-keep text-ink-soft">
+        {conceptName
+          ? "방금 배운 개념을 직접 풀어 봅니다. "
+          : "오늘 배우는 개념을 직접 풀어 봅니다. "}
         <strong className="font-medium">점수로 남지 않고</strong> 성적에도
         반영되지 않습니다. 틀려도 괜찮습니다.
       </p>
+
+      {scoped && (
+        <Link
+          href={`/learn/study?c=${scoped}`}
+          className="mt-3 inline-block text-sm text-pen underline underline-offset-4"
+        >
+          ← 설명·인강 다시 보기
+        </Link>
+      )}
 
       {usable.length === 0 ? (
         <div className="mt-4 rounded-lg border border-rule bg-surface p-5">
           <p className="font-medium">
             {!scope.hasSession
               ? "오늘은 수업이 없어 연습할 개념이 없습니다."
-              : materials.length === 0
-                ? "오늘 개념에 등록된 연습문제가 아직 없습니다."
+              : practiceMaterials.length === 0
+                ? "이 개념에 등록된 연습문제가 아직 없습니다."
                 : "연습문제 묶음은 있지만 낼 수 있는 문항이 없습니다."}
           </p>
           <p className="mt-1.5 text-sm text-ink-soft">
             {scope.hasSession &&
-              materials.length > 0 &&
+              practiceMaterials.length > 0 &&
               "문제은행에 이 개념의 검수 완료 문항이 없습니다. 선생님께 알려 주세요."}
             {scope.hasSession &&
-              materials.length === 0 &&
+              practiceMaterials.length === 0 &&
               "선생님이 연습문제를 올리면 여기에 표시됩니다."}
           </p>
         </div>
@@ -131,18 +122,43 @@ export default async function PracticePage() {
                 title={material.title}
                 conceptName={material.conceptName}
                 items={items}
+                showConcept={!scoped}
               />
             </li>
           ))}
         </ul>
       )}
 
-      <Link
-        href="/learn/today"
-        className="mt-6 inline-block text-sm text-pen underline underline-offset-4"
-      >
-        오늘 학습으로 돌아가기
-      </Link>
+      {/* 이동 바는 개념 학습 쪽과 **같은 모양으로 화면 아래에 붙인다** —
+          문항이 많으면 화면이 길어져, 다음으로 가려고 끝까지 스크롤해야
+          하는 것은 같은 불편이다. 배경은 불투명하게: 반투명이면 밑을 지나는
+          수식이 글자 사이로 비친다. */}
+      <div className="sticky bottom-0 z-30 mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-t-lg border border-b-0 border-rule bg-surface px-4 py-3">
+        <Link
+          href="/learn/today"
+          className="text-sm text-pen underline underline-offset-4"
+        >
+          오늘 학습으로
+        </Link>
+        {/* 다음 목적지는 개념 범위로 들어온 학생에게만 낸다 — 전체 보기는
+            어느 개념의 다음인지 정할 수 없다. */}
+        {scoped &&
+          (nextConcept ? (
+            <Link
+              href={`/learn/study?p=${nextConcept}`}
+              className="rounded-[var(--radius-control)] border border-pen bg-pen px-4 py-2 text-sm font-medium text-white"
+            >
+              다음 개념 →
+            </Link>
+          ) : (
+            <Link
+              href="/learn/today"
+              className="rounded-[var(--radius-control)] border border-pen px-4 py-2 text-sm font-medium text-pen"
+            >
+              오늘 학습으로 →
+            </Link>
+          ))}
+      </div>
     </div>
   );
 }

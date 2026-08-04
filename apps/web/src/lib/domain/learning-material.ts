@@ -23,10 +23,14 @@ export interface MaterialRow {
   videoUrl: string | null;
   videoSeconds: number | null;
   questionIds: string[];
-  /** AI 생성 고지 — 있으면 학생 화면에 반드시 그대로 보여 준다 */
+  /** AI 생성 고지 — **검수·감사용 기록이다.** 학생 화면에는 싣지 않는다
+   *  (소유자 결정 2026-08-04). 교사 자료 상세가 이 값을 그대로 보여 준다. */
   disclosure: string | null;
   /** 이 학습자의 진도 — 없으면 아직 시작하지 않은 것 */
   progress: "none" | "in_progress" | "completed";
+  /** 인강 시청률(0–100)·지점(초). 영상이 아니거나 기록이 없으면 0 */
+  watchedPercent: number;
+  watchedSeconds: number;
 }
 
 /** 오늘 차시의 노드가 가리키는 개념들 (자료·연습문제의 범위) */
@@ -66,12 +70,16 @@ export async function listMaterials(input: {
       question_ids: unknown;
       disclosure: string | null;
       progress: string | null;
+      watched_percent: number | null;
+      watched_seconds: number | null;
     }[]
   >`
     select m.id::text, m.concept_id::text as concept_id, c.name as concept_name,
            m.kind::text as kind, m.title, m.body, m.video_url,
            m.video_seconds, m.question_ids, m.disclosure,
-           p.status::text as progress
+           p.status::text as progress,
+           (p.result ->> 'watchedPercent')::int as watched_percent,
+           (p.result ->> 'watchedSeconds')::int as watched_seconds
     from learning_materials m
     join canonical_concepts c on c.id = m.concept_id
     left join learner_material_progress p
@@ -98,7 +106,87 @@ export async function listMaterials(input: {
       : [],
     disclosure: r.disclosure,
     progress: (r.progress as MaterialRow["progress"]) ?? "none",
+    /* 연습 자료의 result는 채점 결과라 watchedPercent가 없다 — 그때는 0이다 */
+    watchedPercent: r.watched_percent ?? 0,
+    watchedSeconds: r.watched_seconds ?? 0,
   }));
+}
+
+/** 인강 시청 진도 — 플레이어가 실제로 본 지점을 주기적으로 보낸다.
+ *
+ * **뒤로만 간다.** 저장된 %가 더 크면 그대로 둔다 — 학생이 되감아 다시
+ * 보는 동안 진도가 깎이면 「본 것」이 사라지는 셈이다. 화면은 앞으로 감기를
+ * 막지만, 그 판정을 서버가 다시 하지는 않는다(소유자 결정: 우회 방지는
+ * 목표가 아니다 — 목표는 스킵 없이 끝까지 보게 하는 것이다).
+ *
+ * 완료는 임계치를 넘을 때 이 함수가 스스로 찍는다. 인강에는 「다 봤어요」
+ * 버튼이 없다 — 눌러서 넘길 수 있으면 시청 강제가 뜻을 잃는다. */
+export const WATCH_COMPLETE_PERCENT = 95;
+
+export async function recordVideoWatch(input: {
+  organizationId: string;
+  learnerId: string;
+  materialId: string;
+  /** 이어서 본 최대 지점(초) */
+  seconds: number;
+  /** 0–100 */
+  percent: number;
+}): Promise<{ ok: boolean; percent: number; completed: boolean }> {
+  const sql = getSharedSql();
+  const [material] = await sql<{ id: string }[]>`
+    select id::text from learning_materials
+    where id = ${input.materialId} and organization_id = ${input.organizationId}
+      and kind = 'video' and status = 'published'
+  `;
+  if (!material) return { ok: false, percent: 0, completed: false };
+
+  const percent = Math.max(0, Math.min(100, Math.round(input.percent)));
+  const seconds = Math.max(0, Math.round(input.seconds));
+  const completed = percent >= WATCH_COMPLETE_PERCENT;
+
+  /* greatest로 올려 쓴다 — 되감기 중에 보낸 낮은 값이 최고 기록을 덮지
+   * 않게. 완료 시각도 한 번 찍히면 그대로 둔다(coalesce). */
+  const [row] = await sql<{ percent: number; status: string }[]>`
+    insert into learner_material_progress (
+      id, organization_id, learner_id, material_id, status, result, completed_at
+    ) values (
+      ${uuidv7()}, ${input.organizationId}, ${input.learnerId}, ${material.id},
+      ${completed ? "completed" : "in_progress"},
+      ${sql.json({ watchedPercent: percent, watchedSeconds: seconds } as never)},
+      ${completed ? sql`now()` : null}
+    )
+    on conflict (learner_id, material_id) do update
+      set result = jsonb_build_object(
+            'watchedPercent', greatest(
+              ${percent}::int,
+              coalesce((learner_material_progress.result ->> 'watchedPercent')::int, 0)
+            ),
+            'watchedSeconds', greatest(
+              ${seconds}::int,
+              coalesce((learner_material_progress.result ->> 'watchedSeconds')::int, 0)
+            )
+          ),
+          /* 한 번 완료면 완료로 남는다 — 되감아 다시 볼 때 미완료로 돌아가면
+           * 다음 단계가 도로 잠긴다 */
+          /* ::material_progress_status — case의 분기 값은 text라 그대로 넣으면
+           * enum 컬럼과 타입이 안 맞아 통째로 실패한다(실측: 진도가 하나도
+           * 저장되지 않았다). */
+          status = (case
+            when learner_material_progress.status = 'completed' then 'completed'
+            when ${completed} then 'completed'
+            else 'in_progress' end)::material_progress_status,
+          completed_at = coalesce(
+            learner_material_progress.completed_at,
+            ${completed ? sql`now()` : null}
+          ),
+          updated_at = now()
+    returning (result ->> 'watchedPercent')::int as percent, status::text as status
+  `;
+  return {
+    ok: true,
+    percent: row?.percent ?? percent,
+    completed: (row?.status ?? "") === "completed",
+  };
 }
 
 /** 학생이 「다 봤어요」를 누른 지점 — 열람만으로는 완료가 되지 않는다 */
