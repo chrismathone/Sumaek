@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
+import { NODE_KINDS } from "./shared";
+import { parseNodePayload } from "./node-payload";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import {
@@ -294,17 +296,6 @@ async function invalidateValidation(versionId: string): Promise<void> {
   `;
 }
 
-const NODE_KINDS = [
-  "concept_lesson",
-  "problem_solving",
-  "book_range",
-  "homework",
-  "confirmation_test",
-  "wrong_answer_review",
-  "cumulative_review",
-  "buffer",
-] as const;
-
 const addNodeSchema = z.object({
   planId: z.uuid(),
   kind: z.enum(NODE_KINDS),
@@ -327,6 +318,18 @@ export async function addRouteNode(
     .getAll("conceptIds")
     .map(String)
     .filter((v) => /^[0-9a-f-]{36}$/.test(v));
+
+  /* 종류별 payload — 비어 있으면 여기서 막는다. 조용히 빈 노드를 만들면
+   * 결손이 학생 화면에서 처음 드러나고 그때는 이미 수업 당일이다. */
+  const payload = parseNodePayload(
+    parsed.data.kind,
+    Object.fromEntries(
+      [...formData.entries()]
+        .filter(([, v]) => typeof v === "string")
+        .map(([k, v]) => [k, String(v)]),
+    ),
+  );
+  if (!payload.ok) return { ok: false, message: payload.message };
 
   const sql = getSharedSql();
   const [plan] = await sql<{ id: string }[]>`
@@ -363,13 +366,21 @@ export async function addRouteNode(
   await sql`
     insert into route_nodes (
       id, organization_id, route_version_id, kind, title, sort_order,
-      concept_ids, expected_minutes
+      concept_ids, expected_minutes,
+      book_edition_id, page_range, homework, blueprint_id, completion_criteria
     ) values (
       ${uuidv7()}, ${user.organizationId}, ${version.id}, ${parsed.data.kind},
       ${parsed.data.title},
       (select coalesce(max(sort_order), 0) + 1 from route_nodes
         where route_version_id = ${version.id}),
-      ${sql.json(conceptIds as never)}, ${parsed.data.expectedMinutes}
+      ${sql.json(conceptIds as never)}, ${parsed.data.expectedMinutes},
+      ${payload.data.bookEditionId},
+      ${payload.data.pageRange ? sql.json(payload.data.pageRange as never) : null},
+      ${payload.data.homework ? sql.json(payload.data.homework as never) : null},
+      ${payload.data.blueprintId},
+      ${payload.data.completionCriteria
+        ? sql.json(payload.data.completionCriteria as never)
+        : null}
     )
   `;
   await invalidateValidation(version.id);

@@ -179,6 +179,11 @@ describe.skipIf(!hasDb)("동시 수정 충돌 diff (인수 20)", () => {
         planId,
         kind: "homework",
         title: "내가 넣으려던 숙제",
+        /* T2.1부터 숙제 노드는 방식이 필수다 — 없으면 payload 검증에서
+         * 먼저 걸려 충돌 검사까지 오지 못한다. 이 스펙이 보려는 것은
+         * 충돌이므로 입력은 유효해야 한다. */
+        homeworkMode: "practice_set",
+        practiceMaterialId: "019fbe59-8380-7789-bf05-7be52eb524cd",
         expectedMinutes: "45",
         expectedLockVersion: String(readLock),
         baselineNodes: baseline,

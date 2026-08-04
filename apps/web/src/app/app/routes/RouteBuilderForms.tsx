@@ -13,7 +13,12 @@ import {
   type BuilderResult,
 } from "./actions";
 import { ConflictPanel } from "./ConflictPanel";
-import { BASELINE_FIELD } from "./shared";
+import { BASELINE_FIELD, NODE_KINDS, nodeKindLabel } from "./shared";
+import {
+  HOMEWORK_MODES,
+  HOMEWORK_MODE_LABEL,
+  payloadFieldsFor,
+} from "./node-payload";
 
 function StatusLine({ state }: { state: BuilderResult | null }) {
   if (!state) return null;
@@ -92,16 +97,6 @@ export function NewRouteForm({
   );
 }
 
-const NODE_KIND_OPTIONS = [
-  { value: "concept_lesson", label: "개념 수업" },
-  { value: "problem_solving", label: "문제 풀이" },
-  { value: "book_range", label: "교재 범위" },
-  { value: "homework", label: "숙제" },
-  { value: "confirmation_test", label: "확인테스트" },
-  { value: "wrong_answer_review", label: "오답 복습" },
-  { value: "cumulative_review", label: "누적 복습" },
-  { value: "buffer", label: "버퍼" },
-] as const;
 
 export function AddNodeForm({
   planId,
@@ -119,6 +114,12 @@ export function AddNodeForm({
     addRouteNode,
     null,
   );
+  /* 종류에 따라 필요한 칸이 다르다. 전부 열어 두면 교사는 개념 수업에도
+   * 쪽 범위를 채워야 하는 줄 알고, 채우면 서버가 거부한다. */
+  const [kind, setKind] = useState<string>(NODE_KINDS[0]);
+  const [homeworkMode, setHomeworkMode] = useState<string>(HOMEWORK_MODES[0]);
+  const fields = payloadFieldsFor(kind);
+  const needsBook = fields.book && (kind !== "homework" || homeworkMode === "book_pages");
   return (
     /* 충돌 화면은 폼 **밖**에 둔다 — 폼 안에 두면 <form> 중첩이 되어 그 안의
        "다시 적용" 버튼이 바깥 폼(낡은 토큰)을 제출한다. 실제로 재현했다:
@@ -131,10 +132,11 @@ export function AddNodeForm({
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           종류
-          <select name="kind"
+          <select name="kind" value={kind}
+            onChange={(e) => setKind(e.target.value)}
             className="mt-1 block rounded-[var(--radius-control)] border border-rule bg-surface px-3 py-2 text-sm">
-            {NODE_KIND_OPTIONS.map((k) => (
-              <option key={k.value} value={k.value}>{k.label}</option>
+            {NODE_KINDS.map((k) => (
+              <option key={k} value={k}>{nodeKindLabel(k)}</option>
             ))}
           </select>
         </label>
@@ -153,6 +155,68 @@ export function AddNodeForm({
           {pending ? "추가 중…" : "노드 추가"}
         </button>
       </div>
+      {(fields.book || fields.homework || fields.assessment) && (
+        <fieldset className="rounded-[var(--radius-control)] border border-rule p-3 text-sm">
+          <legend className="px-1 text-xs text-ink-soft">
+            {nodeKindLabel(kind)} 설정 — 비우면 저장되지 않습니다
+          </legend>
+          <div className="flex flex-wrap items-end gap-3">
+            {fields.homework && (
+              <label className="text-sm">
+                숙제 방식
+                <select name="homeworkMode" value={homeworkMode}
+                  onChange={(e) => setHomeworkMode(e.target.value)}
+                  className="mt-1 block rounded-[var(--radius-control)] border border-rule bg-surface px-3 py-2 text-sm">
+                  {HOMEWORK_MODES.map((m) => (
+                    <option key={m} value={m}>{HOMEWORK_MODE_LABEL[m]}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {fields.homework && homeworkMode === "practice_set" && (
+              <label className="text-sm">
+                연습문제 자료 ID
+                <input name="practiceMaterialId" placeholder="자료 UUID"
+                  className="mt-1 block w-72 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs" />
+              </label>
+            )}
+            {needsBook && (
+              <>
+                <label className="text-sm">
+                  교재 판본 ID
+                  <input name="bookEditionId" placeholder="판본 UUID"
+                    className="mt-1 block w-72 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs" />
+                </label>
+                <label className="text-sm">
+                  시작 쪽
+                  <input name="startPage" type="number" min={1} max={9999}
+                    className="mt-1 block w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm" />
+                </label>
+                <label className="text-sm">
+                  끝 쪽
+                  <input name="endPage" type="number" min={1} max={9999}
+                    className="mt-1 block w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm" />
+                </label>
+              </>
+            )}
+            {fields.assessment && (
+              <>
+                <label className="text-sm">
+                  출제 블루프린트 ID
+                  <input name="blueprintId" placeholder="블루프린트 UUID"
+                    className="mt-1 block w-72 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs" />
+                </label>
+                <label className="text-sm">
+                  통과 점수 (선택)
+                  <input name="passScore" type="number" min={0} max={100}
+                    className="mt-1 block w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm" />
+                </label>
+              </>
+            )}
+          </div>
+        </fieldset>
+      )}
+
       {concepts.length > 0 && (
         <fieldset className="text-sm">
           <legend className="text-xs text-ink-soft">
