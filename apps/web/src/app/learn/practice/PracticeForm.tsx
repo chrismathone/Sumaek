@@ -12,49 +12,48 @@ export interface PracticeItem {
   kind: string;
   bodyHtml: string;
   choices: Array<{ choiceId: string; order: number; html: string }> | null;
-  /** 정답이 ◯·△·× 기호인 문항 — 기호 칩을 보여 준다 (서버가 판정) */
-  symbolInput: boolean;
+  /** 판별 문항의 기호 칩 — 발문이 언급한 기호만 담긴다. 빈 배열이면 일반 단답 */
+  symbolOptions: string[];
 }
 
-/* 판별 문항의 답은 키보드로 칠 수 없는 기호다(◯·△·×). 칩 셋은 고정이다 —
- * 문항이 요구하는 둘만 보여 주면 남은 하나가 정답 후보를 좁혀 준다.
- * 어느 둘이 유효한지는 발문이 이미 말한다. 입력창은 그대로 두어 직접
- * 타이핑(o·x·ㅇ)도 받는다 — 채점기가 동치로 인정한다. */
-const ANSWER_SYMBOLS = ["◯", "△", "×"] as const;
-
+/* 판별 문항의 답은 키보드로 칠 수 없는 기호다(◯·△·×). 칩이 유일한 입력이고
+ * 발문도 「고르시오」로 표시 전환된다(symbol-answer.ts). 칩은 발문이 언급한
+ * 기호만 — 「옳으면 ◯, 옳지 않으면 ×」 문항에 △ 칩이 있으면 뜻 없는 답이
+ * 가능해진다. 같은 칩을 다시 누르면 답을 물린다. */
 function ShortAnswerInput({
   name,
-  symbolInput,
+  symbolOptions,
 }: {
   name: string;
-  symbolInput: boolean;
+  symbolOptions: string[];
 }) {
   const [value, setValue] = useState("");
-  return (
-    <div className="mt-3">
-      {symbolInput && (
-        <div className="mb-1.5 flex gap-1.5" role="group" aria-label="기호로 답하기">
-          {ANSWER_SYMBOLS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={value === s}
-              onClick={() => setValue(s)}
-              className="h-9 w-9 rounded-[var(--radius-control)] border border-rule text-base leading-none aria-pressed:border-pen aria-pressed:bg-pen-soft/30"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+  if (symbolOptions.length === 0) {
+    return (
       <input
         name={name}
         type="text"
         placeholder="답"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="block w-48 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm focus:border-pen focus:outline-none"
+        className="mt-3 block w-48 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm focus:border-pen focus:outline-none"
       />
+    );
+  }
+  return (
+    <div className="mt-3 flex gap-1.5" role="group" aria-label="답 고르기">
+      <input name={name} type="hidden" value={value} />
+      {symbolOptions.map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={value === s}
+          onClick={() => setValue(value === s ? "" : s)}
+          className="h-10 w-10 rounded-[var(--radius-control)] border border-rule text-lg leading-none aria-pressed:border-pen aria-pressed:bg-pen-soft/30"
+        >
+          {s}
+        </button>
+      ))}
     </div>
   );
 }
@@ -115,7 +114,7 @@ export function PracticeForm({
                   ) : (
                     <ShortAnswerInput
                       name={`a-${q.key}`}
-                      symbolInput={q.symbolInput}
+                      symbolOptions={q.symbolOptions}
                     />
                   )}
                 </div>

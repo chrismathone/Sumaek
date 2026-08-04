@@ -13,6 +13,8 @@
  *    같은 기준: source_ref.extractedBy가 있으면 건너뛴다)
  * 4. 개념마다 연습 자료(kind='practice') 1행 — question_ids를 비워
  *    자동 선별에 맡긴다. 이미 행이 있는 개념은 건드리지 않는다
+ * 5. 오늘의 비검증반 개별 항목을 치운다 — 가감법(중2) 데모가 중1 오늘에
+ *    섞이지 않게 (소유자 결정 2026-08-04)
  *
  * 몇 번을 다시 돌려도 같은 상태로 수렴한다 (E2E 멱등 원칙). 세션 날짜만
  * 실행일로 이동한다 — "오늘"이어야 학생 화면에 나오기 때문이다.
@@ -219,9 +221,8 @@ if (existingSession) {
  * seed_demo)와 e2e materials.spec(e2e_materials)이 같은 학생에게 쓰는 칸이다.
  * 여기가 09:00부터 잡으면 배타 제약(learner_schedule_items_no_overlap)으로
  * 세 도구가 서로를 죽였다 — db:seed가 통째로 실패했고(2026-08-03 실측),
- * e2e 픽스처가 이 행을 지웠다(2026-08-04 실측). 10:00 시작이면 셋이 공존한다.
- * 오늘 화면에는 두 칸이 다 나온다(가감법 09–10시 + 1단원 10–22시) —
- * 그것이 맞다: 개별 일정이 여러 개면 다 오늘 몫이다. */
+ * e2e 픽스처가 이 행을 지웠다(2026-08-04 실측). 10:00 시작이면 배타 제약
+ * 충돌은 없다. 오늘 화면의 내용 통일은 아래 별도 단계가 맡는다. */
 const [existingItem] = await sql<{ id: string }[]>`
   select id::text from learner_schedule_items
   where organization_id = ${ORG} and learner_id = ${learner.id}
@@ -249,6 +250,22 @@ if (existingItem) {
       ${sql.json(["demo_unit1_verification"] as never)}, true
     )
   `;
+}
+
+/* ── 오늘을 1단원으로 통일 — 소유자 결정 (2026-08-04) ──────────────
+ * db:seed·e2e가 같은 학생의 오늘 09–10시에 가감법 데모 항목을 얹는다
+ * (080, seed_demo/e2e_materials). 가감법은 **중2** 내용이라 중1 데모
+ * 서사에 섞이면 안 된다 — 검증반 항목 외의 **오늘** 항목만 치운다.
+ * e2e materials.spec은 자기 전제를 스스로 세우므로(beforeAll upsert)
+ * 스펙은 안 깨지고, db:seed가 되살리면 이 스크립트를 한 번 더 돌리면
+ * 된다(멱등 수렴). */
+const cleared = await sql`
+  delete from learner_schedule_items
+  where organization_id = ${ORG} and learner_id = ${learner.id}
+    and item_date = ${today}::date and learning_group_id <> ${groupId}
+`;
+if (cleared.count > 0) {
+  console.log(`오늘의 비검증반 개별 항목 ${cleared.count}건 치움 — 중1 1단원 통일`);
 }
 
 /* ── 정제본 게시 — 게시 게이트와 같은 기준 ────────────────────── */
