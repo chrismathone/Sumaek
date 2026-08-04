@@ -201,16 +201,19 @@ export function AddNodeForm({
             )}
             {fields.assessment && (
               <>
-                <label className="text-sm">
-                  출제 블루프린트 ID
-                  <input name="blueprintId" placeholder="블루프린트 UUID"
-                    className="mt-1 block w-72 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-xs" />
-                </label>
+                {/* 블루프린트 입력 칸을 **없앴다** (T3.3). 붙여 넣을 UUID를
+                    얻을 목록도 화면도 없었고, 넣어도 생성기가 읽지 않았다.
+                    출제 규칙은 평가 정책이 정한다 — 반 설정 또는 학원 기본. */}
                 <label className="text-sm">
                   통과 점수 (선택)
                   <input name="passScore" type="number" min={0} max={100}
                     className="mt-1 block w-20 rounded-[var(--radius-control)] border border-rule px-3 py-2 font-mono text-sm" />
                 </label>
+                <p className="w-full text-xs text-ink-soft">
+                  출제 문항 수·난이도·통과 규칙은 <strong>평가 정책</strong>이
+                  정합니다. 반에 지정된 정책이 없으면 학원 기본 정책을 씁니다.
+                  테스트는 수업 하루 전에 자동으로 만들어집니다.
+                </p>
               </>
             )}
           </div>

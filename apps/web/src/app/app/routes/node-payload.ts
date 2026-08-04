@@ -143,10 +143,17 @@ export function parseNodePayload(
   if (NEEDS_ASSESSMENT_REF.has(kind)) {
     if (hasBookInput) return fail("평가 노드에는 교재 범위를 넣을 수 없습니다.");
     if (hasHomeworkInput) return fail("평가 노드에는 숙제 방식을 넣을 수 없습니다.");
-    if (!blueprintId || !uuid.safeParse(blueprintId).success) {
-      /* 참조가 없으면 생성 시점에 무엇을 출제할지 알 수 없다. 그때 실패하면
-       * 이미 수업 당일이고 학생 화면은 빈 테스트를 기다린다. */
-      return fail("출제 블루프린트를 선택하세요.");
+    /* 블루프린트를 **요구하지 않는다** (T3.3).
+     *
+     * 처음에는 "참조가 없으면 생성 시점에 무엇을 출제할지 알 수 없다"고 보고
+     * 필수로 뒀다. 틀렸다 — 무엇을 출제할지는 **평가 정책**이 정하고,
+     * 블루프린트는 생성기가 그때 만들어 남기는 **산출물**이다. 교사가 고를
+     * 목록도, 만들 화면도 없다. 그 결과 평가 노드를 아예 만들 수 없었다.
+     *
+     * 값이 들어오면 형식만 검사해 보관한다. 나중에 「이 블루프린트를 다시
+     * 쓴다」가 생기면 그 자리가 여기다. 지금은 생성기가 읽지 않는다. */
+    if (blueprintId && !uuid.safeParse(blueprintId).success) {
+      return fail("블루프린트 참조 형식이 올바르지 않습니다.");
     }
     let completionCriteria: NodePayload["completionCriteria"] = null;
     if (passScoreRaw) {

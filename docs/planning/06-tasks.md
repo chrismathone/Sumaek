@@ -31,7 +31,7 @@
 | G-01 | 최근 90일의 완료 테스트가 오늘 완료로 오인될 수 있음 | 오늘 날짜·오늘 계획 항목만으로 완료 판정 | P0 | T1.1, T1.3, T1.4 |
 | G-02 | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 학습자별 날짜 계획과 완료 시각을 영속화 | P0 | T1.2, T4.1 |
 | G-03 | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사 마감 또는 정책 기반 집계로 원자적 발행 | P0 | T4.2 |
-| G-04 **부분 닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정 (T3.1·T3.2 ✔). **실패가 아직 교사에게 닿지 않는다** — 큐에만 남는다 (T3.4) | P0 | T3.1~T3.4 |
+| G-04 **부분 닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정하고(T3.1·T3.2 ✔), 평가 노드가 실제 평가가 되는 길이 뚫렸다(T3.3 ✔ — 정책 해석 일원화·기본 정책 프로비저닝·없는 블루프린트 요구 제거). **실패가 아직 교사에게 닿지 않는다** — 큐에만 남는다 (T3.4) | P0 | T3.1~T3.4 |
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
 | G-06 | 문항 없는 연습 자료도 게시할 수 있어 학생이 영구 대기함 | 게시·루트 게시 전 실행 가능성 검증 | P0 | T2.4 |
 | G-07 | 일반 교사는 반·학생·계정 최초 세팅을 끝낼 수 없음 | 역할별 책임이 명확한 온보딩과 제한적 위임 | P1 | T5.1, T5.2 |
@@ -670,7 +670,7 @@ Set-Location ..\Su-Maek-t3-2-assessment-worker
 - [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-2-assessment-worker`
 
-### [] Phase 3, T3.3: 일일·확인테스트 노드 실행과 최신 학습 상태 반영 RED→GREEN
+### [x] Phase 3, T3.3: 일일·확인테스트 노드 실행과 최신 학습 상태 반영 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -696,18 +696,29 @@ Set-Location ..\Su-Maek-t3-3-assessment-nodes
 3. **REFACTOR**: 일일·확인 공통 파이프라인과 목적별 선택 정책을 분리한다.
 
 **산출물**:
-- `packages/db/src/domain/assessment-generation.ts`
-- `packages/db/test/scheduled-assessment-generation.test.ts`
+- `packages/db/src/domain/assessment-policy.ts` **신규** — 정책 해석(반 → 조직)·새 학원 기본 정책 프로비저닝
+- `packages/db/src/domain/assessment-generation.ts` — 정책 해석 사용·계획 연결 스냅샷
+- `packages/db/src/seed/index.ts` — 하드코딩 정책 두 벌 → 공유 프로비저닝 함수
+- `apps/worker/src/handlers/assessment.ts` — 작업 payload의 수업·노드를 생성기에 전달
+- `apps/web/src/lib/domain/learning-readiness.ts` — 게이트가 생성기와 같은 함수로 묻는다
+- `apps/web/src/app/app/routes/node-payload.ts` · `RouteBuilderForms.tsx` — 없는 블루프린트 요구 제거
+- `packages/db/test/scheduled-assessment-generation.test.ts` **신규**
+- `apps/web/test/integration/attempt-date-gate.test.ts` **신규**
 
 **인수 조건**:
-- [ ] 학기 초 미리 누른 결과가 아니라 생성 시점의 숙련도·복습을 사용함
-- [ ] 확인테스트 노드가 실제 confirmation assessment를 생성함
-- [ ] 미래 평가는 허용 날짜 전 응시할 수 없음
-- [ ] 문항 부족 시 빈 평가를 게시하지 않음
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 학기 초 미리 누른 결과가 아니라 생성 시점의 숙련도·복습을 사용함 — 1일차 생성 뒤 숙련도·복습을 바꾸고 2일차를 생성해 입력이 달라짐을 확인
+- [x] 확인테스트 노드가 실제 confirmation assessment를 생성함 — 루트 버전의 단원 개념 전체를 앵커로 덮고, 단원 밖 개념은 들어오지 않음
+- [x] 미래 평가는 허용 날짜 전 응시할 수 없음 — 게이트는 있었으나 **검사가 0건**이었다. T3.2가 「하루 전 생성」을 평상시로 만들었으므로 이제 하중 부재다
+- [x] 문항 부족 시 빈 평가를 게시하지 않음 — 실패 시 블루프린트·인스턴스 증가 0행(고아 행 없음)까지 확인
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `assessment-policy.ts` 100%
+
+**착수하며 드러난 결손 셋** (전부 실측으로 확인했다 — 셋을 합치면 **평가 노드가 든 루트는 게시할 수 없고, 게시해도 생성이 실패한다**):
+1. **평가 정책을 만드는 곳이 데모 시드뿐이었다.** 새 학원은 정책 0건이라 T3.2의 자동 생성이 첫 실행부터 실패한다. 실패 메시지는 "설정에서 평가 정책을 만드세요"였는데 그 설정 화면은 정책을 만들지 않는다 — 목록만 보여 준다. → `ensureDefaultAssessmentPolicies`(멱등)를 두고 시드가 그것을 부른다. 편집 화면은 T5.1.
+2. **`learning_groups.assessment_policy_id`를 준비도 게이트만 읽고 생성은 읽지 않았다.** 실측으로 이 컬럼은 **모든 조직에서 100% NULL**이고 쓰는 코드가 없다 — 즉 평가 노드가 든 루트는 무조건 막혔다. 그러면서 생성이 실제로 무엇으로 낼지는 검사하지 않았다. → 해석을 `resolveAssessmentPolicy` 한 곳으로 모으고 게이트와 생성이 같은 답을 본다.
+3. **평가 노드가 존재하지 않는 블루프린트를 필수로 요구했다.** 블루프린트를 만드는 곳은 생성기뿐이다(즉 **산출물**이다). 교사가 고를 목록도 만들 화면도 없는데 파서가 거부하고 게이트가 막으며 "루트 빌더에서 블루프린트를 고르세요"라고 안내했다. 넣어도 생성기는 읽지 않았다. 실측: 블루프린트 283건 전부 생성 결과, 평가 노드 1건은 `blueprint_id` NULL. → 요구를 없앴다. 값이 오면 형식만 검사해 보관한다(재사용 기능이 생길 자리).
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
+- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-3-assessment-nodes`
 
 ### [] Phase 3, T3.4: 자동 평가 실패 알림·수동 복구 RED→GREEN

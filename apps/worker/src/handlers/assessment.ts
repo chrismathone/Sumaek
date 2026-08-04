@@ -77,6 +77,10 @@ export async function handleAssessmentGenerate(
     targetDate: planDate,
     /* 사람이 아니라 워커가 만든다 — 감사 행이 `automation`으로 남는다 */
     actorUserId: null,
+    /* 어느 수업의 어느 노드가 불렀는지 — 생성 맥락에 그대로 남는다.
+     * 없으면 나중에 「이 시험은 왜 있나」에 답할 수 없다 (T3.3). */
+    sessionId: payload.sessionId ?? null,
+    routeNodeId: payload.routeNodeId ?? null,
   };
   const result =
     purpose === "formative"

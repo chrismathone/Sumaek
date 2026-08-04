@@ -684,8 +684,10 @@
   "purpose": "daily",                       // daily | confirmation
   "job_id": "01J...",
   "idempotency_key": "assessment.generate:01J...:2026-08-05:daily",
-  "reason": "insufficient_questions",       // insufficient_questions | no_blueprint |
-                                            // no_policy | rights_expired | transient_db
+  "reason": "insufficient_questions",       // insufficient_questions | no_policy |
+                                            // no_session | rights_expired | transient_db
+                                            // (no_blueprint은 없앴다 — T3.3: 블루프린트는
+                                            //  교사가 고르는 입력이 아니라 생성 산출물이다)
   "retryable": false,
   "attempt_count": 8,
   "detail": {

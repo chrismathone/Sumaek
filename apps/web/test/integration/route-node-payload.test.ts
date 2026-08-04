@@ -278,15 +278,23 @@ describe.skipIf(!hasDb)("숙제", () => {
 });
 
 describe.skipIf(!hasDb)("평가 노드", () => {
-  it("블루프린트도 정책도 없으면 거부한다 — 무엇을 출제할지 알 수 없다", async () => {
+  it("참조 없이도 만들어진다 — 출제 규칙은 평가 정책이 정한다", async () => {
+    /* **뒤집힌 단언이다** (T3.3). 예전에는 블루프린트를 필수로 요구했다.
+     * 근거는 "참조가 없으면 무엇을 출제할지 알 수 없다"였는데, 틀렸다 —
+     * 무엇을 출제할지는 평가 정책이 정하고 블루프린트는 생성기가 그때 만들어
+     * 남기는 **산출물**이다. 교사가 고를 목록도, 만들 화면도 없었다
+     * (실측: 블루프린트 283건 전부 생성 결과, 평가 노드 1건은 NULL).
+     * 그래서 이 규칙은 평가 노드를 **아예 만들 수 없게** 만들고 있었다. */
     for (const kind of ["daily_test", "confirmation_test"]) {
       const r = await addNode({ kind, title: `참조 없음 ${kind}` });
-      expect(r.ok).toBe(false);
-      expect(await nodeByTitle(`참조 없음 ${kind}`)).toBeNull();
+      expect(r.ok).toBe(true);
+      expect(await nodeByTitle(`참조 없음 ${kind}`)).not.toBeNull();
     }
   });
 
-  it("블루프린트 참조가 저장된다", async () => {
+  it("블루프린트 참조를 주면 형식만 검사해 보관한다", async () => {
+    /* 「이 블루프린트를 다시 쓴다」가 생기면 그 자리가 여기다.
+     * 지금은 생성기가 읽지 않는다 — 있는 척하지 않는다. */
     const blueprint = uuidv7();
     const r = await addNode({
       kind: "daily_test",
@@ -295,6 +303,16 @@ describe.skipIf(!hasDb)("평가 노드", () => {
     });
     expect(r.ok).toBe(true);
     expect((await nodeByTitle("일일테스트"))!.blueprint_id).toBe(blueprint);
+  });
+
+  it("블루프린트 참조 형식이 틀리면 거부한다", async () => {
+    const r = await addNode({
+      kind: "daily_test",
+      title: "형식 틀린 참조",
+      blueprintId: "not-a-uuid",
+    });
+    expect(r.ok).toBe(false);
+    expect(await nodeByTitle("형식 틀린 참조")).toBeNull();
   });
 
   it("통과 기준을 주면 완료 조건으로 저장된다", async () => {

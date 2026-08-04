@@ -1,5 +1,6 @@
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
+import { resolveAssessmentPolicy } from "@su-maek/db/domain";
 import { BLOCK_REASONS, executeNodes } from "@su-maek/core/learning";
 
 /* ─────────────────────────────────────────────────────────────
@@ -53,16 +54,22 @@ export const READINESS_CODES = {
     action: "노드를 지우거나 알려진 종류로 바꾸세요.",
     href: "/app/routes",
   },
-  no_blueprint: {
-    student: "오늘 시험이 아직 만들어지지 않았습니다.",
-    teacher: "평가 노드에 출제 블루프린트가 없습니다.",
-    action: "루트 빌더에서 블루프린트를 고르세요.",
-    href: "/app/routes",
-  },
+  /* 「블루프린트가 없다」는 사유는 **없앴다** (T3.3).
+   *
+   * 블루프린트는 생성기가 만드는 **산출물**이다 — 무엇을 왜 재려 했는지의
+   * 기록. 교사가 고를 목록도, 만들 화면도 없다(실측: DB의 블루프린트 283건은
+   * 전부 생성 결과이고, 평가 노드 1건은 blueprint_id가 NULL이다). 그런데
+   * 게이트가 그것을 요구하면서 "루트 빌더에서 블루프린트를 고르세요"라고
+   * 안내했다 — 있지도 않은 목록을 가리킨 것이다. 게다가 교사가 UUID를
+   * 넣어도 생성기는 읽지 않았다.
+   *
+   * 없는 것을 요구하는 게이트는 막을 자격이 없다. 생성이 실제로 필요로 하는
+   * 것(정책)만 남긴다. */
   no_assessment_policy: {
     student: "오늘 시험이 아직 만들어지지 않았습니다.",
-    teacher: "이 반에 평가 정책이 설정되지 않아 자동 생성이 돌 수 없습니다.",
-    action: "반 설정에서 평가 정책을 지정하세요.",
+    teacher:
+      "이 반에 적용할 평가 정책이 없어 자동 생성이 돌 수 없습니다 (반 지정도, 학원 기본도 없음).",
+    action: "반 설정에서 평가 정책을 지정하거나 학원 기본 정책을 만드세요.",
     href: "/app/classes",
   },
   account_unlinked: {
@@ -235,17 +242,34 @@ export async function checkRouteReadiness(input: {
     (n) => n.kind === "daily_test" || n.kind === "confirmation_test",
   );
 
-  /* 평가 노드 — 게시 시점에 평가가 없는 것은 정상이다. 참조만 본다. */
-  for (const n of assessmentNodes) {
-    if (!n.blueprint_id) findings.push(finding("no_blueprint", n.title));
-  }
-  if (assessmentNodes.length > 0 && input.learningGroupId) {
-    const [group] = await sql<{ assessment_policy_id: string | null }[]>`
-      select assessment_policy_id::text from learning_groups
-      where id = ${input.learningGroupId} and organization_id = ${input.organizationId}
-    `;
-    if (group && !group.assessment_policy_id) {
-      findings.push(finding("no_assessment_policy", "반 평가 정책"));
+  /* 평가 노드 — 게시 시점에 평가가 **없는 것은 정상이다** (수업 하루 전에
+   * 워커가 만든다). 검사하는 것은 그때 생성이 실제로 돌 수 있는가 하나다.
+   *
+   * 예전에는 `learning_groups.assessment_policy_id`가 비었는지만 봤다.
+   * 그 컬럼은 실측으로 **모든 조직에서 100% NULL**이고 쓰는 코드도 없었으니,
+   * 평가 노드가 든 루트는 무조건 막혔다. 그러면서 정작 생성기가 무엇으로
+   * 낼지는 검사하지 않았다 — 막는 이유와 실패하는 이유가 달랐다.
+   *
+   * 이제 생성기와 **같은 함수**로 묻는다. 여기서 통과한 반은 그 목적의
+   * 정책을 실제로 갖고 있다. */
+  const purposes = new Set(
+    assessmentNodes.map((n) =>
+      n.kind === "daily_test" ? "formative" : "confirmation",
+    ),
+  );
+  for (const purpose of [...purposes].sort()) {
+    const resolved = await resolveAssessmentPolicy(sql, {
+      organizationId: input.organizationId,
+      learningGroupId: input.learningGroupId ?? null,
+      purpose,
+    });
+    if (!resolved) {
+      findings.push(
+        finding(
+          "no_assessment_policy",
+          purpose === "formative" ? "일일테스트 정책" : "확인테스트 정책",
+        ),
+      );
     }
   }
 

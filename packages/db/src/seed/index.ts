@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { v7 as uuidv7 } from "uuid";
 import { createSql } from "../client";
 import * as schema from "../schema";
+import { ensureDefaultAssessmentPolicies } from "../domain/assessment-policy";
 import { KST } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
@@ -18,7 +19,6 @@ const GROUP_ID = "00000000-0000-7000-8000-000000000010";
 const PERIOD_ID = "00000000-0000-7000-8000-000000000011";
 const ROUTE_PLAN_ID = "00000000-0000-7000-8000-000000000020";
 const ROUTE_VERSION_ID = "00000000-0000-7000-8000-000000000021";
-const POLICY_ID = "00000000-0000-7000-8000-000000000030";
 const MASTERY_POLICY_ID = "00000000-0000-7000-8000-000000000031";
 const RIGHT_ID = "00000000-0000-7000-8000-000000000040";
 
@@ -212,45 +212,16 @@ async function main(): Promise<void> {
       .onConflictDoNothing();
   }
 
-  /* 5. 정책 (평가·숙련도) */
-  await db
-    .insert(schema.assessmentPolicies)
-    .values({
-      id: POLICY_ID,
-      organizationId: ORG_ID,
-      name: "일일테스트 기본",
-      purpose: "formative",
-      poolWeights: { today_concept: 50, weakness: 30, review: 20 },
-      questionCount: 8,
-      timeLimitMinutes: 15,
-      constraints: {
-        difficultyDistribution: { low: 2, mid: 5, high: 1 },
-        noRepeatWithinDays: 14,
-      },
-      automationLevel: "approve_first",
-    })
-    .onConflictDoNothing();
-
-  await db
-    .insert(schema.assessmentPolicies)
-    .values({
-      id: "00000000-0000-7000-8000-000000000032",
-      organizationId: ORG_ID,
-      name: "확인테스트 기본",
-      purpose: "confirmation",
-      poolWeights: { anchor: 70, cumulative: 30 },
-      questionCount: 5,
-      timeLimitMinutes: 20,
-      constraints: { noRepeatWithinDays: 7 },
-      passingRules: {
-        passRatio: 0.7,
-        maxAttempts: 2,
-        // 재시험은 동일 문항 재노출 금지 — 같은 개념의 동등 문항 (2N)
-        retryExcludesSameQuestions: true,
-      },
-      automationLevel: "approve_first",
-    })
-    .onConflictDoNothing();
+  /* 5. 정책 (평가·숙련도)
+   *
+   * 평가 정책은 **공유 프로비저닝 함수**로 넣는다. 여기서만 하드코딩하면
+   * 데모 학원만 자동 생성이 돌고, 새로 만든 학원은 첫 실행부터 "활성
+   * 일일테스트 정책이 없습니다"로 영원히 실패한다 — 실측으로 그 상태였다.
+   * 온보딩(T5.1)도 같은 함수를 부른다. */
+  const policyResult = await ensureDefaultAssessmentPolicies(sql, ORG_ID);
+  if (policyResult.created.length > 0) {
+    console.log(`[seed] 평가 정책 기본값 ${policyResult.created.join("·")} 생성`);
+  }
 
   await db
     .insert(schema.masteryPolicyVersions)

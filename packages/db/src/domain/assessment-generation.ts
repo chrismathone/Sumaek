@@ -11,6 +11,10 @@ import {
   type MasteryPolicySpec,
 } from "@su-maek/core/mastery";
 import type { IsoDate } from "@su-maek/core/shared";
+import {
+  resolveAssessmentPolicy,
+  type AssessmentPolicySource,
+} from "./assessment-policy";
 
 /* ─────────────────────────────────────────────────────────────
  * 일일테스트 자동 생성 (시퀀스 3 · 17장 · 2I).
@@ -83,12 +87,50 @@ function actorFields(actorUserId: string | null): {
     : { type: "automation", id: null };
 }
 
+/** 무엇이 이 평가를 만들었는가 — 계획 연결 (T3.3) */
+export interface PlanningSnapshot {
+  planDate: IsoDate;
+  sessionId: string | null;
+  routeNodeId: string | null;
+  policySource: AssessmentPolicySource;
+}
+
+/**
+ * 생성 맥락에 남길 계획 연결.
+ *
+ * 이것이 없으면 생성된 평가만 남고 **근거가 없다.** 교사가 「이 시험은 왜
+ * 있나 · 다음 주에 안 나오게 하려면 무엇을 고치나」에 답하려면 어느 수업의
+ * 어느 노드가, 어느 정책으로 불렀는지가 필요하다. 교사가 화면에서 직접 누른
+ * 생성에는 수업·노드가 없다 — 그때는 사람이 근거이고, null이 그 사실이다.
+ */
+function planningSnapshot(
+  options: { sessionId?: string | null; routeNodeId?: string | null },
+  planDate: IsoDate,
+  policySource: AssessmentPolicySource,
+): PlanningSnapshot {
+  return {
+    planDate,
+    sessionId: options.sessionId ?? null,
+    routeNodeId: options.routeNodeId ?? null,
+    policySource,
+  };
+}
+
 export async function generateDailyTest(options: {
   organizationId: string;
   learningGroupId: string;
   targetDate: IsoDate;
   /** 워커가 부르면 null — 감사 행이 `automation`으로 남는다 */
   actorUserId: string | null;
+  /**
+   * 이 평가를 부른 계획 — 수업과 루트 노드.
+   *
+   * 「이 시험은 왜 있나」에 답하려면 생성물만으로는 부족하다. 어느 수업의
+   * 어느 노드가 불렀는지가 남아야 교사가 루트를 고쳐 다음 생성을 바꿀 수
+   * 있다. 교사가 화면에서 직접 누른 생성에는 없다(그때는 사람이 근거다).
+   */
+  sessionId?: string | null;
+  routeNodeId?: string | null;
   /**
    * 무반복 기간을 넘겨 최근 출제분도 후보로 쓴다.
    * 문항 수가 적은 학원에서는 연속 수업일마다 후보가 0이 되어 테스트를
@@ -125,28 +167,21 @@ export async function generateDailyTest(options: {
     };
   }
 
-  /* 정책 */
-  const [policy] = await sql<
-    {
-      id: string;
-      version: number;
-      question_count: number;
-      time_limit_minutes: number | null;
-      pool_weights: Record<string, number>;
-      constraints: {
-        difficultyDistribution?: { low: number; mid: number; high: number };
-        noRepeatWithinDays?: number;
-      };
-    }[]
-  >`
-    select id, version, question_count, time_limit_minutes, pool_weights, constraints
-    from assessment_policies
-    where organization_id = ${organizationId} and purpose = 'formative' and is_active = true
-    order by version desc limit 1
-  `;
-  if (!policy) {
-    return fail("활성 일일테스트 정책이 없습니다. 설정에서 평가 정책을 만드세요.");
+  /* 정책 — 반 → 조직. 준비도 게이트가 보는 것과 **같은 해석**이다
+   * (assessment-policy.ts). 게이트가 통과시킨 조건과 여기서 실패하는 조건이
+   * 다르면, 교사는 게이트가 시킨 일을 하고도 여전히 실패한다. */
+  const resolved = await resolveAssessmentPolicy(sql, {
+    organizationId,
+    learningGroupId,
+    purpose: "formative",
+  });
+  if (!resolved) {
+    return fail(
+      "이 반에 적용할 일일테스트 정책이 없습니다. 반 설정의 평가 정책을 지정하거나 학원 기본 정책을 만드세요.",
+    );
   }
+  const policy = resolved.policy;
+  const policySource: AssessmentPolicySource = resolved.source;
 
   /* 해당 날짜 수업의 개념 (오늘 학습 버킷 기준) */
   const [session] = await sql<{ planned_node_ids: unknown }[]>`
@@ -289,8 +324,8 @@ export async function generateDailyTest(options: {
   const cumulativePool = reviewPool.length > 0 ? reviewPool : otherPool;
 
   /* 버킷 수량 — 정책 비율을 문항 수로 환산 (큰 몫부터) */
-  const weights = policy.pool_weights;
-  const total = policy.question_count;
+  const weights = policy.poolWeights;
+  const total = policy.questionCount;
   const wToday = weights.today_concept ?? 50;
   const wWeak = weights.weakness ?? 30;
   const wReview = weights.review ?? 20;
@@ -375,6 +410,7 @@ export async function generateDailyTest(options: {
 
   /* 게시 — 스냅샷 고정 (원자적) */
   const actor = actorFields(options.actorUserId);
+  const planningLink = planningSnapshot(options, targetDate, policySource);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
@@ -405,6 +441,7 @@ export async function generateDailyTest(options: {
           objectiveGaps: todayConceptIds.filter(
             (c) => !conceptsWithObjectives.has(c),
           ),
+          plannedFrom: planningLink,
         } as never)},
         ${tx.json({
           autoGradable: kindRows.length - humanGraded,
@@ -429,8 +466,9 @@ export async function generateDailyTest(options: {
           outputHash: selection.outputHash,
           shortfalls: selection.shortfalls,
           todayConceptIds,
+          ...planningLink,
         } as never)},
-        ${policy.time_limit_minutes}, ${selection.selected.length * 10},
+        ${policy.timeLimitMinutes}, ${selection.selected.length * 10},
         now(), ${actor.id}
       )
     `;
@@ -534,6 +572,9 @@ export async function generateConfirmationTest(options: {
   targetDate: IsoDate;
   /** 워커가 부르면 null — 감사 행이 `automation`으로 남는다 */
   actorUserId: string | null;
+  /** 이 평가를 부른 계획 — 수업과 루트 노드 (generateDailyTest와 같은 뜻) */
+  sessionId?: string | null;
+  routeNodeId?: string | null;
 }): Promise<GenerateResult> {
   const sql = getSharedSql();
   const { organizationId, learningGroupId, targetDate } = options;
@@ -561,24 +602,19 @@ export async function generateConfirmationTest(options: {
     };
   }
 
-  const [policy] = await sql<
-    {
-      id: string;
-      version: number;
-      question_count: number;
-      time_limit_minutes: number | null;
-      constraints: { noRepeatWithinDays?: number };
-      passing_rules: { passRatio?: number; maxAttempts?: number } | null;
-    }[]
-  >`
-    select id, version, question_count, time_limit_minutes, constraints, passing_rules
-    from assessment_policies
-    where organization_id = ${organizationId} and purpose = 'confirmation' and is_active = true
-    order by version desc limit 1
-  `;
-  if (!policy) {
-    return fail("활성 확인테스트 정책이 없습니다.");
+  /* 정책 — 일일테스트와 같은 해석(반 → 조직). 준비도 게이트가 보는 것과 같다 */
+  const resolved = await resolveAssessmentPolicy(sql, {
+    organizationId,
+    learningGroupId,
+    purpose: "confirmation",
+  });
+  if (!resolved) {
+    return fail(
+      "이 반에 적용할 확인테스트 정책이 없습니다. 반 설정의 평가 정책을 지정하거나 학원 기본 정책을 만드세요.",
+    );
   }
+  const policy = resolved.policy;
+  const policySource: AssessmentPolicySource = resolved.source;
 
   /* 단원 개념 전체 — 게시된 루트 버전의 모든 노드 개념 */
   const [plan] = await sql<{ active_version_id: string | null }[]>`
@@ -638,7 +674,7 @@ export async function generateConfirmationTest(options: {
 
   const seed = `confirmation:${learningGroupId}:${targetDate}:v${policy.version}`;
   const selection = selectQuestions(
-    [{ reason: "anchor", count: policy.question_count, candidates: unitPool }],
+    [{ reason: "anchor", count: policy.questionCount, candidates: unitPool }],
     { maxPerConcept: 2 },
     seed,
   );
@@ -663,6 +699,7 @@ export async function generateConfirmationTest(options: {
   );
 
   const actor = actorFields(options.actorUserId);
+  const planningLink = planningSnapshot(options, targetDate, policySource);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
@@ -684,10 +721,11 @@ export async function generateConfirmationTest(options: {
           objectiveGaps: unitConceptIds.filter(
             (c) => !conceptsWithObjectives.has(c),
           ),
-          passingRules: policy.passing_rules,
+          passingRules: policy.passingRules,
+          plannedFrom: planningLink,
         } as never)},
         ${tx.json({
-          anchorCount: policy.question_count,
+          anchorCount: policy.questionCount,
           /* 앵커가 실제로 덮은/못 덮은 단원 개념 — 커버 공백의 정직한 기록 */
           coveredConceptIds: unitConceptIds.filter((c) => coveredConcepts.has(c)),
           uncoveredConceptIds: unitConceptIds.filter((c) => !coveredConcepts.has(c)),
@@ -709,9 +747,10 @@ export async function generateConfirmationTest(options: {
           inputHash: selection.inputHash,
           outputHash: selection.outputHash,
           shortfalls: selection.shortfalls,
-          passingRules: policy.passing_rules,
+          passingRules: policy.passingRules,
+          ...planningLink,
         } as never)},
-        ${policy.time_limit_minutes}, ${selection.selected.length * 10},
+        ${policy.timeLimitMinutes}, ${selection.selected.length * 10},
         now(), ${actor.id}
       )
     `;

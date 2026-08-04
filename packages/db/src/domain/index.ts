@@ -2,6 +2,8 @@
 export * from "./schedule";
 export * from "./learner-schedule";
 export * from "./learner-day-plan";
+/** 평가 정책 해석 — 준비도 게이트와 생성기가 **같은 답**을 본다 (T3.3). */
+export * from "./assessment-policy";
 /** 평가 자동 생성 — 웹 액션과 워커 핸들러가 같은 함수를 쓴다 (ADR-0018 §5). */
 export * from "./assessment-generation";
 /** 그 생성을 **때가 되면 스스로** 부르는 주기 생산자 (T3.2 · G-04). */

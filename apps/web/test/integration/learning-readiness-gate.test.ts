@@ -206,31 +206,55 @@ describe.skipIf(!hasDb)("루트 게시", () => {
     );
   });
 
-  it("블루프린트 없는 평가 노드를 막는다 — 평가가 아직 없는 것은 정상이다", async () => {
+  it("적용할 평가 정책이 없으면 막는다 — 그때 생성이 실제로 실패한다", async () => {
+    /* **뒤집힌 단언이다** (T3.3). 예전에는 두 가지를 봤다.
+     *   - 노드에 `blueprint_id`가 있는가 → 없앴다. 교사가 고를 목록도 만들
+     *     화면도 없는데 요구하고 있었고, 넣어도 생성기가 읽지 않았다.
+     *   - `learning_groups.assessment_policy_id`가 비었는가 → 그 컬럼은
+     *     실측으로 **모든 조직에서 100% NULL**이었다. 즉 평가 노드가 든
+     *     루트는 무조건 막혔다. 막는 이유와 실제 실패 이유가 달랐다.
+     *
+     * 이제 생성기와 **같은 함수**(resolveAssessmentPolicy)로 묻는다.
+     * 반 지정도 학원 기본도 없을 때만 막는다. */
     await clearNodes();
     await addNode({ id: uuidv7(), kind: "daily_test", title: "참조 없는 일일테스트", order: 1 });
 
-    const r = await routeReport();
-    expect(r.blocking.map((f) => f.code)).toContain("no_blueprint");
-    /* 평가가 아직 생성되지 않은 것 자체는 게시를 막지 않는다 — 워커가
-     * 수업일 전에 만든다. 그것까지 막으면 루트를 영원히 게시할 수 없다. */
-    expect(r.blocking.map((f) => f.code)).not.toContain(
-      BLOCK_REASONS.assessmentNotGenerated,
-    );
+    /* 이 조직에는 기본 정책이 있다(시드). 「없을 때」를 보려면 꺼야 한다 —
+     * 지우지 않는다. 되돌리지 못하면 다른 스펙의 전제가 무너진다. */
+    await sql`
+      update assessment_policies set is_active = false
+      where organization_id = ${ORG} and purpose = 'formative'
+    `;
+    try {
+      const r = await routeReport();
+      expect(r.blocking.map((f) => f.code)).toContain("no_assessment_policy");
+      /* 평가가 아직 생성되지 않은 것 자체는 게시를 막지 않는다 — 워커가
+       * 수업일 전에 만든다. 그것까지 막으면 루트를 영원히 게시할 수 없다. */
+      expect(r.blocking.map((f) => f.code)).not.toContain(
+        BLOCK_REASONS.assessmentNotGenerated,
+      );
+    } finally {
+      await sql`
+        update assessment_policies set is_active = true
+        where organization_id = ${ORG} and purpose = 'formative'
+      `;
+    }
   });
 
-  it("평가 노드가 있는데 반 평가 정책이 없으면 막는다", async () => {
+  it("학원 기본 정책만 있어도 통과한다 — 반 지정은 선택이다", async () => {
+    /* 반마다 정책을 걸도록 강제하면 학원 하나에 반이 스물이어도 스무 번
+     * 지정해야 한다. 기본값이 있으면 그대로 쓰고, 다르게 낼 반만 지정한다.
+     * 이 반의 `assessment_policy_id`는 NULL이다 — 그래도 통과해야 한다. */
     await clearNodes();
-    await addNode({
-      id: uuidv7(),
-      kind: "confirmation_test",
-      title: "확인테스트",
-      order: 1,
-      blueprintId: uuidv7(),
-    });
+    await addNode({ id: uuidv7(), kind: "daily_test", title: "정책 있는 일일테스트", order: 1 });
+
+    const [group] = await sql<{ assessment_policy_id: string | null }[]>`
+      select assessment_policy_id::text from learning_groups where id = ${GROUP}
+    `;
+    expect(group?.assessment_policy_id).toBeNull();
 
     const r = await routeReport();
-    expect(r.blocking.map((f) => f.code)).toContain("no_assessment_policy");
+    expect(r.blocking.map((f) => f.code)).not.toContain("no_assessment_policy");
   });
 
   it("문항 0개 연습 자료가 게시돼 있으면 루트도 막는다", async () => {
