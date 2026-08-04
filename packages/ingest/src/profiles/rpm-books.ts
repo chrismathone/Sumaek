@@ -42,6 +42,20 @@ import {
   RPM_M21_CH5_TITLE_TO_CONCEPT,
   RPM_M21_CH5_UNIT_TO_CONCEPT,
 } from "./rpm-2022-concepts-m21";
+import {
+  RPM_M22_CH1_CONCEPTS,
+  RPM_M22_CH1_TITLE_TO_CONCEPT,
+  RPM_M22_CH1_UNIT_TO_CONCEPT,
+  RPM_M22_CH2_CONCEPTS,
+  RPM_M22_CH2_TITLE_TO_CONCEPT,
+  RPM_M22_CH2_UNIT_TO_CONCEPT,
+  RPM_M22_CH3_CONCEPTS,
+  RPM_M22_CH3_TITLE_TO_CONCEPT,
+  RPM_M22_CH3_UNIT_TO_CONCEPT,
+  RPM_M22_CH4_CONCEPTS,
+  RPM_M22_CH4_TITLE_TO_CONCEPT,
+  RPM_M22_CH4_UNIT_TO_CONCEPT,
+} from "./rpm-2022-concepts-m22";
 
 export interface ChapterSpec {
   number: string;
@@ -158,6 +172,50 @@ export const RPM_BOOKS: Record<string, BookSpec> = {
         concepts: RPM_M21_CH5_CONCEPTS,
         titleToConcept: RPM_M21_CH5_TITLE_TO_CONCEPT,
         unitToConcept: RPM_M21_CH5_UNIT_TO_CONCEPT,
+      },
+    },
+  },
+
+  "m2-2": {
+    title: "RPM 중학 수학 2-2 (2022 개정)",
+    gradeBand: "middle-2",
+    companion: "개념원리 중학 수학 2-2",
+    chapters: {
+      I: {
+        number: "I",
+        title: "삼각형의 성질",
+        range: [1, 190],
+        pages: [7, 38],
+        concepts: RPM_M22_CH1_CONCEPTS,
+        titleToConcept: RPM_M22_CH1_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M22_CH1_UNIT_TO_CONCEPT,
+      },
+      II: {
+        number: "II",
+        title: "사각형의 성질",
+        range: [191, 400],
+        pages: [39, 72],
+        concepts: RPM_M22_CH2_CONCEPTS,
+        titleToConcept: RPM_M22_CH2_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M22_CH2_UNIT_TO_CONCEPT,
+      },
+      III: {
+        number: "III",
+        title: "도형의 닮음과 피타고라스 정리",
+        range: [401, 780],
+        pages: [73, 134],
+        concepts: RPM_M22_CH3_CONCEPTS,
+        titleToConcept: RPM_M22_CH3_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M22_CH3_UNIT_TO_CONCEPT,
+      },
+      IV: {
+        number: "IV",
+        title: "확률",
+        range: [781, 1008],
+        pages: [135, 166],
+        concepts: RPM_M22_CH4_CONCEPTS,
+        titleToConcept: RPM_M22_CH4_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M22_CH4_UNIT_TO_CONCEPT,
       },
     },
   },

@@ -28,6 +28,10 @@ import {
   KWR_M21_CH3_TARGETS,
   KWR_M21_CH4_TARGETS,
   KWR_M21_CH5_TARGETS,
+  KWR_M22_CH1_TARGETS,
+  KWR_M22_CH2_TARGETS,
+  KWR_M22_CH3_TARGETS,
+  KWR_M22_CH4_TARGETS,
 } from "../profiles/kwr-2022";
 import {
   RPM_M1_CH1_CONCEPTS,
@@ -43,6 +47,12 @@ import {
   RPM_M21_CH4_CONCEPTS,
   RPM_M21_CH5_CONCEPTS,
 } from "../profiles/rpm-2022-concepts-m21";
+import {
+  RPM_M22_CH1_CONCEPTS,
+  RPM_M22_CH2_CONCEPTS,
+  RPM_M22_CH3_CONCEPTS,
+  RPM_M22_CH4_CONCEPTS,
+} from "../profiles/rpm-2022-concepts-m22";
 import type { SourceDump } from "../types";
 
 const args = process.argv.slice(2);
@@ -160,6 +170,42 @@ interface ConceptBook {
   chapters: Record<string, ConceptChapter>;
 }
 
+/** 개념원리 중2-2 (교사용 232쪽) */
+const M2_2: Record<string, ConceptChapter> = {
+  I: {
+    number: "I",
+    title: "삼각형의 성질",
+    dumpRange: "8-53",
+    pages: [10, 11, 18, 19, 34, 35, 40, 41],
+    concepts: RPM_M22_CH1_CONCEPTS,
+    targets: KWR_M22_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "사각형의 성질",
+    dumpRange: "54-101",
+    pages: [56, 62, 63, 78, 79, 86, 91],
+    concepts: RPM_M22_CH2_CONCEPTS,
+    targets: KWR_M22_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "도형의 닮음과 피타고라스 정리",
+    dumpRange: "102-187",
+    pages: [104, 105, 112, 113, 128, 133, 137, 150, 156, 157, 172, 173, 179],
+    concepts: RPM_M22_CH3_CONCEPTS,
+    targets: KWR_M22_CH3_TARGETS,
+  },
+  IV: {
+    number: "IV",
+    title: "확률",
+    dumpRange: "188-232",
+    pages: [190, 196, 197, 212, 213, 220],
+    concepts: RPM_M22_CH4_CONCEPTS,
+    targets: KWR_M22_CH4_TARGETS,
+  },
+};
+
 const BOOKS: Record<string, ConceptBook> = {
   "m1-1": {
     title: "개념원리 중학 수학 1-1 (2022 개정)",
@@ -170,6 +216,11 @@ const BOOKS: Record<string, ConceptBook> = {
     title: "개념원리 중학 수학 2-1 (2022 개정)",
     gradeBand: "middle-2",
     chapters: M2_1,
+  },
+  "m2-2": {
+    title: "개념원리 중학 수학 2-2 (2022 개정)",
+    gradeBand: "middle-2",
+    chapters: M2_2,
   },
 };
 

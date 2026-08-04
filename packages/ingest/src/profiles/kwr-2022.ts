@@ -380,3 +380,86 @@ export const KWR_M21_CH5_TARGETS: ReadonlyMap<string, string> = new Map([
   ["214|일차방정식의 그래프와 연립방정식의 해|1", "m2-linear-fn-vs-simeq"],
   ["214|일차방정식의 그래프와 연립방정식의 해|2", "m2-linear-fn-vs-simeq"],
 ]);
+
+/* ── 개념원리 중2-2 (교사용 232쪽) ────────────────────────────── */
+
+/** I. 삼각형의 성질 — 개념서 p.10·11·18·19·34·35·40·41 */
+export const KWR_M22_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["10|이등변삼각형의 성질|1", "m2-isosceles-right-triangles"],
+  ["10|이등변삼각형의 성질|2", "m2-isosceles-right-triangles"],
+  ["10|이등변삼각형의 성질|3", "m2-isosceles-right-triangles"],
+  ["11|이등변삼각형의 성질|4", "m2-isosceles-right-triangles"],
+  ["18|직각삼각형의 합동 조건|1", "m2-isosceles-right-triangles"],
+  ["19|직각삼각형의 합동 조건|2", "m2-isosceles-right-triangles"],
+  ["34|삼각형의 외심|1", "m2-circumcenter-incenter"],
+  ["34|삼각형의 외심|2", "m2-circumcenter-incenter"],
+  ["35|삼각형의 외심|3", "m2-circumcenter-incenter"],
+  ["40|삼각형의 내심|1", "m2-circumcenter-incenter"],
+  ["40|삼각형의 내심|2", "m2-circumcenter-incenter"],
+  ["41|삼각형의 내심|3", "m2-circumcenter-incenter"],
+]);
+
+/** II. 사각형의 성질 — 개념서 p.56·62·63·78·79·86·91 */
+export const KWR_M22_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["56|평행사변형의 성질|1", "m2-quadrilateral-properties"],
+  ["56|평행사변형의 성질|2", "m2-quadrilateral-properties"],
+  ["62|평행사변형이 되는 조건|1", "m2-quadrilateral-properties"],
+  ["63|평행사변형이 되는 조건|2", "m2-quadrilateral-properties"],
+  ["63|평행사변형이 되는 조건|3", "m2-quadrilateral-properties"],
+  ["78|여러 가지 사각형|1", "m2-quadrilateral-properties"],
+  ["78|여러 가지 사각형|2", "m2-quadrilateral-properties"],
+  ["79|여러 가지 사각형|3", "m2-quadrilateral-properties"],
+  ["79|여러 가지 사각형|4", "m2-quadrilateral-properties"],
+  ["86|여러 가지 사각형 사이의 관계|1", "m2-quadrilateral-properties"],
+  ["86|여러 가지 사각형 사이의 관계|2", "m2-quadrilateral-properties"],
+  ["91|평행선과 넓이|1", "m2-quadrilateral-properties"],
+  ["91|평행선과 넓이|2", "m2-quadrilateral-properties"],
+]);
+
+/** III. 도형의 닮음과 피타고라스 정리 — 개념서 p.104·105·112·113·128·133·137·150·156·157·172·173·179 */
+export const KWR_M22_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["104|닮음과 닮은 도형|1", "m2-similarity-basics"],
+  ["104|닮음과 닮은 도형|2", "m2-similarity-basics"],
+  ["105|닮음과 닮은 도형|3", "m2-similarity-basics"],
+  ["105|닮음과 닮은 도형|4", "m2-similarity-basics"],
+  ["112|삼각형의 닮음 조건|1", "m2-triangle-similarity"],
+  ["113|삼각형의 닮음 조건|2", "m2-triangle-similarity"],
+  ["113|삼각형의 닮음 조건|3", "m2-triangle-similarity"],
+  ["128|삼각형과 평행선|1", "m2-parallel-segments"],
+  ["133|삼각형의 각의 이등분선|1", "m2-parallel-segments"],
+  ["133|삼각형의 각의 이등분선|2", "m2-parallel-segments"],
+  ["137|평행선 사이의 선분의 길이의 비|1", "m2-parallel-segments"],
+  ["137|평행선 사이의 선분의 길이의 비|2", "m2-parallel-segments"],
+  ["137|평행선 사이의 선분의 길이의 비|3", "m2-parallel-segments"],
+  ["150|삼각형의 두 변의 중점을 연결한 선분|1", "m2-parallel-segments"],
+  ["150|삼각형의 두 변의 중점을 연결한 선분|2", "m2-parallel-segments"],
+  /* 무게중심은 정본 목록에 따로 없다 — 중점연결정리와 같은 성취기준이다 */
+  ["156|삼각형의 무게중심|1", "m2-parallel-segments"],
+  ["156|삼각형의 무게중심|2", "m2-parallel-segments"],
+  ["157|삼각형의 무게중심|3", "m2-parallel-segments"],
+  ["172|피타고라스 정리|1", "m2-pythagorean"],
+  ["172|피타고라스 정리|2", "m2-pythagorean"],
+  ["173|피타고라스 정리|3", "m2-pythagorean"],
+  ["173|피타고라스 정리|4", "m2-pythagorean"],
+  ["179|피타고라스 정리의 활용|1", "m2-pythagorean"],
+  ["179|피타고라스 정리의 활용|2", "m2-pythagorean"],
+]);
+
+/** IV. 확률 — 개념서 p.190·196·197·212·213·220 */
+export const KWR_M22_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["190|경우의 수|1", "m2-counting"],
+  ["190|경우의 수|2", "m2-counting"],
+  ["190|경우의 수|3", "m2-counting"],
+  ["196|여러 가지 경우의 수|1", "m2-counting"],
+  ["196|여러 가지 경우의 수|2", "m2-counting"],
+  ["197|여러 가지 경우의 수|3", "m2-counting"],
+  ["197|여러 가지 경우의 수|4", "m2-counting"],
+  ["212|확률의 뜻과 성질|1", "m2-probability"],
+  ["212|확률의 뜻과 성질|2", "m2-probability"],
+  ["212|확률의 뜻과 성질|3", "m2-probability"],
+  ["213|확률의 뜻과 성질|4", "m2-probability"],
+  ["213|확률의 뜻과 성질|5", "m2-probability"],
+  ["220|확률의 계산|1", "m2-probability"],
+  ["220|확률의 계산|2", "m2-probability"],
+  ["220|확률의 계산|3", "m2-probability"],
+]);
