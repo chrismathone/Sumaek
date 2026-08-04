@@ -3,6 +3,8 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  arcFirstName,
+  isArcOnly,
   overlineLastName,
   radicalPiece,
   isOverlineOnly,
@@ -483,7 +485,14 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
       let raw = "";
       let latex = "";
       const unknown: string[] = [];
+      /** 호 기호가 따로 서서 씌울 글자를 기다리는 중인가 */
+      let pendingArc = false;
       for (const span of cluster) {
+        if (isArcOnly(span.text)) {
+          raw += span.text;
+          pendingArc = true;
+          continue;
+        }
         /* 윗줄 글리프만 담긴 조각 — 씌울 글자를 찾아 준다. 앞의 조각과
          * 이미 이어졌으면 그 결과에, 이 덩어리가 윗줄로 시작하면 바로 앞
          * 수식 조각에 씌운다. 혼자서는 아무 뜻이 없고, 그냥 두면 화면에
@@ -551,11 +560,12 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         if (decoded.latex === "") continue;
         const raised =
           span.size < baseSize * 0.8 && span.y1 < baseY1 - baseSize * 0.1;
+        /* 앞에 호 기호가 따로 서 있었으면 이 조각의 첫 선분 이름에 씌운다 */
+        const piece = pendingArc ? arcFirstName(decoded.latex) : decoded.latex;
+        pendingArc = false;
         /* 위첨자 조각은 앞의 지수 안으로 넣는다 — 조각마다 `^{}`를 씌우면
          * `^{2}^{+}^{3}`이 되어 KaTeX가 이중 위첨자로 실패한다 */
-        latex = raised
-          ? mergeRaised(latex, decoded.latex)
-          : joinLatex(latex, decoded.latex);
+        latex = raised ? mergeRaised(latex, piece) : joinLatex(latex, piece);
       }
       if (latex !== "") runs.push({ kind: "math", raw, latex, unknown });
       i = j;

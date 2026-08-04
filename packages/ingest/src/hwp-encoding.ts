@@ -632,6 +632,11 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
   work = work.replace(/([A-Z]{1,3})[ÓÕ]/g, (_m, letters: string) =>
     stash(`\\overline{${letters}}`),
   );
+  /* 호(弧) 기호는 **글자 앞**에 온다 — `µAB` = ⌒AB (중3-2 「원의 성질」).
+   * 선분의 윗줄과 달리 위치가 안정적이라 그대로 읽으면 된다. */
+  work = work.replace(/µ([A-Z]{1,3})/g, (_m, letters: string) =>
+    stash(`\\overparen{${letters}}`),
+  );
   /* 도(°)는 LaTeX 명령이라 자리표시자로 치워 둔다 — 3)단계의 글자별
    * 통과 검사는 역슬래시를 모른다 */
   work = work.replace(/°/g, () => stash("\\degree "));
@@ -858,6 +863,22 @@ export function attachOverline(text: string, mark: string): string {
  */
 export function overlineLastName(latex: string): string {
   return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, "\\overline{$1}$2");
+}
+
+/** 호(弧) 기호만 담긴 조각인가 — 뒤따르는 두 글자 위에 씌운다 */
+export function isArcOnly(text: string): boolean {
+  return /^µ+$/.test(text);
+}
+
+/**
+ * 뒤따르는 조각의 **첫 선분 이름**에 호를 씌운다.
+ *
+ * 호 기호는 글자 앞에 오는데, 조판기가 그것만 따로 span으로 내보내는
+ * 자리가 있다(중3-2 「원의 성질」 68건). 한 span 안에 있으면 해독기가
+ * 바로 읽지만, 따로 서면 씌울 글자가 없어 미해독으로 나간다.
+ */
+export function arcFirstName(latex: string): string {
+  return latex.replace(/^([^A-Z]*)([A-Z]{1,3})/, "$1\\overparen{$2}");
 }
 
 export function mergeRaised(latex: string, inner: string): string {

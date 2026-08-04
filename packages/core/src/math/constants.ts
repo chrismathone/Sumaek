@@ -112,6 +112,8 @@ export const ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
   "differential",
   // 벡터·행렬
   "vec", "overrightarrow", "overleftarrow", "overleftrightarrow", "cdotp",
+  /* 호(弧) 기호 — 중3-2 「원의 성질」이 `⌒AB`를 쓴다 */
+  "overparen",
   "begin", "end", "hline", "vert", "Vert",
   // 장식·강조
   "hat", "widehat", "tilde", "widetilde", "bar", "overline", "underline",
