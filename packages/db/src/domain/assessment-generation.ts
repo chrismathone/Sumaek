@@ -27,9 +27,39 @@ import {
  * - 멱등: (조직·그룹·날짜·목적) 유니크 — 같은 요청 재실행은 기존 평가 반환.
  * ───────────────────────────────────────────────────────────── */
 
+/**
+ * 생성 실패의 **사유 코드** (T3.4 · E-17).
+ *
+ * 알림·화면·분석이 같은 값을 본다. 한국어 문구를 문자열로 비교하면 문구를
+ * 다듬는 순간 소비자가 조용히 깨진다 — 그리고 그 깨짐은 「알림이 안 온다」로
+ * 나타나므로 아무도 눈치채지 못한다.
+ *
+ * `transient_db`는 여기서 내지 않는다. 그것은 던져진 예외의 분류이고,
+ * 이 결과 객체는 「생성기가 판단해서 못 만들었다」만 담는다.
+ */
+export const GENERATION_FAILURE_REASONS = [
+  /** 이 반·목적에 적용할 활성 평가 정책이 없다 */
+  "no_policy",
+  /** 그날 예정된 수업이 없다 — 루트에서 일정을 먼저 만들어야 한다 */
+  "no_session",
+  /** 게시된 루트가 없다 (확인테스트의 단원 범위를 정할 수 없다) */
+  "no_route",
+  /** 출제 가능한 문항이 부족하다 (검수·권한·개념 정렬) */
+  "insufficient_questions",
+  /** 후보는 있으나 전부 무반복 창 안이다 — 정책을 줄이거나 문항을 늘린다 */
+  "no_repeat_window",
+  /** 후보는 있으나 난이도 배분 조건을 만족하는 조합이 없다 */
+  "difficulty_unsatisfiable",
+] as const;
+
+export type GenerationFailureReason =
+  (typeof GENERATION_FAILURE_REASONS)[number];
+
 export interface GenerateResult {
   ok: boolean;
   message: string;
+  /** 실패했을 때만 채워진다 — 성공은 사유가 없다 */
+  reason?: GenerationFailureReason;
   assessmentId: string | null;
   questionCount: number;
   shortfalls: Array<{ reason: string; requested: number; selected: number }>;
@@ -177,6 +207,7 @@ export async function generateDailyTest(options: {
   });
   if (!resolved) {
     return fail(
+      "no_policy",
       "이 반에 적용할 일일테스트 정책이 없습니다. 반 설정의 평가 정책을 지정하거나 학원 기본 정책을 만드세요.",
     );
   }
@@ -193,6 +224,7 @@ export async function generateDailyTest(options: {
   `;
   if (!session) {
     return fail(
+      "no_session",
       `${targetDate}에 예정된 수업이 없습니다. 먼저 학습 루트에서 일정을 생성하세요.`,
     );
   }
@@ -379,14 +411,21 @@ export async function generateDailyTest(options: {
     const candidates = buckets.reduce((n, b) => n + b.candidates.length, 0);
     if (candidates === 0) {
       return fail(
+        "insufficient_questions",
         "이 수업 개념에 연결된 출제 가능한 문항이 없습니다. 문항의 개념 정렬과 검수·사용 권한 상태를 확인하세요.",
       );
     }
-    return fail(
-      excludeUsedSince
-        ? `후보 ${candidates}개가 모두 최근 출제분입니다 (${excludeUsedSince} 이후 사용). 무반복 기간(${policy.constraints.noRepeatWithinDays}일)을 줄이거나 이 개념의 문항을 늘리세요.`
-        : `후보 ${candidates}개가 있으나 난이도 배분 조건을 만족하는 조합이 없습니다. 정책의 난이도 배분을 확인하세요.`,
-    );
+    /* 사유를 가른다 — 고치는 곳이 다르다. 무반복 창은 정책 설정이고,
+     * 난이도 배분 불가는 문제은행의 난이도 분포다. */
+    return excludeUsedSince
+      ? fail(
+          "no_repeat_window",
+          `후보 ${candidates}개가 모두 최근 출제분입니다 (${excludeUsedSince} 이후 사용). 무반복 기간(${policy.constraints.noRepeatWithinDays}일)을 줄이거나 이 개념의 문항을 늘리세요.`,
+        )
+      : fail(
+          "difficulty_unsatisfiable",
+          `후보 ${candidates}개가 있으나 난이도 배분 조건을 만족하는 조합이 없습니다. 정책의 난이도 배분을 확인하세요.`,
+        );
   }
 
   /* 학습자 명단 */
@@ -610,6 +649,7 @@ export async function generateConfirmationTest(options: {
   });
   if (!resolved) {
     return fail(
+      "no_policy",
       "이 반에 적용할 확인테스트 정책이 없습니다. 반 설정의 평가 정책을 지정하거나 학원 기본 정책을 만드세요.",
     );
   }
@@ -624,7 +664,10 @@ export async function generateConfirmationTest(options: {
     order by updated_at desc limit 1
   `;
   if (!plan?.active_version_id) {
-    return fail("게시된 루트가 없습니다.");
+    return fail(
+      "no_route",
+      "게시된 루트가 없습니다. 확인테스트가 덮을 단원 범위를 정할 수 없습니다.",
+    );
   }
   const unitConcepts = await sql<{ concept_id: string }[]>`
     select distinct jsonb_array_elements_text(concept_ids) as concept_id
@@ -679,7 +722,10 @@ export async function generateConfirmationTest(options: {
     seed,
   );
   if (selection.selected.length === 0) {
-    return fail("선정 가능한 문항이 없습니다.");
+    return fail(
+      "insufficient_questions",
+      "이 단원 개념에 연결된 출제 가능한 문항이 없습니다. 문항의 개념 정렬과 검수·사용 권한 상태를 확인하세요.",
+    );
   }
 
   const learners = await sql<{ learner_id: string }[]>`
@@ -830,10 +876,14 @@ export async function generateConfirmationTest(options: {
   };
 }
 
-function fail(message: string): GenerateResult {
+function fail(
+  reason: GenerationFailureReason,
+  message: string,
+): GenerateResult {
   return {
     ok: false,
     message,
+    reason,
     assessmentId: null,
     questionCount: 0,
     shortfalls: [],

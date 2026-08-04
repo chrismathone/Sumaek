@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { getSharedSql } from "@su-maek/db";
+import { listFailedAssessmentGenerations } from "@su-maek/db/domain";
 import { requireAccess } from "@/lib/auth/require-access";
 import { todayInKst } from "@/lib/format";
 import { DataTable, type Column } from "@/components/DataTable";
 import { TableFilters } from "@/components/TableFilters";
 import { parseTableQuery, type RawSearchParams } from "@/lib/table";
 import { GenerateForm } from "./GenerateForm";
+import { GenerationFailures } from "./GenerationFailures";
 import { KST } from "@su-maek/core/shared";
 
 export const metadata: Metadata = { title: "일일·확인테스트" };
@@ -75,7 +77,7 @@ export default async function TestsPage({
   const statusFilter = query.params.status ?? "";
   const purposeFilter = query.params.purpose ?? "";
 
-  const [groups, assessments, nextSession] = await Promise.all([
+  const [groups, assessments, nextSession, failures] = await Promise.all([
     sql<{ id: string; name: string }[]>`
       select id, name from learning_groups
       where organization_id = ${user.organizationId} and status = 'operating'
@@ -114,6 +116,11 @@ export default async function TestsPage({
       where organization_id = ${user.organizationId}
         and session_date >= (now() at time zone ${KST})::date
     `,
+    /* 자동 생성이 실패한 것 (T3.4). 목록 위가 아니라 **생성 폼 바로 아래**에
+     * 둔다 — 여기 온 교사가 가장 먼저 알아야 할 것은 「무엇이 안 만들어졌나」다. */
+    listFailedAssessmentGenerations(sql, {
+      organizationId: user.organizationId,
+    }),
   ]);
 
   const total = assessments[0]?.total_count ?? 0;
@@ -196,6 +203,8 @@ export default async function TestsPage({
       <div className="mt-6">
         <GenerateForm groups={groups} defaultDate={defaultDate} />
       </div>
+
+      <GenerationFailures failures={failures} />
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold">생성된 테스트</h2>

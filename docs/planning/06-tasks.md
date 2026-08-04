@@ -31,7 +31,7 @@
 | G-01 | 최근 90일의 완료 테스트가 오늘 완료로 오인될 수 있음 | 오늘 날짜·오늘 계획 항목만으로 완료 판정 | P0 | T1.1, T1.3, T1.4 |
 | G-02 | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 학습자별 날짜 계획과 완료 시각을 영속화 | P0 | T1.2, T4.1 |
 | G-03 | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사 마감 또는 정책 기반 집계로 원자적 발행 | P0 | T4.2 |
-| G-04 **부분 닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정하고(T3.1·T3.2 ✔), 평가 노드가 실제 평가가 되는 길이 뚫렸다(T3.3 ✔ — 정책 해석 일원화·기본 정책 프로비저닝·없는 블루프린트 요구 제거). **실패가 아직 교사에게 닿지 않는다** — 큐에만 남는다 (T3.4) | P0 | T3.1~T3.4 |
+| ~~G-04~~ **닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정하고(T3.1·T3.2), 평가 노드가 실제 평가가 되며(T3.3), 실패는 사유·조치와 함께 교사 업무함에 닿고 같은 멱등 키로 재실행된다(T3.4) | P0 | T3.1~T3.4 ✔ |
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
 | G-06 | 문항 없는 연습 자료도 게시할 수 있어 학생이 영구 대기함 | 게시·루트 게시 전 실행 가능성 검증 | P0 | T2.4 |
 | G-07 | 일반 교사는 반·학생·계정 최초 세팅을 끝낼 수 없음 | 역할별 책임이 명확한 온보딩과 제한적 위임 | P1 | T5.1, T5.2 |
@@ -721,7 +721,7 @@ Set-Location ..\Su-Maek-t3-3-assessment-nodes
 - [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-3-assessment-nodes`
 
-### [] Phase 3, T3.4: 자동 평가 실패 알림·수동 복구 RED→GREEN
+### [x] Phase 3, T3.4: 자동 평가 실패 알림·수동 복구 RED→GREEN
 
 **담당**: backend-specialist + frontend-specialist
 
@@ -747,20 +747,32 @@ Set-Location ..\Su-Maek-t3-4-assessment-recovery
 3. **REFACTOR**: 재시도 가능/불가능 오류 코드를 분리하고 중복 알림을 멱등 처리한다.
 
 **산출물**:
-- `apps/worker/src/handlers/assessment.ts`
-- `apps/web/src/app/app/tests/actions.ts`
-- `apps/web/src/app/app/tests/page.tsx`
-- `e2e/tests/assessment-recovery.spec.ts`
+- `packages/db/src/domain/assessment-generation.ts` — 실패 **사유 코드**(`GENERATION_FAILURE_REASONS`)
+- `packages/db/src/domain/assessment-schedule.ts` — 실패 목록 조회·같은 행 재실행
+- `packages/db/src/queue.ts` · `packages/db/src/checks/invariants.sql` — E-17 라우팅 (두 표가 짝이다)
+- `apps/worker/src/handlers/assessment.ts` — E-17 발행(최종 실패에서만·멱등)
+- `apps/worker/src/handlers/schedule.ts` — 사유별 원인·조치를 담은 교사 업무함 알림
+- `apps/web/src/app/app/tests/{actions.ts,page.tsx}` · `GenerationFailures.tsx` — 복구 화면
+- `apps/worker/test/handlers/assessment-failure.test.ts` **신규**
+- `apps/web/test/integration/assessment-recovery.test.ts` **신규**
 
 **인수 조건**:
-- [ ] 실패가 성공처럼 게시·배정되지 않음
-- [ ] 담당 교사가 원인과 복구 링크를 받음
-- [ ] 일시 실패는 백오프 후 자동 복구되고 최종 실패는 DLQ로 감
-- [ ] 수동 재실행도 동일 멱등 키를 사용함
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 실패가 성공처럼 게시·배정되지 않음 — 트랜잭션 한가운데서 터뜨려도(주입 트리거) 평가 0건
+- [x] 담당 교사가 원인과 복구 링크를 받음 — 사유 코드마다 「왜·무엇을 하면 되나·어디로」가 다르다
+- [x] 일시 실패는 백오프 후 자동 복구되고 최종 실패는 DLQ로 감 — **백오프 중에는 알림을 발행하지 않는다**(DB 1초 순단으로 교사에게 알림을 쏘지 않는다). 재시도 소진 뒤에만 발행
+- [x] 수동 재실행도 동일 멱등 키를 사용함 — **같은 작업 행을 되살린다**
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `handlers/assessment.ts` 98%, `handlers/schedule.ts` 90%
+
+**구현하며 드러난 것**:
+- **「다시 생성」이 새 작업을 만들면 아무 일도 일어나지 않는다.** `jobs`의 `(topic, idempotency_key)` 유니크를 실패한 행이 이미 쥐고 있어 `on conflict do nothing`이 조용히 삼킨다. 버튼을 눌렀는데 아무 일도 안 일어나는 것이 가장 나쁘다. 그래서 같은 행을 되살린다 — 그것이 「동일 멱등 키」의 실제 의미이고, 자동 경로도 함께 복구된다.
+- **`invariants.sql`의 소비자 표가 `EVENT_CONSUMERS`와 짝이다.** 라우팅만 더하고 SQL을 빠뜨렸더니 `event-routing-sync` 테스트가 곧바로 잡았다 — 그 검사가 실제로 일한다는 증거다.
+- **사유를 코드로 만들었다.** 이전에는 실패가 한국어 문장뿐이라 알림·화면이 문구를 문자열로 비교해야 했다. 문구를 다듬는 순간 소비자가 조용히 깨지고, 그 깨짐은 「알림이 안 온다」로 나타나 아무도 눈치채지 못한다.
+- **학생 화면의 사유는 `assessment_not_generated` 그대로 뒀다.** 학생에게 「아직 안 만들어졌다」와 「만들다 실패했다」는 똑같이 「오늘 시험을 볼 수 없다」이고 조치도 없다. 구분이 필요한 쪽은 교사이고 그쪽은 E-17과 복구 화면이 덮는다 — event-catalog E-17에 정정을 적었다.
+
+**남긴 것**: `e2e/tests/assessment-recovery.spec.ts`는 쓰지 않았다. 실패를 만들려면 워커를 띄우고 정책을 비운 조직을 만들어야 하는데, 그 준비 자체가 라이브 서버 픽스처(T6.2의 자율 E2E)와 겹친다. 지금은 통합 테스트 두 벌이 같은 경로를 끝에서 끝까지 덮는다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
+- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-4-assessment-recovery`
 
 ---

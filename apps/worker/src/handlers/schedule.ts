@@ -12,6 +12,7 @@ import {
   materializeLearnerSchedule,
 } from "@su-maek/db/domain";
 import { todayInKst } from "@su-maek/core/shared";
+import { FAILURE_RECOVERY } from "./assessment";
 
 /* ─────────────────────────────────────────────────────────────
  * 일정 재계산 소비자 — 결과 기반 미래 일정 갱신 (20장 재계산 트리거).
@@ -185,6 +186,13 @@ export async function handleNotificationDispatch(
    * 자정이 아니라 오전 9시에 넘어간다. */
   const localDay = todayInKst();
 
+  /* 자동 평가 생성 실패 (E-17)는 고정 문구로 처리할 수 없다 — 사유마다
+   * 무엇을 하면 되는지가 다르고, 복구 링크가 payload에 들어 있다. 일반
+   * 템플릿보다 **먼저** 처리한다. */
+  if (data.eventType === "DailyAssessmentGenerationFailed") {
+    return dispatchGenerationFailure(sql, organizationId, data, localDay);
+  }
+
   const templates: Record<
     string,
     { kind: string; title: string; link: string } | undefined
@@ -248,6 +256,59 @@ export async function handleNotificationDispatch(
     `;
   }
   return { notified: recipients.length };
+}
+
+/**
+ * 자동 평가 생성 실패 → 교사 업무함 (T3.4 · E-17).
+ *
+ * 일반 알림 템플릿과 다른 점: **무엇을 하면 되는지가 사유마다 다르다.**
+ * "테스트 생성에 실패했습니다"만 보내면 교사는 무엇을 고쳐야 할지 모른 채
+ * 수업 시간을 맞는다. 사유 코드 → 원인·조치 문구는 핸들러가 단일 정의처로
+ * 들고 있고(FAILURE_RECOVERY), 복구 링크는 이벤트가 나른다.
+ */
+async function dispatchGenerationFailure(
+  sql: ReturnType<typeof getSharedSql>,
+  organizationId: string,
+  data: EventJobPayload,
+  localDay: string,
+): Promise<unknown> {
+  const p = (data.payload ?? {}) as {
+    reason?: string;
+    planDate?: string;
+    purpose?: string;
+    recoveryHref?: string;
+    message?: string;
+  };
+  const reason = (p.reason ?? "insufficient_questions") as
+    keyof typeof FAILURE_RECOVERY;
+  const guide = FAILURE_RECOVERY[reason] ?? {
+    why: p.message ?? "알 수 없는 오류입니다.",
+    action: "운영에 알리세요.",
+  };
+  const label = p.purpose === "confirmation" ? "확인테스트" : "일일테스트";
+  const title = `${p.planDate ?? ""} ${label} 자동 생성에 실패했습니다`.trim();
+  const link = p.recoveryHref ?? "/app/tests";
+
+  const recipients = await sql<{ user_id: string }[]>`
+    select user_id from memberships
+    where organization_id = ${organizationId}
+      and status = 'active' and role in ('owner', 'program_director', 'teacher')
+  `;
+  for (const r of recipients) {
+    await sql`
+      insert into notifications (
+        id, organization_id, recipient_user_id, kind, title, body, link_path,
+        related_type, related_id, group_key
+      ) values (
+        ${uuidv7()}, ${organizationId}, ${r.user_id}, 'today_task', ${title},
+        ${sql.json({ what: title, why: guide.why, action: guide.action } as never)},
+        ${link}, 'event', ${data.eventId},
+        /* 같은 날 같은 사유는 한 줄로 묶는다 — 반이 스물이면 알림도 스물이다 */
+        ${`${data.eventType}:${reason}:${localDay}`}
+      )
+    `;
+  }
+  return { notified: recipients.length, reason };
 }
 
 /** 소비 완료 표시만 하는 핸들러 (파생 재계산이 인라인으로 끝난 이벤트) */

@@ -292,6 +292,10 @@ export const EVENT_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
    * 다른 학생에게 영향이 없어야 한다 (불변 조건 4). */
   LearnerRouteOverrideChanged: ["schedule.materialize-learner"],
   AssessmentPublished: ["notification.dispatch"],
+  /* 자동 생성 실패 (E-17 · T3.4). 이 라우팅이 없으면 실패 이벤트가 소비자
+   * 없이 delivered가 되어 **실패를 알리는 이벤트 자체가 조용히 사라진다** —
+   * 교사는 수업 당일 아침에 학생 화면의 빈 시험 칸으로 알게 된다. */
+  DailyAssessmentGenerationFailed: ["notification.dispatch"],
   AttemptSubmitted: ["grading.auto"],
   GradeFinalized: ["mastery.update"],
   MasteryUpdated: ["review.plan", "schedule.recalculate"],

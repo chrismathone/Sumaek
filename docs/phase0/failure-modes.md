@@ -245,7 +245,7 @@
 
 ### F-20 자동 평가 생성 실패
 
-> [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4~§5. **생산자·핸들러·실패 판정은 T3.2·T3.3이 구현했다. 남은 것은 E-17 발행과 교사 알림·수동 복구(T3.4)** — 지금 실패는 `jobs`에 `failed_final`로만 남는다.
+> [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4~§5. **T3.2~T3.4로 구현 완료** — 생산자·핸들러·실패 판정(T3.2·T3.3), E-17 발행·교사 업무함 알림·`/app/tests` 재실행(T3.4).
 
 | 항목 | 내용 |
 |---|---|
@@ -253,7 +253,7 @@
 | 구조적 이유 | 재시도 가능(`transient_db`)과 불가(`insufficient_questions`·`no_policy`·`no_session`·`rights_expired`)를 오류 코드로 가른다. E-17은 **재시도가 모두 소진된 뒤에만** 발행한다 — 일시 장애로 교사에게 알림을 쏘지 않기 위해서다 |
 | 탐지 | `assessment_generation_lag` — 수업 시작 N시간 전인데 `published` 평가가 없는 `sessions` 수. `jobs` DLQ 유입률 |
 | 자동 대응 | 지수 백오프 재시도(`attempt_count >= 8`이면 `failed`). 학생 화면에서는 해당 항목이 `blocked`로 남는다(F-19와 연결) |
-| 수동 대응 | 교사가 `/app/tests`에서 재실행 — **같은 멱등 키**를 쓴다. 문항 부족이면 준비도 화면으로 이동해 문항을 채운다 |
+| 수동 대응 | 교사가 `/app/tests`의 실패 목록에서 「다시 생성」 — **같은 작업 행을 되살려** 멱등 키가 유지된다(새 작업을 만들면 유니크 충돌로 조용히 아무 일도 일어나지 않는다). 사유별 조치와 바로 가기 링크를 함께 보여 준다 |
 | kill switch | `auto_assessment_generation`(T3.2가 더한 키)이 꺼져 있으면 생산자가 작업을 만들지 않고, 이미 만든 작업은 큐에 보존해 재개 후 실행한다(작업을 버리지 않는다) |
 | ~~⚠ 선행 결함~~ **해소** | `assessments_idempotent_uq`가 반 공통 평가의 중복을 막지 못했다(G-15). `0018a`의 부분 유니크가 그 경우를 덮어 「재시도해도 1건」이 성립한다 |
 

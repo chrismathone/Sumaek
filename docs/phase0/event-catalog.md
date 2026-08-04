@@ -60,7 +60,7 @@
 
 각 항목의 `발행 시점`은 **어느 트랜잭션의 커밋과 함께인지**를 뜻한다.
 
-> E-01~E-15는 골프롬프트 2C 원안. **E-16·E-17은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 추가했고 아직 구현 전이다**(각각 T4.1·T3.4). 새 소비자는 없다 — §1.2 등록부의 `planning-engine`·`assessment-generator`·`read-model`·`notifier`·`analytics`를 그대로 쓴다.
+> E-01~E-15는 골프롬프트 2C 원안. **E-16·E-17은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 추가했다. E-17은 T3.4가 구현했고, E-16은 아직 구현 전이다**(T4.1). 새 소비자는 없다 — §1.2 등록부의 `planning-engine`·`assessment-generator`·`read-model`·`notifier`·`analytics`를 그대로 쓴다.
 
 ---
 
@@ -684,8 +684,13 @@
   "purpose": "daily",                       // daily | confirmation
   "job_id": "01J...",
   "idempotency_key": "assessment.generate:01J...:2026-08-05:daily",
-  "reason": "insufficient_questions",       // insufficient_questions | no_policy |
-                                            // no_session | rights_expired | transient_db
+  "reason": "insufficient_questions",       // 아래 8종 — 코드가 단일 정의처:
+                                            //   GENERATION_FAILURE_REASONS (생성기의 판단)
+                                            //   + transient_db | bad_payload (핸들러의 분류)
+                                            // no_policy | no_session | no_route |
+                                            // insufficient_questions | no_repeat_window |
+                                            // difficulty_unsatisfiable | transient_db |
+                                            // bad_payload
                                             // (no_blueprint은 없앴다 — T3.3: 블루프린트는
                                             //  교사가 고르는 입력이 아니라 생성 산출물이다)
   "retryable": false,
@@ -702,7 +707,11 @@
 
 **왜 성공 이벤트가 없나**: 생성 성공은 E-04 `AssessmentPublished`가 이미 나른다. **왜 요청 이벤트가 없나**: 요청은 이벤트가 아니라 `jobs` 행이다 — 멱등 키·재시도 횟수·상태를 그 행이 이미 담는다. 같은 사실을 두 곳에 두면 둘이 어긋난다([ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4).
 
-**실패가 성공처럼 보이지 않는다**: 이 경로로 끝난 평가는 게시·배정되지 않는다. 학생 화면에서는 해당 하루 계획 항목이 `blocked`(사유 `assessment_generation_failed`)로 남고, 교사는 `recovery_href`로 복구 화면에 닿는다.
+**실패가 성공처럼 보이지 않는다**: 이 경로로 끝난 평가는 게시·배정되지 않는다. 교사는 `recovery_href`로 복구 화면(`/app/tests`)에 닿아 사유·조치·「다시 생성」을 함께 본다.
+
+> **T3.4 구현 시 정정**: 학생 화면의 사유는 아직 `assessment_generation_failed`가 아니라 `assessment_not_generated`다. 「아직 안 만들어졌다」와 「만들다 실패했다」를 학생 화면에서 가르려면 투영기가 실패 상태를 읽어야 하는데, 학생에게 그 둘은 **똑같이 「오늘 시험을 볼 수 없다」**이고 조치도 없다. 구분이 필요한 쪽은 교사이고, 그쪽은 이 이벤트와 복구 화면이 덮는다.
+
+> **재실행은 같은 작업 행을 되살린다**(새 작업을 만들지 않는다). `jobs`의 `(topic, idempotency_key)` 유니크를 실패한 행이 쥐고 있어, 새로 넣으면 `on conflict do nothing`이 조용히 삼켜 **아무 일도 일어나지 않는다**. 같은 행을 되살려야 멱등 키가 유지되고 자동 경로도 함께 복구된다.
 
 `reason`이 `transient_db`면 `retryable=true`이고 이 이벤트는 **재시도가 모두 소진된 뒤에만** 발행된다. 백오프 중에는 발행하지 않는다 — 일시 장애로 교사에게 알림을 쏘지 않기 위해서다.
 

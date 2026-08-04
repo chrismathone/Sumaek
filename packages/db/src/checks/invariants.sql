@@ -847,6 +847,9 @@ with consumers(event_type, topic) as (
     ('LearningAvailabilityChanged', 'schedule.recalculate'),
     ('LearnerRouteOverrideChanged', 'schedule.materialize-learner'),
     ('AssessmentPublished', 'notification.dispatch'),
+    -- 자동 생성 실패 (E-17 · T3.4) — 라우팅이 없으면 실패를 알리는 이벤트가
+    -- 소비자 없이 delivered가 되어 조용히 사라진다
+    ('DailyAssessmentGenerationFailed', 'notification.dispatch'),
     ('AttemptSubmitted', 'grading.auto'),
     ('GradeFinalized', 'mastery.update'),
     ('MasteryUpdated', 'review.plan'),

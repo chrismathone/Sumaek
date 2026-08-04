@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from "uuid";
 import type postgres from "postgres";
 import { todayInKst, type IsoDate } from "@su-maek/core/shared";
 import {
@@ -303,4 +304,164 @@ export async function produceAssessmentJobs(
 
   result.suppressedOrganizationIds = [...suppressedOrgs].sort();
   return result;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 실패한 생성의 조회와 수동 복구 (T3.4).
+ *
+ * 실패는 `jobs` 행에 있다 — 멱등 키·시도 횟수·마지막 오류를 전부 담은
+ * 정본이다. 사유 **코드**는 E-17 이벤트가 나른다(`last_error`는 사람이 읽는
+ * 문장이라 화면 분기의 근거로 쓸 수 없다).
+ * ───────────────────────────────────────────────────────────── */
+
+/** 최종 실패로 남은 상태 — 재시도가 스스로 다시 돌지 않는 상태들 */
+const TERMINAL_JOB_STATUSES = ["failed_final", "dead_lettered"] as const;
+
+export interface FailedAssessmentGeneration {
+  jobId: string;
+  idempotencyKey: string | null;
+  status: string;
+  attempts: number;
+  learningGroupId: string | null;
+  learningGroupName: string | null;
+  planDate: string | null;
+  purpose: string | null;
+  sessionId: string | null;
+  /** E-17의 사유 코드. 이벤트가 아직 없으면 null */
+  reason: string | null;
+  lastError: string | null;
+  failedAt: Date;
+}
+
+export async function listFailedAssessmentGenerations(
+  sql: postgres.Sql,
+  input: { organizationId: string; limit?: number },
+): Promise<FailedAssessmentGeneration[]> {
+  const rows = await sql<
+    {
+      job_id: string;
+      idempotency_key: string | null;
+      status: string;
+      attempts: number;
+      learning_group_id: string | null;
+      learning_group_name: string | null;
+      plan_date: string | null;
+      purpose: string | null;
+      session_id: string | null;
+      reason: string | null;
+      last_error: string | null;
+      failed_at: Date;
+    }[]
+  >`
+    select j.id::text as job_id, j.idempotency_key, j.status::text as status,
+           j.attempts,
+           j.payload->>'learningGroupId' as learning_group_id,
+           g.name as learning_group_name,
+           j.payload->>'planDate' as plan_date,
+           j.payload->>'purpose' as purpose,
+           j.payload->>'sessionId' as session_id,
+           e.payload->>'reason' as reason,
+           j.last_error, j.updated_at as failed_at
+    from jobs j
+    left join learning_groups g
+      on g.id = (j.payload->>'learningGroupId')::uuid
+     and g.organization_id = j.organization_id
+    left join lateral (
+      select payload from outbox_events o
+      where o.organization_id = j.organization_id
+        and o.event_type = 'DailyAssessmentGenerationFailed'
+        and o.payload->>'jobId' = j.id::text
+      limit 1
+    ) e on true
+    where j.organization_id = ${input.organizationId}
+      and j.topic = ${ASSESSMENT_GENERATE_TOPIC}
+      and j.status = any(${[...TERMINAL_JOB_STATUSES]}::job_status[])
+      /* 이미 만들어진 평가가 있으면 실패는 해소된 것이다 — 교사가 손으로
+       * 만들었거나 다른 경로로 생겼다. 남은 실패만 보여 준다. */
+      and not exists (
+        select 1 from assessment_instances a
+        where a.organization_id = j.organization_id
+          and a.learning_group_id = (j.payload->>'learningGroupId')::uuid
+          and a.scheduled_date = (j.payload->>'planDate')::date
+          and a.purpose::text = j.payload->>'purpose'
+          and a.learner_id is null
+          and a.status <> 'cancelled'
+      )
+    order by j.updated_at desc
+    limit ${input.limit ?? 50}
+  `;
+
+  return rows.map((r) => ({
+    jobId: r.job_id,
+    idempotencyKey: r.idempotency_key,
+    status: r.status,
+    attempts: r.attempts,
+    learningGroupId: r.learning_group_id,
+    learningGroupName: r.learning_group_name,
+    planDate: r.plan_date,
+    purpose: r.purpose,
+    sessionId: r.session_id,
+    reason: r.reason,
+    lastError: r.last_error,
+    failedAt: r.failed_at,
+  }));
+}
+
+export interface RetryGenerationResult {
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * 실패한 생성 작업을 **같은 행에** 다시 세운다.
+ *
+ * 새 작업을 만들지 않는 이유가 핵심이다. `jobs.idempotency_key`는
+ * `(topic, key)` 유니크라, 실패한 행이 그 키를 이미 쥐고 있다. 새로 만들려고
+ * 하면 `on conflict do nothing`이 삼켜 **아무 일도 일어나지 않는다** —
+ * 버튼을 눌렀는데 조용히 아무것도 안 되는 것이 가장 나쁘다.
+ *
+ * 같은 행을 되살리면 멱등 키가 그대로이므로, 자동 생성과 수동 재실행이
+ * 경쟁해도 평가는 여전히 하나다.
+ */
+export async function retryAssessmentGeneration(
+  sql: postgres.Sql,
+  input: { organizationId: string; jobId: string; actorUserId: string | null },
+): Promise<RetryGenerationResult> {
+  const updated = await sql<{ id: string }[]>`
+    update jobs
+    set status = 'queued',
+        attempts = 0,
+        worker_id = null,
+        lease_expires_at = null,
+        last_error = null,
+        run_at = now(),
+        updated_at = now()
+    where id = ${input.jobId}
+      and organization_id = ${input.organizationId}
+      and topic = ${ASSESSMENT_GENERATE_TOPIC}
+      and status = any(${[...TERMINAL_JOB_STATUSES]}::job_status[])
+    returning id
+  `;
+  if (updated.length === 0) {
+    /* 이미 큐에 서 있거나(다른 사람이 눌렀다) 남의 조직 작업이다.
+     * 「다시 세웠습니다」라고 말하지 않는다 — 안 한 일을 했다고 하면
+     * 교사는 기다리다 두 번 잃는다. */
+    return {
+      ok: false,
+      message:
+        "다시 세울 수 없는 작업입니다. 이미 대기 중이거나 방금 다른 사람이 재실행했을 수 있습니다.",
+    };
+  }
+
+  await sql`
+    insert into audit_events (
+      id, organization_id, actor_type, actor_id, action, target_type, target_id, reason
+    ) values (
+      ${uuidv7()}, ${input.organizationId},
+      ${input.actorUserId ? "user" : "automation"}, ${input.actorUserId},
+      'assessment.generation-retry', 'job', ${input.jobId},
+      '자동 평가 생성 수동 재실행 (같은 멱등 키)'
+    )
+  `;
+  return { ok: true, message: "다시 생성하도록 예약했습니다. 잠시 후 새로고침하세요." };
 }
