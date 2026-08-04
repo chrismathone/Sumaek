@@ -43,6 +43,8 @@ export type DayVerdict =
   | "active"
   /** 할 일이 있었고 전부 마쳤다 */
   | "finished"
+  /** 학생이 할 수 없는 필수 항목이 남았다 — 완주가 아니다 */
+  | "blocked"
   /** 수업은 있는데 배정된 자료·테스트·복습이 없다 */
   | "sessionOnly"
   /** 오늘 배정된 것이 아무것도 없다 */
@@ -50,6 +52,13 @@ export type DayVerdict =
 
 export interface DayInput extends Record<ActionKey, StepState> {
   hasSession: boolean;
+  /**
+   * 필수 항목 중 학생이 할 수 없는 것이 있는가 (ADR-0017 §2).
+   *
+   * 완주 선언을 막는 유일한 추가 조건이다. 선택 항목의 차단은 여기 들어오지
+   * 않는다 — 학생에게 알리되 하루는 끝낼 수 있다.
+   */
+  blocked: boolean;
 }
 
 export interface DayReading {
@@ -67,6 +76,14 @@ export interface DayReading {
 export function readDay(day: DayInput): DayReading {
   const active = ACTION_ORDER.find((k) => day[k] === "todo") ?? null;
   if (active) return { active, verdict: "active" };
+  /* 차단은 할 일을 막지 않고 **완주 선언만** 막는다. 그래서 활성 단계를
+   * 고른 뒤에 본다 — 순서를 뒤집으면 아직 할 수 있는 일이 남은 학생에게
+   * 「막혔습니다」가 먼저 뜬다.
+   *
+   * 여기서 걸러 내지 않으면 화면이 하는 거짓말 중 가장 나쁜 것이 나온다:
+   * 교사가 자료를 안 올려 학생이 할 수 없는 항목이 남았는데 「오늘 할 일을
+   * 모두 마쳤습니다」가 뜨고, 학생은 자기 몫을 끝냈다고 믿고 화면을 닫는다. */
+  if (day.blocked) return { active: null, verdict: "blocked" };
   /* 「할 일이 있었나」는 **오늘 할 수 있었던 것**만 센다. `!== "none"`으로
    * 쓰면 예정 테스트 하나가 오늘 몫으로 딸려 들어가, 아무것도 배정되지 않은
    * 날 아무것도 하지 않은 학생에게 「오늘 할 일을 모두 마쳤습니다」가 뜬다 —
@@ -154,4 +171,90 @@ export function solidBelow(
   if (finished) return true;
   if (hereIndex === -1) return false;
   return index < hereIndex;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 계획 → 단계 상태.
+ *
+ * 화면이 raw 행을 세는 대신 **서버가 확정한 계획**을 읽게 하는 다리다.
+ * 화면과 DB가 각자 세면 「완료」의 뜻이 갈리고, 그때 학생이 보는 것과
+ * 교사 현황판이 보는 것이 달라진다 — 이 제품에서 가장 비싼 종류의 어긋남이다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 계획 항목 종류 → 궤도 정거장. 아직 정거장이 없는 종류는 null. */
+const STOP_OF: Record<string, ActionKey | null> = {
+  reading: "reading",
+  video: "video",
+  practice: "practice",
+  assessment: "test",
+  review: "review",
+  // 교재 범위·숙제는 T2.3이 /learn/homework 정거장을 만든다. 그때까지는
+  // 정거장이 없으므로 학생이 도달할 수 없고, 아래에서 차단으로 센다.
+  book_range: null,
+  homework: null,
+};
+
+interface PlanLike {
+  items: readonly {
+    kind: string;
+    required: boolean;
+    status: string;
+  }[];
+  deferred: readonly { kind: string }[];
+  required: { blocked: number };
+}
+
+/**
+ * 하루 계획을 단계 상태로 접는다.
+ *
+ * 차단 항목은 **할 차례가 되지 않는다.** `todo`로 두면 히어로가 「지금 할
+ * 차례」라고 말하고 학생을 눌러도 아무것도 없는 화면으로 보낸다. 그 대신
+ * `blocked`가 서고, 화면은 사유를 따로 알린다.
+ */
+export function planToDayInput(plan: PlanLike): DayInput {
+  const day = {
+    hasSession: false,
+    blocked: plan.required.blocked > 0,
+    reading: "none",
+    video: "none",
+    practice: "none",
+    test: "none",
+    review: "none",
+  } as DayInput;
+
+  for (const key of ACTION_ORDER) {
+    const mine = plan.items.filter((i) => STOP_OF[i.kind] === key);
+    const actionable = mine.filter(
+      (i) => i.status === "pending" || i.status === "in_progress",
+    ).length;
+    const settled = mine.filter(
+      (i) => i.status === "completed" || i.status === "exempted",
+    ).length;
+    const upcoming = plan.deferred.filter((i) => STOP_OF[i.kind] === key).length;
+
+    day[key] =
+      actionable > 0
+        ? "todo"
+        : settled > 0
+          ? "done"
+          : upcoming > 0
+            ? "upcoming"
+            : "none";
+  }
+
+  /* 정거장이 없는 필수 항목은 학생이 도달할 방법이 없다 — 사실상 차단이다.
+   * 조용히 빠지면 「필수가 남았는데 완주」가 된다. */
+  if (
+    plan.items.some(
+      (i) =>
+        i.required &&
+        STOP_OF[i.kind] === null &&
+        i.status !== "completed" &&
+        i.status !== "exempted",
+    )
+  ) {
+    day.blocked = true;
+  }
+
+  return day;
 }

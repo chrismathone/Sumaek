@@ -4,11 +4,14 @@ import {
   badgeLabel,
   conceptSpan,
   orbitOf,
+  planToDayInput,
   readDay,
   solidBelow,
   type DayInput,
   type StepState,
 } from "@/lib/learn/today-steps";
+import { buildDayPlan, type DayPlanItemInput } from "@su-maek/core/learning";
+import type { IsoDate } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 학생 「오늘 학습」 단계 판정 회귀 검사.
@@ -20,6 +23,7 @@ import {
  * ───────────────────────────────────────────────────────────── */
 
 const day = (over: Partial<DayInput> = {}): DayInput => ({
+  blocked: false,
   hasSession: true,
   reading: "none",
   video: "none",
@@ -101,6 +105,134 @@ describe("오늘의 판정 (readDay)", () => {
     expect(readDay(day({ reading: "done", test: "upcoming" })).verdict).toBe(
       "finished",
     );
+  });
+});
+
+describe("차단된 날 (readDay)", () => {
+  it("필수가 막혀 있으면 완주를 선언하지 않는다", () => {
+    /* 이 화면이 하는 거짓말 중 가장 나쁜 것이다. 자료를 안 올렸거나 문항이
+     * 0개라 학생이 할 수 없는 항목이 남아 있는데 「다 마쳤습니다」가 뜨면,
+     * 학생은 자기 몫을 끝냈다고 믿고 화면을 닫는다. */
+    const r = readDay(day({ reading: "done", blocked: true }));
+    expect(r.verdict).toBe("blocked");
+    expect(r.verdict).not.toBe("finished");
+    expect(r.active).toBeNull();
+  });
+
+  it("할 차례가 남아 있으면 차단이 있어도 그것부터 한다", () => {
+    /* 차단은 완주를 막을 뿐 나머지 일을 막지 않는다 (ADR-0017 §3). */
+    const r = readDay(day({ reading: "todo", test: "done", blocked: true }));
+    expect(r.verdict).toBe("active");
+    expect(r.active).toBe("reading");
+  });
+
+  it("차단이 없으면 종전대로 완주다", () => {
+    expect(readDay(day({ reading: "done", blocked: false })).verdict).toBe(
+      "finished",
+    );
+  });
+});
+
+describe("계획 → 단계 상태 (planToDayInput)", () => {
+  const TODAY = "2026-08-04" as IsoDate;
+  const item = (over: Partial<DayPlanItemInput>): DayPlanItemInput => ({
+    key: over.key ?? `k${Math.random()}`,
+    kind: "reading",
+    required: true,
+    status: "pending",
+    ...over,
+  });
+  const from = (items: DayPlanItemInput[]) =>
+    planToDayInput(buildDayPlan({ planDate: TODAY, items }));
+
+  it("자료 종류가 그대로 단계가 된다", () => {
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "video", status: "pending" }),
+      item({ kind: "practice", status: "in_progress" }),
+    ]);
+    expect(d.reading).toBe("done");
+    expect(d.video).toBe("todo");
+    expect(d.practice).toBe("todo");
+    expect(d.test).toBe("none");
+  });
+
+  it("평가와 복습이 각자 단계로 간다", () => {
+    const d = from([
+      item({ kind: "assessment", status: "pending" }),
+      item({ kind: "review", status: "completed" }),
+    ]);
+    expect(d.test).toBe("todo");
+    expect(d.review).toBe("done");
+  });
+
+  it("미래 평가만 있으면 예정이지 할 차례가 아니다", () => {
+    const d = from([
+      item({ kind: "assessment", scheduledDate: "2026-08-09" as IsoDate }),
+    ]);
+    expect(d.test).toBe("upcoming");
+    expect(readDay(d).verdict).not.toBe("active");
+  });
+
+  it("차단 항목은 할 차례가 되지 않는다 — 학생이 할 수 없는 일이다", () => {
+    /* todo로 두면 히어로가 「지금 할 차례」라고 말하고 학생을 눌러도 아무것도
+     * 없는 화면으로 보낸다. */
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "practice", status: "blocked", blockedReason: "no_questions" }),
+    ]);
+    expect(d.practice).not.toBe("todo");
+    expect(d.blocked).toBe(true);
+    expect(readDay(d).verdict).toBe("blocked");
+  });
+
+  it("선택 항목의 차단은 완주를 막지 않는다", () => {
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({
+        kind: "video",
+        required: false,
+        status: "blocked",
+        blockedReason: "rights_expired",
+      }),
+    ]);
+    expect(d.blocked).toBe(false);
+    expect(readDay(d).verdict).toBe("finished");
+  });
+
+  it("면제는 완주를 막지 않는다", () => {
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "practice", status: "exempted" }),
+    ]);
+    expect(readDay(d).verdict).toBe("finished");
+  });
+
+  it("정거장 없는 필수 항목은 차단으로 센다 — 조용히 빠지지 않는다", () => {
+    /* 숙제·교재 범위는 T2.3이 정거장을 만들기 전까지 학생이 도달할 방법이
+     * 없다. 접는 과정에서 그냥 빠지면 「필수가 남았는데 완주」가 된다 —
+     * 이 파일이 막으려는 거짓 축하가 새 노드 종류를 타고 되돌아온다. */
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "homework", status: "pending" }),
+    ]);
+    expect(d.blocked).toBe(true);
+    expect(readDay(d).verdict).toBe("blocked");
+  });
+
+  it("정거장 없는 항목도 끝났거나 면제면 완주를 막지 않는다", () => {
+    const d = from([
+      item({ kind: "reading", status: "completed" }),
+      item({ kind: "book_range", status: "exempted" }),
+    ]);
+    expect(d.blocked).toBe(false);
+    expect(readDay(d).verdict).toBe("finished");
+  });
+
+  it("항목이 없는 날은 전부 none이다", () => {
+    const d = from([]);
+    for (const k of ACTION_ORDER) expect(d[k]).toBe("none");
+    expect(d.blocked).toBe(false);
   });
 });
 

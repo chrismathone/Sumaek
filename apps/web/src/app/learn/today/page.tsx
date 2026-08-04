@@ -14,6 +14,7 @@ import {
   badgeLabel,
   conceptSpan,
   orbitOf,
+  planToDayInput,
   readDay,
   solidBelow,
   type StepState,
@@ -32,6 +33,16 @@ const DONE_ATTEMPT_STATUSES = [
 ];
 
 export const metadata: Metadata = { title: "오늘 학습" };
+
+/** 차단 사유 코드 → 학생이 읽을 문장. 코드는 준비도 게이트(T2.4)와 같은 것을 쓴다. */
+const BLOCK_REASON_TEXT: Record<string, string> = {
+  no_questions: "연습문제나 시험에 문항이 아직 등록되지 않았습니다.",
+  material_missing: "오늘 개념에 연결된 자료가 아직 없습니다.",
+  rights_expired: "교재 사용 권한이 만료되어 열 수 없습니다.",
+  account_unlinked: "학습자 계정 연결이 끝나지 않았습니다.",
+  assessment_generation_failed: "오늘 시험이 아직 만들어지지 않았습니다.",
+  unknown: "지금 열 수 없는 항목이 있습니다.",
+};
 
 /* ─────────────────────────────────────────────────────────────
  * 학생의 하루 (18장) — **순서 있는 단계**로 낸다.
@@ -360,14 +371,16 @@ export default async function LearnTodayPage() {
   const reviewState: StepState = reviewCount > 0 ? "todo" : "none";
   /* 「할 차례」는 한 번에 하나이고, 활성 단계가 없다는 사실만으로 완주를
    * 선언하지 않는다 — 판정과 그 이유는 today-steps.ts에 있다. */
+  /* 단계 상태는 **서버가 확정한 계획**에서 접는다. 화면이 raw 행을 따로
+   * 세면 「완료」의 뜻이 화면과 DB에서 갈리고, 그때 학생이 보는 것과 교사
+   * 현황판이 보는 것이 달라진다. 위에서 센 값들(readingState 등)은 카드
+   * 안의 건수·문구에만 쓴다. */
   const { active: activeStep, verdict } = readDay({
+    ...planToDayInput(view.plan),
     hasSession: schedule.length > 0,
-    reading: readingState,
-    video: videoState,
-    practice: practiceState,
-    test: testState,
-    review: reviewState,
   });
+  /** 학생이 할 수 없는 항목의 사유 — 화면이 「왜」를 말할 수 있게 */
+  const blockedReasons = view.plan.blockedReasons;
 
   const stops: Stop[] = [
     {
@@ -489,6 +502,25 @@ export default async function LearnTodayPage() {
       {/* 배정이 없는 날을 완주로 축하하지 않는다 — 반전을 쓰지 않는다.
        * 수업이 잡혀 있는데 자료만 없는 날은 또 다른 사실이다: 「배정된
        * 학습이 없습니다」라고만 하면 오늘 수업이 있다는 것과 어긋난다. */}
+      {/* 막힌 날 — 완주로 축하하지 않고, 학생이 무엇을 해야 하는지 말한다.
+       * 「선생님께 알려 주세요」까지 있어야 학생이 다음 행동을 안다: 자기
+       * 잘못이 아니고 기다린다고 풀리지도 않는다는 것을 화면이 말해야 한다. */}
+      {verdict === "blocked" && (
+        <section className="mt-4 rounded-lg border border-dashed border-rule bg-paper p-4">
+          <p className="font-medium break-keep">
+            오늘 학습 중 지금 할 수 없는 항목이 있습니다.
+          </p>
+          <p className="mt-1 text-sm break-keep text-ink-soft">
+            {blockedReasons
+              .map((code) => BLOCK_REASON_TEXT[code] ?? BLOCK_REASON_TEXT.unknown)
+              .join(" · ")}
+          </p>
+          <p className="mt-1 text-sm break-keep text-ink-soft">
+            학생이 해결할 수 있는 문제가 아닙니다 — 선생님께 알려 주세요.
+          </p>
+        </section>
+      )}
+
       {(verdict === "empty" || verdict === "sessionOnly") && (
         <section className="mt-4 rounded-lg border border-dashed border-rule bg-paper p-4">
           <p className="font-medium break-keep">
