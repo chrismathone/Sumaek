@@ -1177,8 +1177,8 @@ Set-Location ..\Su-Maek-t5-4-readiness-preview
 **남긴 것**: `DayPlanView.tsx`(공용 렌더러)와 `e2e/tests/readiness-preview.spec.ts`. 공용 컴포넌트를 만드는 대신 **같은 투영기를 쓰는지**를 테스트로 못 박았다 — 문구가 같은지는 컴포넌트를 공유해서가 아니라 데이터가 같아서 보장되고, 학생 화면(6단계 궤도)과 교사 요약은 애초에 다른 배치를 요구한다. 억지로 한 컴포넌트로 만들면 두 화면 모두 어색해진다. E2E는 T6.2에서 다른 세 건과 함께 쓴다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t5-4-readiness-preview`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t5-4-readiness-preview`
 
 ---
 
