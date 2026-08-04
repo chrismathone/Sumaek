@@ -392,6 +392,16 @@ function toLines(
       if (Math.abs(l.y - span.y1) <= profile.layout.lineToleranceY) return true;
       // 위첨자·아래첨자: 작고, 줄의 세로 띠 안에 든다
       if (span.size < l.size * 0.8 && center > l.top && center < l.bottom) return true;
+      /* 문항 번호만 있는 줄에는 아무것도 흡수시키지 않는다.
+       *
+       * 번호는 글자가 커서(14pt) 세로 띠가 넓다. 아래 분수 규칙이 그 띠에
+       * 걸린 분수를 끌어들이면 줄의 바닥이 본문까지 내려가고, 그 다음엔
+       * 위첨자 규칙이 본문 전체를 빨아들인다. 그러면 줄의 첫 덩어리가
+       * 번호가 아니라 「0가은이는…」이 되어 **문항 하나가 통째로 앞 문항의
+       * 발문이 된다**(중2-1 p.110 0752). 번호는 혼자 서야 한다. */
+      if (l.spans.every((s) => profile.fonts.questionNumber.font.test(s.font))) {
+        return false;
+      }
       /* 인라인 분수는 크기가 같아도 **기준선이 아래로 내려간다**. 별책
        * 파서는 이미 이렇게 하고 있었는데 본책 파서에는 없어서, 문항 0049
        * 선택지 ④가 `$\times$$\times$…` 다음에 분수 다섯 개가 오는 꼴로
