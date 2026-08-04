@@ -135,6 +135,8 @@ export interface BlankGradeResult {
   correct: number;
   total: number;
   completed: boolean;
+  /** 학생이 쓴 답 — 채점 뒤 입력칸을 되살리는 데 쓴다 */
+  submitted?: Record<number, string>;
 }
 
 /**
@@ -235,4 +237,115 @@ export async function submitBlankAnswers(input: {
         ? `핵심어 ${total}개 중 ${correct}개를 담았습니다.`
         : `${total}칸 중 ${correct}칸을 맞혔습니다.`,
   };
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 빈칸 단계 화면에 줄 것 — **개념 섹션과 똑같은 본문**에 자리만 뚫어서.
+ *
+ * 정답은 여기서 나가지 않는다. 본문에 심는 것은 자리 번호와 글자 수뿐이고
+ * (blank-render의 표식), 채점은 서버가 한다.
+ * ───────────────────────────────────────────────────────────── */
+
+export interface BlankStageView {
+  setId: string;
+  conceptId: string;
+  conceptName: string;
+  stage: BlankStage;
+  /** one·two — 빈칸이 뚫린 읽기 자료 본문들 (개념 섹션과 같은 블록) */
+  bodies: Array<{ id: string; title: string; body: unknown }>;
+  /** 본문에서 자리를 못 찾아 따로 물어야 하는 빈칸 */
+  orphans: number[];
+  total: number;
+  status: "in_progress" | "completed" | "none";
+  bestCorrect: number;
+}
+
+export async function getBlankStage(input: {
+  organizationId: string;
+  learnerId: string;
+  conceptId: string;
+  stage: BlankStage;
+}): Promise<BlankStageView | null> {
+  const sql = getSharedSql();
+  const [set] = await sql<
+    {
+      id: string;
+      concept_name: string;
+      blanks: unknown;
+      status: string | null;
+      best_correct: number | null;
+    }[]
+  >`
+    select s.id::text, c.name as concept_name, s.blanks,
+           p.status::text as status, p.best_correct
+    from concept_blank_sets s
+    join canonical_concepts c on c.id = s.concept_id
+    left join learner_blank_progress p
+      on p.blank_set_id = s.id and p.learner_id = ${input.learnerId}
+    where s.organization_id = ${input.organizationId}
+      and s.concept_id = ${input.conceptId}
+      and s.stage = ${input.stage}::concept_blank_stage
+      and s.status = 'published'
+  `;
+  if (!set) return null;
+  const blanks = parseBlanks(set.blanks);
+
+  /* full 단계는 본문을 주지 않는다 — 통째로 다시 쓰는 자리다 */
+  if (input.stage === "full") {
+    return {
+      setId: set.id,
+      conceptId: input.conceptId,
+      conceptName: set.concept_name,
+      stage: "full",
+      bodies: [],
+      orphans: [],
+      total: blanks.length,
+      status: (set.status as "in_progress" | "completed") ?? "none",
+      bestCorrect: set.best_correct ?? 0,
+    };
+  }
+
+  const readings = await sql<{ id: string; title: string; body: unknown }[]>`
+    select id::text, title, body from learning_materials
+    where organization_id = ${input.organizationId}
+      and concept_id = ${input.conceptId}
+      and kind = 'reading' and status = 'published'
+    order by sort_order, created_at
+  `;
+  /* 자료 여러 건에 걸쳐 자리를 찾는다 — 앞 자료에서 찾은 답은 뒤 자료에서
+   * 다시 뚫지 않는다(같은 낱말이 두 번 비면 한쪽을 보고 베낀다). */
+  const { applyBlanks } = await import("@/lib/learn/blank-render");
+  let pending = blanks.map((b) => ({ position: b.position, answer: b.answer }));
+  const bodies: Array<{ id: string; title: string; body: unknown }> = [];
+  for (const r of readings) {
+    const applied = applyBlanks(r.body, pending);
+    bodies.push({ id: r.id, title: r.title, body: applied.body });
+    pending = applied.missing;
+  }
+  return {
+    setId: set.id,
+    conceptId: input.conceptId,
+    conceptName: set.concept_name,
+    stage: input.stage,
+    bodies,
+    orphans: pending.map((p) => p.position),
+    total: blanks.length,
+    status: (set.status as "in_progress" | "completed") ?? "none",
+    bestCorrect: set.best_correct ?? 0,
+  };
+}
+
+/** 이 개념에 게시된 단계들 — 화면 이동(다음 단계)을 정한다 */
+export async function listStagesForConcept(input: {
+  organizationId: string;
+  conceptId: string;
+}): Promise<BlankStage[]> {
+  const sql = getSharedSql();
+  const rows = await sql<{ stage: string }[]>`
+    select stage::text as stage from concept_blank_sets
+    where organization_id = ${input.organizationId}
+      and concept_id = ${input.conceptId} and status = 'published'
+    order by case stage when 'one' then 1 when 'two' then 2 else 3 end
+  `;
+  return rows.map((r) => r.stage as BlankStage);
 }

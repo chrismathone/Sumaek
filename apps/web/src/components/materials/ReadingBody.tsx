@@ -97,10 +97,35 @@ function runsToMixed(runs: Run[] | undefined): string {
   return parts.join("");
 }
 
+/* 빈칸 표식(U+E000 자리:너비 U+E001) → 입력칸.
+ *
+ * renderMixedText가 HTML을 이스케이프하므로 글자에 `<input>`을 섞어 넣을 수
+ * 없다. 사설 영역 문자는 이스케이프 대상이 아니라 그대로 통과하므로, **렌더가
+ * 끝난 뒤** 여기서 바꾼다. 입력칸은 폼 안에서 이름(b-1)으로 제출된다 —
+ * 제어 컴포넌트로 만들면 이 서버 렌더 트리 전체가 클라이언트가 되어야 한다.
+ *
+ * 너비는 글자 수에 맞춘다. 다만 **정답 길이를 그대로 노출하지 않으려고**
+ * 최소 4자·최대 10자로 눌러, 한 글자 답과 세 글자 답이 같은 칸으로 보인다. */
+const BLANK_TOKEN = /(\d+):(\d+)/g;
+
+function withBlankInputs(html: string): string {
+  return html.replace(BLANK_TOKEN, (_m, pos: string, width: string) => {
+    const ch = Math.min(10, Math.max(4, Number(width)));
+    return (
+      `<input name="b-${pos}" type="text" autocomplete="off" ` +
+      `aria-label="${pos}번 빈칸" ` +
+      `style="width:${ch + 1}ch" ` +
+      `class="mx-0.5 inline-block rounded-[var(--radius-control)] border-0 border-b-2 border-pen bg-pen-soft/30 px-1 text-center font-medium text-ink focus:bg-pen-soft/60 focus:outline-none" />`
+    );
+  });
+}
+
 /** 혼합 텍스트 한 조각 — 기존 단일 렌더 계약(renderMixedText) 그대로 */
 function Mixed({ content, mode }: { content: string; mode: Mode }) {
   const rendered = renderMixedText(content, mode);
-  return <span dangerouslySetInnerHTML={{ __html: rendered.html }} />;
+  return (
+    <span dangerouslySetInnerHTML={{ __html: withBlankInputs(rendered.html) }} />
+  );
 }
 
 /* ── 단바꿈 규칙 ─────────────────────────────────────────────

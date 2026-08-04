@@ -7,6 +7,7 @@ import { todayInKst } from "@/lib/format";
 import { listMaterials, type MaterialRow } from "@/lib/domain/learning-material";
 import { getTodayScope } from "@/lib/learn/today-context";
 import { buildPracticeSets } from "@/lib/learn/practice-items";
+import { listStagesForConcept } from "@/lib/domain/concept-blank";
 import { CompleteMaterialButton } from "@/components/learn/MaterialCard";
 import { LectureVideoCard } from "@/components/learn/LectureVideoCard";
 import { GatedNextLink, LectureGate } from "@/components/learn/LectureGate";
@@ -144,6 +145,16 @@ export default async function StudyPage({
       })
     : [];
   const hasPractice = practiceSets.length > 0;
+
+  /* 설명·인강 다음은 **빈칸**이다 — 보고 넘어가는 것이 아니라 인출하게.
+   * 빈칸이 없는 개념은 종전대로 연습으로 간다. */
+  const blankStages = current
+    ? await listStagesForConcept({
+        organizationId: learner.user.organizationId,
+        conceptId: current.conceptId,
+      })
+    : [];
+  const firstBlankStage = blankStages[0];
 
   return (
     <div data-wide>
@@ -353,7 +364,12 @@ export default async function StudyPage({
               낸다(GatedNextLink). 영상이 0건인 개념은 잠기지 않는다.
               연습 자료가 없는 개념은 곧장 다음 개념으로 — 없는 곳으로 보내
               「연습문제가 없습니다」를 읽히는 것은 한 번 더 걷게 하는 일이다. */}
-          {hasPractice ? (
+          {firstBlankStage ? (
+            <GatedNextLink
+              href={`/learn/blank?c=${current.conceptId}&s=${firstBlankStage}`}
+              label="개념 확인하러 가기 →"
+            />
+          ) : hasPractice ? (
             <GatedNextLink
               href={`/learn/practice?c=${current.conceptId}`}
               label="연습문제 풀러 가기 →"
