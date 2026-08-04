@@ -228,6 +228,33 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       ["%", "\\%"],
     ]),
   },
+  {
+    /* ── 큰 괄호 글꼴 — **코드가 한 짝씩 밀려 있다.**
+     *
+     * 이 글꼴에서 `{`는 중괄호가 아니라 **소괄호**이고, `[`가 중괄호다.
+     * 그대로 통과시키면 LaTeX의 `{ }`는 묶음 기호라 **화면에서 사라진다** —
+     * 지면의 `(-3/4)+(-1/3)`이 `-3/4+-1/3`으로 나가고, 렌더는 멀쩡히
+     * 성공한다. 별책 해설에만 707쌍이 이렇게 있었다.
+     *
+     * 확정 근거는 본책 p.64 문항 0471 한 줄이다. 세 겹이 한꺼번에 나온다:
+     *   지면  1/6 × [ -20 - { 3² + ( 1/4 - 1/6 ) × 12 } ]
+     *   덤프  ;6!; _ [EHSusic -20- [EHboNA 3Û`+ {EHboNA ;4!; - 1/6
+     *         }EHboNA _12 ]EHboNA ]EHSusic
+     * 바깥 대괄호는 **다른 글꼴**(EHSusic)이라 제 뜻 그대로다 — 그래서
+     * 이 표는 EHboNA에만 건다. 별책 p.27 0346 「(-3/4)+(-1/3)」·0357
+     * 「(+5/30)」, p.29 「×{(-6)²…}」에서 각각 따로 확인했다.
+     *
+     * `\left`·`\right`로 내는 이유: 분수를 감싸는 자리라 지면도 키를 키운
+     * 괄호를 쓴다. 짝이 안 맞으면 KaTeX가 실패해 **눈에 띈다** — 조용히
+     * 괄호만 사라지는 것보다 낫다. */
+    font: /^EHboNA/,
+    map: new Map([
+      ["{", "\\left("],
+      ["}", "\\right)"],
+      ["[", "\\left\\{"],
+      ["]", "\\right\\}"],
+    ]),
+  },
 ];
 
 /**
@@ -537,6 +564,18 @@ export function joinLatex(left: string, right: string): string {
 function braceDepth(latex: string): number {
   let depth = 0;
   for (let i = 0; i < latex.length; i += 1) {
+    /* `\left(`·`\right)`도 짝을 이뤄야 한다 — 큰 괄호 글꼴이 내는 꼴이라
+     * 여기서 세지 않으면 조각난 괄호가 안 붙는다 */
+    if (latex.startsWith("\\left", i)) {
+      depth += 1;
+      i += 4;
+      continue;
+    }
+    if (latex.startsWith("\\right", i)) {
+      depth -= 1;
+      i += 5;
+      continue;
+    }
     const ch = latex[i]!;
     if (ch === "\\") {
       i += 1; // 이스케이프된 \{ \} 는 글자다

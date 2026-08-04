@@ -21,7 +21,8 @@
     "variants": "tsx src/cli/variants.mts",
     "audit-katex": "tsx src/cli/audit-katex.mts",
     "strategy-review": "tsx src/cli/strategy-review.mts",
-    "audit-content": "tsx src/cli/audit-content.mts"
+    "audit-content": "tsx src/cli/audit-content.mts",
+    "delete-ingested": "tsx src/cli/delete-ingested.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

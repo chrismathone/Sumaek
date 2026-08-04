@@ -199,6 +199,38 @@ describe("분수 — 안쪽은 분모·분자 교대다", () => {
   });
 });
 
+describe("큰 괄호 글꼴 — 코드가 한 짝씩 밀려 있다", () => {
+  /* 본책 p.64 문항 0471 한 줄에 세 겹이 다 나온다:
+   *   1/6 × [ -20 - { 3² + ( 1/4 - 1/6 ) × 12 } ]
+   * 바깥 대괄호만 다른 글꼴(EHSusic)이라 제 뜻 그대로다. */
+  it("EHboNA의 { 는 소괄호다 (별책 0346 「(-3/4)+(-1/3)」)", () => {
+    expect(decodeHwpMath("{", "EHboNA-Plain").latex).toBe("\\left(");
+    expect(decodeHwpMath("}", "EHboNA-Plain").latex).toBe("\\right)");
+  });
+
+  it("EHboNA의 [ 는 중괄호다 (별책 p.29 「×{(-6)²…}」)", () => {
+    expect(decodeHwpMath("[", "EHboNA-Plain").latex).toBe("\\left\\{");
+    expect(decodeHwpMath("]", "EHboNA-Plain").latex).toBe("\\right\\}");
+  });
+
+  it("다른 글꼴의 대괄호는 제 뜻 그대로다 — 바깥 대괄호는 EHSusic이다", () => {
+    expect(decodeHwpMath("[", "EHSusic-Plain").latex).toBe("[");
+    expect(decodeHwpMath("]", "EHSusic-Plain").latex).toBe("]");
+  });
+
+  it("분수 안의 [ ] 는 여전히 분모의 x·y다 — 분수를 먼저 걷어내기 때문", () => {
+    expect(decodeHwpMath(";[};", "EHboNB-Italic").latex).toBe("\\frac{y}{x}");
+  });
+
+  it("조각난 큰 괄호도 이어 붙는다 — \\left 짝을 깊이로 센다", () => {
+    const got = mergeUnbalancedMath([
+      { kind: "math", raw: "", latex: "\\left(-\\frac{3}{4}", unknown: [] },
+      { kind: "math", raw: "", latex: "\\right)", unknown: [] },
+    ]);
+    expect(got).toHaveLength(1);
+  });
+});
+
 describe("분수 글꼴의 ¹²³ — 지수가 아니라 세로셈·표 조각이다", () => {
   it("EHboNA에서 온 ²는 지수로 옮기지 않는다 (문항 0265 보기 표)", () => {
     const got = decodeHwpMath("²20", "EHboNA-Plain");
