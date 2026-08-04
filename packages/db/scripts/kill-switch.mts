@@ -54,6 +54,8 @@ const STILL_WORKS: Readonly<Record<string, string>> = {
   auto_reschedule: "수동 일정 편집·기존 일정 조회·수동 preview/apply",
   auto_publish_questions: "수동 게시·문제은행 조회·이미 게시된 문항 출제",
   auto_grading: "답안 제출·수동 채점·예외 처리·기존 확정 점수 조회",
+  auto_assessment_generation:
+    "교사가 화면에서 직접 누르는 테스트 생성·이미 생성된 테스트의 응시·채점·조회. 멈추는 것은 워커의 자동 생성뿐 (이미 만들어진 작업은 큐에 남아 재개 후 실행된다)",
   curriculum_release: "활성 릴리스 읽기·개념 그래프 탐색·매핑 검수",
   formula_autofix: "수식 파싱·KaTeX 검증·수동 수정·기존 렌더",
   document_export: "온라인 응시·웹 미리보기·기존 산출물 다운로드",

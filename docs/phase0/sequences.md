@@ -216,9 +216,15 @@ sequenceDiagram
 
 ---
 
-> **미구현 (2026-08-04)**: 이 시퀀스의 `W:스케줄러`가 **아직 없다.** `apps/worker/src/registry.ts`에 `assessment.*` 핸들러가 등록돼 있지 않고, 지금은 교사가 `/app/tests`에서 버튼을 눌러야 생성된다. T3.2가 채운다.
+> **T3.2가 채웠다 (2026-08-04)**: `W:스케줄러`는 `produceAssessmentJobs`(`packages/db/src/domain/assessment-schedule.ts`)이고, 워커 루프가 60초마다 부른다. 소비자는 `assessment.generate` 토픽의 `handleAssessmentGenerate`다. 교사의 `/app/tests` 버튼은 그대로 남는다 — 자동화를 껐을 때 손으로 돌릴 길이 있어야 한다.
 >
-> **⚠ 둘째 겹 멱등이 반 공통 평가에는 걸리지 않는다.** 위 `jobs` 유니크는 정상이지만, 그 뒤를 받치는 `assessment_instances`의 `assessments_idempotent_uq`는 `learning_group_id`·`learner_id`가 nullable이라 `learner_id IS NULL`인 반 공통 평가의 중복을 막지 못한다(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다). 위 다이어그램의 `idempotency_key`가 학생을 포함하는 것은 맞는 설계이고, **DB 인덱스 쪽이 그 설계를 따라가지 못한 상태**다. 수정 SQL은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §5, 태스크는 T3.2(G-15).
+> 위 다이어그램과 실제 구현이 다른 곳 — **실제 쪽이 맞다**:
+> - 스케줄러는 「다음 수업일」이 아니라 **오늘부터 `lookahead_days`(기본 3일)** 안의 수업 중 생성 시점(기본 24시간 전)에 도달한 것을 훑는다. 그리고 **이미 평가가 있는 수업은 뺀다**.
+> - `assessment_instances`를 `status='generating'`으로 먼저 넣었다가 채우지 않는다. 생성 서비스는 블루프린트·인스턴스·문항·배정·outbox를 **한 트랜잭션에** 쓴다 — 중간 상태가 없으므로 워커가 그 사이에 죽어도 반쪽 평가가 남지 않는다.
+> - 자동 생성은 `status='draft'`가 아니라 곧바로 `published`다. 교사 검토 단계를 자동 경로에 두면, 선생님이 검토를 잊는 순간 학생 화면은 다시 빈칸이 된다 — 자동화의 목적이 그것이었다. 문항이 부족하면 **만들지 않고 실패**한다(아래).
+> - 문항 부족은 `status='review_required'`가 아니라 **작업 실패**다. 재시도해도 낫지 않으므로(사람이 문항을 넣거나 정책을 고쳐야 한다) `failed_final`로 남긴다. 그 목록을 교사에게 닿게 하는 것이 T3.4(E-17)다 — **그때까지는 실패가 큐에만 남는다.**
+>
+> **⚠ 둘째 겹 멱등이 반 공통 평가에는 걸리지 않던 문제 — T3.2가 고쳤다.** `assessment_instances`의 `assessments_idempotent_uq`는 `learning_group_id`·`learner_id`가 nullable이라 `learner_id IS NULL`인 반 공통 평가의 중복을 막지 못했다(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다). 위 다이어그램의 `idempotency_key`가 학생을 포함하는 것은 맞는 설계였고, **DB 인덱스 쪽이 그 설계를 따라가지 못한 상태**였다. `0018a_assessment_idempotency_fix.sql`의 부분 유니크가 그 경우만 덮는다 — 근거와 「왜 전체를 덮지 않는가」는 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §5.
 
 ---
 

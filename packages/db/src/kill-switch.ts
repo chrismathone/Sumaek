@@ -13,6 +13,18 @@ import type postgres from "postgres";
  * 시도 횟수를 태우지 않아 DLQ로 밀리지 않는다.
  * ───────────────────────────────────────────────────────────── */
 
+/**
+ * 평가 자동 생성 작업 토픽 — 생산자·핸들러·스위치 표의 단일 정의처.
+ *
+ * 이 세 곳이 같은 문자열을 각자 적고 있으면 한 곳만 바뀌었을 때 조용히
+ * 어긋난다: 생산자는 작업을 만드는데 아무도 클레임하지 않거나, 스위치를
+ * 꺼도 멈추지 않는다. 그래서 여기 한 번만 적는다.
+ */
+export const ASSESSMENT_GENERATE_TOPIC = "assessment.generate";
+
+/** 평가 자동 생성을 멈추는 스위치 키 */
+export const ASSESSMENT_GENERATION_SWITCH = "auto_assessment_generation";
+
 /** kill switch 키 → 워커 토픽 매핑 — 코드가 단일 정의처 */
 export const KILL_SWITCH_TOPICS: Readonly<Record<string, readonly string[]>> = {
   auto_reschedule: [
@@ -23,6 +35,11 @@ export const KILL_SWITCH_TOPICS: Readonly<Record<string, readonly string[]>> = {
     "schedule.materialize-learner",
   ],
   auto_grading: ["grading.auto"],
+  /* 일일·확인테스트 자동 생성 (T3.2). 꺼져 있는 동안 생산자는 작업을 만들지
+   * **않고**, 이미 만들어진 작업은 큐에 남아 복구 후 그대로 실행된다.
+   * 교사가 화면에서 직접 누르는 생성은 이 스위치와 무관하다 — 자동화만
+   * 멈추고 수동 운영은 계속 가능해야 한다는 원칙 그대로다. */
+  [ASSESSMENT_GENERATION_SWITCH]: [ASSESSMENT_GENERATE_TOPIC],
   /* 주의: 이 두 토픽에는 **핸들러도 발행부도 없다.** 렌더러
    * (apps/worker/src/export/pdf-renderer.ts)는 구현돼 있지만 어떤 토픽에도
    * 배선되지 않았고, 그래서 이 스위치를 꺼도 지금은 아무것도 멈추지 않는다.
@@ -55,6 +72,7 @@ export const KILL_SWITCH_KEYS = [
   "auto_reschedule",
   "auto_publish_questions",
   "auto_grading",
+  ASSESSMENT_GENERATION_SWITCH,
   "curriculum_release",
   "formula_autofix",
   "document_export",

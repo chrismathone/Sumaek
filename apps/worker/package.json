@@ -8,7 +8,8 @@
     "start": "tsx src/main.ts",
     "status": "tsx src/status.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text"
   },
   "dependencies": {
     "@su-maek/contracts": "workspace:*",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "3.2.7",
     "playwright": "^1.62.1",
     "tsx": "^4.19.0",
     "typescript": "^5.8.3",

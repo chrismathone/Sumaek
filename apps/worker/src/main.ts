@@ -7,6 +7,7 @@ import {
   markWorkerStopped,
   recordHeartbeat,
 } from "@su-maek/db";
+import { ASSESSMENT_PRODUCER_INTERVAL_MS } from "@su-maek/db/domain";
 import { runOnce, wasIdle } from "./loop";
 import { createHandlerRegistry } from "./registry";
 
@@ -98,13 +99,24 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => requestShutdown("SIGINT"));
   process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 
+  /* 평가 생성 생산자의 간격은 **여기서** 재고 회차에 넘긴다 — 루프가 시각
+   * 상태를 숨겨 갖지 않게 한다(loop.ts RunOnceOptions 주석). 첫 회차는
+   * 곧바로 돌린다: 워커가 죽어 있던 사이에 이미 due가 됐을 수 있다. */
+  let lastProducedAt = 0;
+
   while (!shuttingDown) {
     try {
+      const nowMs = Date.now();
+      const produceAssessments =
+        nowMs - lastProducedAt >= ASSESSMENT_PRODUCER_INTERVAL_MS;
+      if (produceAssessments) lastProducedAt = nowMs;
+
       const result = await runOnce({
         sql,
         handlers,
         workerId: WORKER_ID,
         concurrency: CONCURRENCY,
+        produceAssessments,
         log: (message) => console.log(message),
       });
       lastResult = {
@@ -116,6 +128,19 @@ async function main(): Promise<void> {
         succeeded: result.succeeded,
         failed: result.failed,
         deferred: result.deferred,
+        /* 생산자 상태 — 「돌고는 있는데 평가가 안 생긴다」를 박동만 보고
+         * 가릴 수 있어야 한다. 안 돌린 회차는 null이라 마지막 값이 아니라
+         * 「이번엔 안 함」임이 드러난다. */
+        assessmentProducer: result.produced
+          ? {
+              scanned: result.produced.scanned,
+              enqueued: result.produced.enqueued,
+              deduplicated: result.produced.deduplicated,
+              suppressed: result.produced.suppressed,
+              suppressedOrganizationIds:
+                result.produced.suppressedOrganizationIds,
+            }
+          : null,
       };
       if (wasIdle(result)) await sleep(POLL_INTERVAL_MS);
     } catch (error) {

@@ -103,13 +103,16 @@ IC: <이름>  OE: <이름>  DO: <이름>  COM: <이름>
 
 ---
 
-## 5. Kill switch 8종
+## 5. Kill switch 9종
+
+> **키 이름 주의**: 아래 5개(`auto_schedule_recalc`·`auto_question_publish`·`curriculum_release_publish`·`formula_auto_repair`·`external_notification`)는 코드의 실제 키 이름과 다르다. CLI가 별칭으로 받아 주므로 이 표에서 복사한 명령도 동작한다(`packages/db/scripts/kill-switch.mts`의 `RUNBOOK_ALIASES`). 이름 통일은 T6.4의 몫이다. `auto_assessment_generation`은 코드와 같은 이름이다.
 
 | 키 | 중지 대상 | **중지해도 반드시 되는 것** |
 |---|---|---|
 | `auto_schedule_recalc` | 일정 변경안 자동 생성·자동 적용 | 수동 일정 편집, 기존 활성 일정 조회·운영, 수동 preview·apply |
 | `auto_question_publish` | 문항 자동 게시 | 수동 게시, 문제은행 조회, 이미 게시된 문항의 출제 |
 | `auto_grading` | 자동 채점 워커 | 답안 제출·저장, 수동 채점, 예외 처리, 기존 확정 점수 조회 |
+| `auto_assessment_generation` | 일일·확인테스트 **자동** 생성 (워커 생산자·`assessment.generate`) | 교사가 화면에서 직접 누르는 생성, 이미 생성된 테스트의 응시·채점·조회. 중지 중 만들어진 작업은 없고, 이미 큐에 있던 작업은 **버리지 않고** 재개 후 실행된다 |
 | `curriculum_release_publish` | 교육과정 릴리스 발행 | 활성 릴리스 읽기, 개념 그래프 탐색, 매핑 검수 |
 | `formula_auto_repair` | 무손실 자동 보정 규칙 | 수식 파싱·KaTeX 검증, 수동 수정, 이미 정규화된 수식 렌더 |
 | `document_export` | PDF·HWPX 출력 | **온라인 응시**, 웹 미리보기, 이미 생성된 산출물 다운로드 |

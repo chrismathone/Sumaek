@@ -180,6 +180,9 @@ const KILL_SWITCH_KEYS = [
   "auto_reschedule",
   "auto_publish_questions",
   "auto_grading",
+  // 일일·확인테스트 자동 생성 (T3.2). 끄면 워커가 만들지 않는다 —
+  // 교사가 화면에서 직접 누르는 생성은 그대로 동작한다.
+  "auto_assessment_generation",
   "curriculum_release",
   "formula_autofix",
   "document_export",

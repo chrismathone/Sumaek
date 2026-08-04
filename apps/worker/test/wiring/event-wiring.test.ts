@@ -6,6 +6,7 @@ import {
 } from "@su-maek/db";
 import {
   createHandlerRegistry,
+  TOPICS_WITHOUT_EVENT,
   TOPICS_WITHOUT_HANDLER,
 } from "../../src/registry";
 
@@ -36,13 +37,27 @@ describe("이벤트 소비자 배선", () => {
     expect(unregistered).toEqual([]);
   });
 
-  it("등록된 핸들러에는 전부 자기를 부르는 이벤트가 있다", () => {
+  it("등록된 핸들러에는 전부 자기를 부르는 이벤트나 생산자가 있다", () => {
     /* 반대 방향의 결손 — 아무 이벤트도 라우팅하지 않는 토픽은 죽은 코드거나
-     * 라우팅을 빠뜨린 것이다. 어느 쪽인지 사람이 판단해야 한다. */
+     * 라우팅을 빠뜨린 것이다. 어느 쪽인지 사람이 판단해야 한다.
+     *
+     * 예외는 **생산자가 직접 만드는** 토픽뿐이다(assessment.generate —
+     * 생성 요청은 이벤트가 아니라 작업이다, ADR-0018 §4). 그 예외는
+     * TOPICS_WITHOUT_EVENT에 이유와 함께 적히고, 여기서는 목록과 **정확히
+     * 일치**하는지 본다 — 무조건 통과시키면 규칙 자체가 무의미해진다. */
     const orphanHandlers = [...handlers.keys()]
       .filter((topic) => !routedTopics.includes(topic))
       .sort();
-    expect(orphanHandlers).toEqual([]);
+    expect(orphanHandlers).toEqual(Object.keys(TOPICS_WITHOUT_EVENT).sort());
+  });
+
+  it("이벤트 없는 토픽에는 전부 그 이유가 적혀 있다", () => {
+    for (const [topic, reason] of Object.entries(TOPICS_WITHOUT_EVENT)) {
+      // 핸들러는 있어야 한다 — 없으면 그냥 죽은 이름이다
+      expect(handlers.has(topic)).toBe(true);
+      expect(EVENT_CONSUMERS[topic] ?? []).toEqual([]);
+      expect(reason.length).toBeGreaterThan(10);
+    }
   });
 
   it("학습자 오버라이드 변경은 학습자 실체화 토픽으로만 라우팅된다 (인수 4)", () => {

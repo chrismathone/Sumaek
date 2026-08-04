@@ -1,4 +1,4 @@
-import type { ClaimedJob } from "@su-maek/db";
+import { ASSESSMENT_GENERATE_TOPIC, type ClaimedJob } from "@su-maek/db";
 import {
   handleLearnerScheduleMaterialize,
   handleNotificationDispatch,
@@ -6,6 +6,7 @@ import {
   makeInboxNoop,
 } from "./handlers/schedule";
 import { handleRightsImpact } from "./handlers/content";
+import { handleAssessmentGenerate } from "./handlers/assessment";
 
 /* ─────────────────────────────────────────────────────────────
  * 토픽 → 핸들러 레지스트리.
@@ -32,6 +33,10 @@ export function createHandlerRegistry(): Map<string, JobHandler> {
   handlers.set("schedule.materialize-learner", handleLearnerScheduleMaterialize);
   handlers.set("notification.dispatch", handleNotificationDispatch);
   handlers.set("content.rights-impact", handleRightsImpact);
+  /* 이벤트가 아니라 주기 생산자가 만드는 작업 (TOPICS_WITHOUT_EVENT 참고).
+   * 이 등록이 빠지면 생산자가 만든 작업이 큐에 쌓이기만 하고 아무도 하지
+   * 않는다 — 교사는 「예약됨」이라 믿는데 학생 화면에는 영원히 없다. */
+  handlers.set(ASSESSMENT_GENERATE_TOPIC, handleAssessmentGenerate);
   // 인라인으로 파생이 이미 갱신된 이벤트 — 소비 확인만
   handlers.set("mastery.update", makeInboxNoop("mastery.update"));
   handlers.set("review.plan", makeInboxNoop("review.plan"));
@@ -53,4 +58,19 @@ export const TOPICS_WITHOUT_HANDLER: Readonly<Record<string, string>> = {
   "export.pdf":
     "렌더러(src/export/pdf-renderer.ts)는 있으나 작업 발행·소비 배선이 없다 — document_export 스위치는 지금 아무것도 멈추지 않는다",
   "export.hwpx": "HWPX 출력 미구현 — 렌더러 자체가 없다",
+};
+
+/**
+ * 핸들러는 있는데 **자기를 부르는 이벤트가 없는** 토픽 — 주기 생산자가
+ * 직접 작업을 만든다.
+ *
+ * 배선 검사는 「등록된 핸들러에는 전부 자기를 부르는 이벤트가 있다」를
+ * 요구한다. 그 규칙이 맞는 이유는, 이벤트도 생산자도 없는 토픽은 죽은
+ * 코드이기 때문이다. 그러나 **생산자가 있는** 토픽은 다르다. 무조건 통과
+ * 시키면 규칙 자체가 무의미해지므로, 예외를 여기 적고 검사가 이 목록과
+ * 정확히 일치하는지 본다 — 새 고아가 생기면 여전히 걸린다.
+ */
+export const TOPICS_WITHOUT_EVENT: Readonly<Record<string, string>> = {
+  [ASSESSMENT_GENERATE_TOPIC]:
+    "주기 생산자(produceAssessmentJobs)가 due 수업을 훑어 직접 enqueue한다 — 생성 요청은 이벤트가 아니라 작업이다 (ADR-0018 §4)",
 };

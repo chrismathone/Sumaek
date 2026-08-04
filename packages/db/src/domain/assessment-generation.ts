@@ -67,11 +67,28 @@ async function loadObjectiveSnapshot(
   `;
 }
 
+/**
+ * 감사 행의 수행자 — 워커가 부르면 사람이 없다.
+ *
+ * `actor_type`을 `user`로 두고 `actor_id`만 null로 비우면 감사 기록이
+ * "누군지 모르는 사람이 했다"가 된다. 자동 생성은 사람이 안 한 것이 사실이고,
+ * 그 사실이 그대로 남아야 나중에 「왜 이 테스트가 있었나」에 답할 수 있다.
+ */
+function actorFields(actorUserId: string | null): {
+  type: "user" | "automation";
+  id: string | null;
+} {
+  return actorUserId
+    ? { type: "user", id: actorUserId }
+    : { type: "automation", id: null };
+}
+
 export async function generateDailyTest(options: {
   organizationId: string;
   learningGroupId: string;
   targetDate: IsoDate;
-  actorUserId: string;
+  /** 워커가 부르면 null — 감사 행이 `automation`으로 남는다 */
+  actorUserId: string | null;
   /**
    * 무반복 기간을 넘겨 최근 출제분도 후보로 쓴다.
    * 문항 수가 적은 학원에서는 연속 수업일마다 후보가 0이 되어 테스트를
@@ -357,6 +374,7 @@ export async function generateDailyTest(options: {
   const humanGraded = kindRows.filter((k) => humanGradedKinds.has(k.kind)).length;
 
   /* 게시 — 스냅샷 고정 (원자적) */
+  const actor = actorFields(options.actorUserId);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
@@ -393,7 +411,7 @@ export async function generateDailyTest(options: {
           humanGraded,
           humanGradedKinds: [...humanGradedKinds],
         } as never)},
-        ${options.actorUserId}
+        ${actor.id}
       )
     `;
     await tx`
@@ -413,7 +431,7 @@ export async function generateDailyTest(options: {
           todayConceptIds,
         } as never)},
         ${policy.time_limit_minutes}, ${selection.selected.length * 10},
-        now(), ${options.actorUserId}
+        now(), ${actor.id}
       )
     `;
 
@@ -458,7 +476,7 @@ export async function generateDailyTest(options: {
     for (const l of learners) {
       await tx`
         insert into assignments (id, organization_id, assessment_id, learner_id, mode, assigned_by)
-        values (${uuidv7()}, ${organizationId}, ${assessmentId}, ${l.learner_id}, 'online', ${options.actorUserId})
+        values (${uuidv7()}, ${organizationId}, ${assessmentId}, ${l.learner_id}, 'online', ${actor.id})
         on conflict (assessment_id, learner_id) do nothing
       `;
     }
@@ -483,9 +501,9 @@ export async function generateDailyTest(options: {
       insert into audit_events (
         id, organization_id, actor_type, actor_id, action, target_type, target_id, reason, after
       ) values (
-        ${uuidv7()}, ${organizationId}, 'user', ${options.actorUserId},
+        ${uuidv7()}, ${organizationId}, ${actor.type}, ${actor.id},
         'assessment.generate-publish', 'assessment', ${assessmentId},
-        '일일테스트 자동 생성·게시',
+        ${actor.type === "automation" ? "일일테스트 자동 생성·게시 (워커)" : "일일테스트 자동 생성·게시"},
         ${tx.json({ seed, count: selection.selected.length, shortfalls: selection.shortfalls } as never)}
       )
     `;
@@ -514,7 +532,8 @@ export async function generateConfirmationTest(options: {
   organizationId: string;
   learningGroupId: string;
   targetDate: IsoDate;
-  actorUserId: string;
+  /** 워커가 부르면 null — 감사 행이 `automation`으로 남는다 */
+  actorUserId: string | null;
 }): Promise<GenerateResult> {
   const sql = getSharedSql();
   const { organizationId, learningGroupId, targetDate } = options;
@@ -643,6 +662,7 @@ export async function generateConfirmationTest(options: {
     ),
   );
 
+  const actor = actorFields(options.actorUserId);
   const assessmentId = uuidv7();
   const blueprintId = uuidv7();
   await sql.begin(async (tx) => {
@@ -672,7 +692,7 @@ export async function generateConfirmationTest(options: {
           coveredConceptIds: unitConceptIds.filter((c) => coveredConcepts.has(c)),
           uncoveredConceptIds: unitConceptIds.filter((c) => !coveredConcepts.has(c)),
         } as never)},
-        ${options.actorUserId}
+        ${actor.id}
       )
     `;
     await tx`
@@ -692,7 +712,7 @@ export async function generateConfirmationTest(options: {
           passingRules: policy.passing_rules,
         } as never)},
         ${policy.time_limit_minutes}, ${selection.selected.length * 10},
-        now(), ${options.actorUserId}
+        now(), ${actor.id}
       )
     `;
     let order = 1;
@@ -730,7 +750,7 @@ export async function generateConfirmationTest(options: {
     for (const l of learners) {
       await tx`
         insert into assignments (id, organization_id, assessment_id, learner_id, mode, assigned_by)
-        values (${uuidv7()}, ${organizationId}, ${assessmentId}, ${l.learner_id}, 'online', ${options.actorUserId})
+        values (${uuidv7()}, ${organizationId}, ${assessmentId}, ${l.learner_id}, 'online', ${actor.id})
         on conflict (assessment_id, learner_id) do nothing
       `;
     }
@@ -748,9 +768,10 @@ export async function generateConfirmationTest(options: {
       insert into audit_events (
         id, organization_id, actor_type, actor_id, action, target_type, target_id, reason, after
       ) values (
-        ${uuidv7()}, ${organizationId}, 'user', ${options.actorUserId},
+        ${uuidv7()}, ${organizationId}, ${actor.type}, ${actor.id},
         'assessment.generate-publish', 'assessment', ${assessmentId},
-        '확인테스트 생성·게시', ${tx.json({ seed, count: selection.selected.length } as never)}
+        ${actor.type === "automation" ? "확인테스트 생성·게시 (워커)" : "확인테스트 생성·게시"},
+        ${tx.json({ seed, count: selection.selected.length } as never)}
       )
     `;
   });

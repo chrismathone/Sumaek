@@ -12,6 +12,10 @@ import {
   type DispatchOutboxResult,
   type Sql,
 } from "@su-maek/db";
+import {
+  produceAssessmentJobs,
+  type ProduceAssessmentJobsResult,
+} from "@su-maek/db/domain";
 import type { JobHandler } from "./registry";
 
 /* ─────────────────────────────────────────────────────────────
@@ -34,10 +38,20 @@ export interface RunOnceOptions {
   log?: ((message: string) => void) | undefined;
   /** lease 갱신 주기(ms). 테스트가 짧게 줄여 쓴다 — 기본은 ADR의 30초 */
   leaseRenewMs?: number | undefined;
+  /**
+   * 이 회차에 평가 생성 생산자를 돌릴지 (기본 false).
+   *
+   * 간격 판단을 루프가 숨겨 갖지 않고 **호출자(main)가 마지막 실행 시각을
+   * 들고** 결정한다. 모듈 전역에 시각을 두면 테스트가 회차를 직접 부를 때
+   * 결과가 실행 순서에 매인다 — 그런 숨은 상태는 재현 안 되는 실패를 만든다.
+   */
+  produceAssessments?: boolean | undefined;
 }
 
 export interface RunOnceResult {
   dispatch: DispatchOutboxResult;
+  /** 이번 회차에 생산자가 한 일 — 돌리지 않았으면 null */
+  produced: ProduceAssessmentJobsResult | null;
   claimed: number;
   succeeded: number;
   /** 재시도 예정·DLQ·최종 실패를 합친 수 */
@@ -75,7 +89,35 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     );
   }
 
-  // 2) kill switch 게이트 (인수 40) — 전역으로 중지된 스위치의 토픽은
+  /* 2) 평가 생성 생산자 — 클레임 **전에** 돌린다. 방금 만든 작업이 이 회차의
+   *    클레임에 걸릴 수 있다. 반드시 걸린다고는 못 한다: enqueue의 run_at은
+   *    클라이언트 시계라 DB보다 앞서면 아직 `run_at <= now()`가 아니다.
+   *    그래서 wasIdle이 「만든 것이 있으면 쉬지 않는다」로 받쳐, 늦어도
+   *    바로 다음 회차에는 집힌다 — 폴링 간격만큼 밀리지 않는다.
+   *
+   *    생산자가 터져도 루프를 멈추지 않는다. 다른 토픽의 작업은 계속 돌아야
+   *    한다 — 자동화 하나가 운영 전체를 세우게 두지 않는다. */
+  let produced: ProduceAssessmentJobsResult | null = null;
+  if (options.produceAssessments) {
+    try {
+      produced = await produceAssessmentJobs(sql, { organizationId });
+      if (produced.enqueued > 0 || produced.suppressed > 0) {
+        log(
+          `[assessment] due ${produced.scanned}건 · 작업 ${produced.enqueued}건 생성 · ` +
+            `기존 ${produced.deduplicated}건` +
+            (produced.suppressed > 0
+              ? ` · kill switch로 ${produced.suppressed}건 보류 (조직 ${produced.suppressedOrganizationIds.join(", ")})`
+              : ""),
+        );
+      }
+    } catch (error) {
+      log(
+        `[assessment] 생산자 오류: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  // 3) kill switch 게이트 (인수 40) — 전역으로 중지된 스위치의 토픽은
   //    클레임하지 않는다. 작업은 큐에 남아 스위치 복구 시 그대로 재개.
   const disabled = await loadGloballyDisabledSwitches(sql);
   const allTopics = [...handlers.keys()];
@@ -87,7 +129,7 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     );
   }
 
-  // 3) 작업 클레임·실행
+  // 4) 작업 클레임·실행
   const jobs = await claimJobs(sql, {
     topics: activeTopics,
     workerId,
@@ -97,6 +139,7 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
 
   const result: RunOnceResult = {
     dispatch,
+    produced,
     claimed: jobs.length,
     succeeded: 0,
     failed: 0,
@@ -220,5 +263,11 @@ export function isRetryable(error: unknown): boolean {
 
 /** 이번 회차에 실제로 한 일이 있었는가 — 없으면 폴링 간격만큼 쉰다 */
 export function wasIdle(result: RunOnceResult): boolean {
-  return result.claimed === 0 && result.dispatch.claimed === 0;
+  return (
+    result.claimed === 0 &&
+    result.dispatch.claimed === 0 &&
+    /* 생산자가 방금 작업을 만들었으면 쉬지 않는다 — 다음 회차가 곧바로
+     * 그것을 집어야 수업 직전 생성이 폴링 간격만큼 밀리지 않는다. */
+    (result.produced?.enqueued ?? 0) === 0
+  );
 }

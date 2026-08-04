@@ -129,14 +129,22 @@ T0.2의 원안은 `LearnerDayCompleted`, `DailyAssessmentGenerationRequested`, `
 ```
 주기 생산자 (loop.ts, 기본 60초):
   대상  sessions
-         where status = 'planned'
+         where status in ('planned', 'confirmed')
            and session_date between today and today + lookahead_days
            and planned_node_ids 에 daily_test | confirmation_test 노드가 있음
-  시점  노드의 generate_before_hours (없으면 평가 정책 기본값) 만큼
+           and 그 (조직·반·날짜·목적) 평가가 아직 없음
+  시점  평가 정책의 generateBeforeHours (없으면 운영 기본값) 만큼
         수업 시작 전에 도달했을 때
   발행  job  assessment.generate
         키   (organization_id, learning_group_id, plan_date, purpose)
 ```
+
+> **정정 (T3.2 구현 중)** — 위 두 줄이 원안과 다르다.
+>
+> 1. **`status = 'planned'`만으로는 안 된다.** `session_status`에는 `confirmed`가 있고, 그것은 교사가 확정한 **앞으로 있을** 수업이다. `planned`만 보면 확정할수록 평가가 안 생긴다. 지금 `confirmed`로 옮기는 코드는 없지만, 생길 때 조용히 멈추는 쪽보다 미리 덮는 편이 낫다.
+> 2. **노드에는 `generate_before_hours` 컬럼이 없다.** `route_nodes`에 그런 열이 없고, T2.1의 payload 스키마는 평가 노드에 `blueprintId`·`completionCriteria` 외의 값을 **명시적으로 거부**한다(종류에 맞지 않는 입력을 조용히 버리지 않기 위해서다). 그래서 조정 지점을 **평가 정책의 `constraints.generateBeforeHours`**에 둔다 — 정책은 이미 `noRepeatWithinDays`·`difficultyDistribution`을 같은 방식으로 담고 있고, 목적별로 하나씩 있으므로 일일·확인테스트를 따로 조정할 수 있다. 노드별 조정이 실제로 필요해지면 그때 컬럼과 폼을 함께 더한다.
+> 3. **이미 평가가 있는 수업은 대상에서 뺀다.** 이 조건이 없으면 생성이 끝난 뒤에도 매 회차 같은 행을 훑고, 멱등은 걸리지만 스캔이 학기 내내 줄지 않는다.
+> 4. **`planned_node_ids`의 UUID가 아닌 항목을 걸러야 한다.** 학습자 오버라이드의 자리표시자(`override:{id}:0`)가 섞일 수 있고, 그대로 `::uuid` 캐스팅하면 쿼리 전체가 터진다 — 한 학원의 오버라이드 하나가 **모든 조직의** 생성을 멈춘다.
 
 **멱등은 두 겹이어야 한다.**
 1. `jobs`의 dedupe 키가 같은 작업의 중복 enqueue를 막는다.
@@ -181,7 +189,9 @@ assessment.generate:{org}:{group ?? '-'}:{learner ?? '-'}:{plan_date}:{purpose}
 
 `docs/phase0/sequences.md` S-3(179행)이 `H(org,group,student,kind,scheduled_on)`으로 이미 학생을 키에 넣고 있다 — 그쪽이 맞다. 학생 개별 보충 평가와 반 공통 일일테스트가 같은 날 같은 반에 공존할 수 있기 때문이다. 반 공통은 학생 자리가 `-`(NULL)로 접힌다.
 
-**kill switch**: 기존 `kill_switches` 메커니즘을 그대로 쓴다. 꺼져 있는 동안 생산자는 작업을 만들지 **않고**, 이미 만들어진 작업은 `pending`으로 남아 재개 후 실행된다(작업을 버리지 않는다).
+**kill switch**: 기존 `kill_switches` 메커니즘을 그대로 쓰되 **키를 하나 더한다** — `auto_assessment_generation`(토픽 `assessment.generate`). 기존 키에 얹지 않는 이유: `auto_reschedule`을 끄는 것은 「일정을 흔들지 마라」이고 이것을 끄는 것은 「테스트를 만들지 마라」다. 한 스위치로 묶으면 일정 사고 때 평가까지 멈추고, 그 사실을 끄는 사람이 모른다.
+
+꺼져 있는 동안 생산자는 작업을 만들지 **않고**, 이미 만들어진 작업은 큐에 남아 재개 후 실행된다(작업을 버리지 않는다). 만들어 두고 핸들러에서 미루는 방식을 쓰지 않는 이유는, 스위치를 끈 동안 작업이 계속 쌓이면 복구 순간에 몇백 건이 한꺼번에 돌기 때문이다. 조직 스코프 스위치는 클레임 뒤 핸들러가 연기하고(시도 소모 없음), 전역 스위치는 클레임 단계에서 토픽이 빠진다 — 어느 쪽이든 유실 0이다.
 
 **생성 시점의 신선도**: 평가 생성은 **작업이 실행되는 시점의** 숙련도·복습을 읽는다. 학기 초에 미리 계산해 두지 않는다 — 그래야 T3.3의 "학기 초 미리 누른 결과가 아니라 생성 시점의 숙련도를 사용함"이 성립한다.
 
@@ -236,5 +246,12 @@ assessment.generate:{org}:{group ?? '-'}:{learner ?? '-'}:{plan_date}:{purpose}
 
 ### 열어 둔 것
 
-- **`lookahead_days`·`generate_before_hours` 기본값**은 T3.2의 운영 파라미터로 넘긴다. 수업 하루 전 생성이 출발점이다.
+- ~~**`lookahead_days`·`generate_before_hours` 기본값**은 T3.2의 운영 파라미터로 넘긴다. 수업 하루 전 생성이 출발점이다.~~ **T3.2가 정했다** (`packages/db/src/domain/assessment-schedule.ts`):
+
+  | 파라미터 | 환경변수 | 기본값 | 이유 |
+  |---|---|---|---|
+  | 훑는 창 | `ASSESSMENT_LOOKAHEAD_DAYS` | 3일 | 생성 시점(24시간)보다 넓어야 워커가 몇 시간 죽어 있어도 놓치지 않는다 |
+  | 생성 시점 | `ASSESSMENT_GENERATE_BEFORE_HOURS` | 24시간 | 「수업 하루 전」. 정책의 `constraints.generateBeforeHours`가 목적별로 덮어쓴다 |
+  | 생산자 주기 | `ASSESSMENT_PRODUCER_INTERVAL_MS` | 60초 | 폴링 간격(2초)마다 훑으면 스캔이 낭비다 |
+  | 회차당 상한 | `ASSESSMENT_PRODUCER_BATCH` | 50건 | 첫 배포 직후의 몰림을 흩는다 |
 - **보존 정책**: 하루 계획은 학습 이력이므로 `course_periods` 보존 정책을 따른다. 구체적 기간은 `docs/phase0/erd.md` §10.2에 T1.2가 채운다.

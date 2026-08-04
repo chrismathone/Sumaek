@@ -31,7 +31,7 @@
 | G-01 | 최근 90일의 완료 테스트가 오늘 완료로 오인될 수 있음 | 오늘 날짜·오늘 계획 항목만으로 완료 판정 | P0 | T1.1, T1.3, T1.4 |
 | G-02 | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 학습자별 날짜 계획과 완료 시각을 영속화 | P0 | T1.2, T4.1 |
 | G-03 | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사 마감 또는 정책 기반 집계로 원자적 발행 | P0 | T4.2 |
-| G-04 | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커가 설정된 시점에 멱등 생성·배정 | P0 | T3.1~T3.4 |
+| G-04 **부분 닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정 (T3.1·T3.2 ✔). **실패가 아직 교사에게 닿지 않는다** — 큐에만 남는다 (T3.4) | P0 | T3.1~T3.4 |
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
 | G-06 | 문항 없는 연습 자료도 게시할 수 있어 학생이 영구 대기함 | 게시·루트 게시 전 실행 가능성 검증 | P0 | T2.4 |
 | G-07 | 일반 교사는 반·학생·계정 최초 세팅을 끝낼 수 없음 | 역할별 책임이 명확한 온보딩과 제한적 위임 | P1 | T5.1, T5.2 |
@@ -42,7 +42,7 @@
 | G-12 | 담당 교사 `scoped` 메뉴와 실제 데이터 필터가 분리되어 있음 | 읽기·쓰기 모두 담당 범위 필터 집행 | P1 | T5.3 |
 | G-13 | `/learn` 8개 화면 중 4개만 오늘 범위를 공유해 완료 상태가 화면마다 갈릴 수 있음 | 모든 학생 화면이 같은 하루 계획을 읽음 | P0 | T1.3, T1.4 |
 | G-14 | 학생별 날짜 투영(`learner_schedule_items`)이 이미 있는데 새 계획 테이블과 관계가 미정 | 계획층·실행층 역할을 계약으로 분리 | P0 | T0.2 |
-| G-15 | `assessments_idempotent_uq`가 nullable 컬럼을 포함해 **반 공통 평가의 중복을 못 막는다**(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다). 지금은 SELECT-then-INSERT가 가리고 있으나 워커가 붙으면 경합이 드러난다 | DB 수준 멱등이 실제로 걸림 | P0 | T3.2 |
+| ~~G-15~~ **닫힘** | `assessments_idempotent_uq`가 nullable 컬럼을 포함해 **반 공통 평가의 중복을 못 막았다**(PostgreSQL은 유니크에서 NULL을 서로 다르게 본다) | `0018a`의 부분 유니크가 반 공통 생성물만 덮는다 — 학생 단위 보충·재시험(실측 40건)은 정당하므로 막지 않는다 | P0 | T3.2 ✔ |
 
 ---
 
@@ -560,7 +560,7 @@ Set-Location ..\Su-Maek-t2-4-readiness-gate
 
 ## M3: 날짜별 평가 자동 생성
 
-### [] Phase 3, T3.1: 평가 생성 서비스를 웹 밖 공유 도메인으로 이동 RED→GREEN
+### [x] Phase 3, T3.1: 평가 생성 서비스를 웹 밖 공유 도메인으로 이동 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -599,18 +599,18 @@ Set-Location ..\Su-Maek-t3-1-assessment-domain
 - 관련 기존 통합 테스트
 
 **인수 조건**:
-- [ ] 0단계 골든 스냅샷과 이동 후 결과가 완전히 동일함
-- [ ] 이동한 모듈에 `server-only`·`next/*` import가 0건 (`grep -n "server-only\|from \"next" packages/db/src/domain/assessment-generation.ts`)
-- [ ] `pnpm --filter @su-maek/worker exec tsc --noEmit`이 이 모듈을 import한 상태로 통과함
-- [ ] 중복 생성·문항 부족·블루프린트 스냅샷 테스트 유지
-- [ ] `pnpm boundary:check` 통과
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 0단계 골든 스냅샷과 이동 후 결과가 완전히 동일함 — 이동 전 7 통과 → 이동 후 같은 7 통과, 단언 0줄 수정
+- [x] 이동한 모듈에 `server-only`·`next/*` import가 0건 — `packages/db/test/domain-portability.test.ts`가 소스 수준에서 강제한다(실행 테스트로는 못 막는다)
+- [x] `pnpm --filter @su-maek/worker exec tsc --noEmit`이 이 모듈을 import한 상태로 통과함 — T3.2의 핸들러가 실제로 import한다
+- [x] 중복 생성·문항 부족·블루프린트 스냅샷 테스트 유지
+- [x] `pnpm boundary:check` 통과
+- [x] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
+- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-1-assessment-domain`
 
-### [] Phase 3, T3.2: 평가 생성 생산자·워커 핸들러 RED→GREEN
+### [x] Phase 3, T3.2: 평가 생성 생산자·워커 핸들러 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -639,24 +639,35 @@ Set-Location ..\Su-Maek-t3-2-assessment-worker
 
 **산출물**:
 - `packages/db/migrations/0018a_assessment_idempotency_fix.sql` (T0.2가 선점한 번호)
+- `packages/db/src/domain/assessment-schedule.ts` **신규** — 주기 생산자·멱등 키·운영 파라미터
+- `packages/db/src/kill-switch.ts` — `auto_assessment_generation` 키와 토픽 매핑
 - `apps/worker/src/handlers/assessment.ts`
-- `apps/worker/src/registry.ts`
-- `apps/worker/src/loop.ts`
+- `apps/worker/src/registry.ts` — `TOPICS_WITHOUT_EVENT`(생산자가 만드는 토픽의 예외 목록)
+- `apps/worker/src/loop.ts` · `apps/worker/src/main.ts` — 생산자 배선·주기·박동 보고
+- `apps/web/src/app/app/settings/{actions.ts,page.tsx}` — 새 스위치의 조작 지점
+- `packages/db/scripts/kill-switch.mts` · `docs/runbooks/README.md` — 새 스위치의 「중지해도 되는 것」
 - `apps/worker/test/handlers/assessment-generation.test.ts`
+- `packages/db/test/assessment-producer.test.ts` **신규** — due 선별 규칙
 - `packages/db/test/assessment-idempotency.test.ts`
 
 **인수 조건**:
-- [ ] **인덱스 수리 검증**: 반 공통 평가(`learner_id IS NULL`)를 같은 `(org, group, date, purpose)`로 두 번 INSERT하면 두 번째가 DB에서 거부됨 — 수리 전에는 통과한다(RED로 먼저 확인)
-- [ ] 같은 반·날짜·목적은 작업과 평가가 각각 1건만 생성됨
-- [ ] 작업 멱등 키가 인덱스와 같은 모양임 (`{org}:{group ?? '-'}:{learner ?? '-'}:{date}:{purpose}`)
-- [ ] 학생 개별 보충 평가와 반 공통 일일테스트가 같은 날 같은 반에 공존 가능함
-- [ ] 수업일 전에 설정된 시점에 작업이 생성됨
-- [ ] kill switch 중에는 작업이 보존되고 재개 후 실행됨
-- [ ] 워커 재시작 후 누락·중복 없이 이어짐
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] **인덱스 수리 검증**: 반 공통 평가(`learner_id IS NULL`)를 같은 `(org, group, date, purpose)`로 두 번 INSERT하면 두 번째가 DB에서 거부됨 — RED에서 `promise resolved instead of rejecting`으로 먼저 확인했다
+- [x] 같은 반·날짜·목적은 작업과 평가가 각각 1건만 생성됨 — 수업이 셋이어도 작업은 하나다(반 공통 평가는 수업 단위가 아니라 반·날짜·목적 단위)
+- [x] 작업 멱등 키가 인덱스와 같은 모양임 (`{topic}:{org}:{group ?? '-'}:{learner ?? '-'}:{date}:{purpose}`)
+- [x] 학생 개별 보충 평가와 반 공통 일일테스트가 같은 날 같은 반에 공존 가능함 — 부분 유니크가 반 공통만 덮는다(실측 40건이 정당한 학생 단위 평가였다)
+- [x] 수업일 전에 설정된 시점에 작업이 생성됨 — 기본 24시간, 정책의 `constraints.generateBeforeHours`가 목적별로 덮어쓴다
+- [x] kill switch 중에는 작업이 보존되고 재개 후 실행됨 — 생산자는 만들지 않고, 있던 작업은 연기(시도 소모 없음) 후 복구 시 그대로 실행
+- [x] 워커 재시작 후 누락·중복 없이 이어짐 — 생산자·핸들러를 그대로 다시 돌려 평가 수가 변하지 않음을 확인
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `assessment-schedule.ts` 100%, `handlers/assessment.ts` 100%, `registry.ts` 100%, `loop.ts` 82%
+
+**ADR 원안과 달라진 곳** (구현하며 드러난 것 — ADR-0018 §5에 정정을 적었다):
+- `status`는 `planned`만이 아니라 `confirmed`도 본다 — 교사가 확정할수록 평가가 안 생기면 안 된다
+- `generate_before_hours`는 **노드 컬럼이 아니라 평가 정책**에서 온다 — `route_nodes`에 그 열이 없고, T2.1의 payload 스키마가 평가 노드의 여분 값을 의도적으로 거부한다
+- 이미 평가가 있는 수업을 대상에서 뺀다 — 없으면 스캔이 학기 내내 줄지 않는다
+- `planned_node_ids`의 UUID 아닌 항목을 거른다 — 오버라이드 자리표시자 하나가 **모든 조직의** 생성을 멈출 수 있었다
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
+- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
 - [ ] `git worktree remove ..\Su-Maek-t3-2-assessment-worker`
 
 ### [] Phase 3, T3.3: 일일·확인테스트 노드 실행과 최신 학습 상태 반영 RED→GREEN

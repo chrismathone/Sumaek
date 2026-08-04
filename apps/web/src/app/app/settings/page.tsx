@@ -14,6 +14,7 @@ const KILL_SWITCH_LABELS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "auto_reschedule", label: "자동 일정 재계산" },
   { key: "auto_publish_questions", label: "문항 자동 게시" },
   { key: "auto_grading", label: "자동 채점" },
+  { key: "auto_assessment_generation", label: "일일·확인테스트 자동 생성" },
   { key: "curriculum_release", label: "교육과정 릴리스 발행" },
   { key: "formula_autofix", label: "수식 자동 정규화" },
   { key: "document_export", label: "문서 출력 (PDF·HWPX)" },
