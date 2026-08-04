@@ -121,16 +121,17 @@ describe("개념서 → 정본 개념 표 (kwr-2022)", () => {
   it("열쇠에 쪽이 들어가 소단원 제목이 겹쳐도 갈린다", () => {
     /* p.111 「일차식의 계산 (1)」의 개념1과 p.117 「(2)」의 개념1은 소단원
      * 제목이 같다 — (1)·(2)가 다른 글꼴이라 추출된 제목에서 빠진다.
-     * 쪽이 없으면 다항식 설명이 동류항 개념에 붙는다. */
-    expect(conceptTargetKey(111, "일차식의 계산", "1")).not.toBe(
-      conceptTargetKey(117, "일차식의 계산", "1"),
-    );
-    expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(111, "일차식의 계산", "1"))).toBe(
-      "m1-polynomial-linear",
-    );
-    expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(117, "일차식의 계산", "1"))).toBe(
-      "m1-linear-expression-calc",
-    );
+     * 지금은 둘 다 같은 정본 개념을 가리켜 결과가 같지만, 열쇠가 겹치면
+     * Map이 한쪽을 통째로 버린다. 개념을 더 잘게 나누는 날 조용히 틀린다. */
+    for (const [a, b] of [
+      [111, 117],
+      [156, 163],
+    ] as const) {
+      const sub = a === 111 ? "일차식의 계산" : "일차방정식의 활용";
+      expect(conceptTargetKey(a, sub, "1")).not.toBe(conceptTargetKey(b, sub, "1"));
+      expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(a, sub, "1"))).toBeDefined();
+      expect(KWR_M11_CH3_TARGETS.get(conceptTargetKey(b, sub, "1"))).toBeDefined();
+    }
   });
 
   it("열쇠는 공백을 눌러 비교한다", () => {
@@ -173,12 +174,11 @@ describe("실제로 걸리는지 — 추출기가 내놓는 제목 그대로", (
   it("계층이 같은 이름을 써도 서로 다른 표를 본다", () => {
     // 3단원: 중단원 「일차방정식의 풀이」와 소단원 「일차방정식의 풀이」
     expect(hit(RPM_M1_CH3_TITLE_TO_CONCEPT, "일차방정식의 풀이")).toEqual([
-      "m1-linear-equation-solve",
+      "m1-linear-equation",
     ]);
     expect(hit(RPM_M1_CH3_UNIT_TO_CONCEPT, "일차방정식의 풀이")).toEqual([
-      "m1-equation-identity",
-      "m1-equality-properties",
-      "m1-linear-equation-solve",
+      "m1-equation-basics",
+      "m1-linear-equation",
     ]);
     // 1단원: 소단원 「소인수분해」는 단일 개념, 중단원 「소인수분해」는 3분할
     expect(hit(RPM_M1_CH1_TITLE_TO_CONCEPT, "소인수분해")).toEqual([

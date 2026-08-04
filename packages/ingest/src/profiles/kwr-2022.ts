@@ -196,13 +196,16 @@ export interface ConceptTarget {
 /**
  * 열쇠: `쪽|소단원 제목|개념 번호` (공백 하나로 눌러 비교)
  *
- * **쪽이 열쇠에 들어가는 이유.** 처음에는 `소단원|번호`였는데, 이 책은
- * 소단원 제목의 「(1)」·「(2)」를 다른 글꼴로 찍어서 추출된 제목에서
- * 빠진다. 그래서 p.111 「일차식의 계산 (1)」의 개념1(다항식)과 p.117
- * 「일차식의 계산 (2)」의 개념1(동류항)이 **똑같은 열쇠**가 된다 —
- * 서로 다른 개념인데. Map은 뒤엣것만 남기므로 다항식 설명이 동류항 개념에
- * 붙어 학생 화면에 나갔을 것이다. 쪽은 허용목록에 이미 사람이 확인해
- * 적어 둔 값이므로 열쇠에 넣어도 새로 알아낼 것이 없다.
+ * **쪽이 열쇠에 들어가는 이유.** 이 책은 소단원 제목의 「(1)」·「(2)」를
+ * 다른 글꼴로 찍어서 추출된 제목에서 빠진다. 그래서 p.111 「일차식의
+ * 계산 (1)」의 개념1과 p.117 「(2)」의 개념1이 `소단원|번호`만으로는
+ * **똑같은 열쇠**가 되고, Map은 뒤엣것만 남긴다. p.156·163 「일차방정식의
+ * 활용 (1)·(2)」도 마찬가지다.
+ *
+ * 지금 표에서는 그 네 자리가 어차피 같은 정본 개념을 가리켜서 결과가
+ * 달라지지 않는다 — **아직은.** 개념을 더 잘게 나누면 그날부터 조용히
+ * 틀리기 시작한다. 쪽은 허용목록에 이미 사람이 확인해 적어 둔 값이므로
+ * 열쇠에 넣어도 새로 알아낼 것이 없다.
  */
 export function conceptTargetKey(
   page: number,
@@ -234,58 +237,58 @@ export const KWR_M11_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
   ["50|정수와 유리수|2", "m1-integers-rationals"],
   ["51|정수와 유리수|3", "m1-integers-rationals"],
   ["51|정수와 유리수|4", "m1-integers-rationals"],
-  ["56|수의 대소 관계|1", "m1-absolute-value"],
-  ["56|수의 대소 관계|2", "m1-number-order"],
-  ["56|수의 대소 관계|3", "m1-number-order"],
-  ["70|유리수의 덧셈과 뺄셈|1", "m1-rational-add-sub"],
-  ["70|유리수의 덧셈과 뺄셈|2", "m1-rational-add-sub"],
-  ["71|유리수의 덧셈과 뺄셈|3", "m1-rational-add-sub"],
-  ["71|유리수의 덧셈과 뺄셈|4", "m1-rational-add-sub"],
-  ["71|유리수의 덧셈과 뺄셈|5", "m1-rational-add-sub"],
-  ["81|유리수의 곱셈|1", "m1-rational-mul-div"],
-  ["81|유리수의 곱셈|2", "m1-rational-mul-div"],
-  ["89|유리수의 곱셈|3", "m1-rational-mul-div"],
+  ["56|수의 대소 관계|1", "m1-rational-order"],
+  ["56|수의 대소 관계|2", "m1-rational-order"],
+  ["56|수의 대소 관계|3", "m1-rational-order"],
+  ["70|유리수의 덧셈과 뺄셈|1", "m1-rational-arithmetic"],
+  ["70|유리수의 덧셈과 뺄셈|2", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|3", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|4", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|5", "m1-rational-arithmetic"],
+  ["81|유리수의 곱셈|1", "m1-rational-arithmetic"],
+  ["81|유리수의 곱셈|2", "m1-rational-arithmetic"],
+  ["89|유리수의 곱셈|3", "m1-rational-arithmetic"],
   /* 네 연산이 섞인 계산 — RPM의 「덧셈 뺄셈 곱셈 나눗셈의 혼합 계산」과
    * 같은 자리다. 곱셈·나눗셈이 아니라 혼합 계산 개념에 건다. */
-  ["89|유리수의 곱셈|4", "m1-rational-mixed"],
+  ["89|유리수의 곱셈|4", "m1-rational-arithmetic"],
 ]);
 
 /** III. 문자와 식 — 개념서 p.104·105·111·117·132·133·139·156·163 */
 export const KWR_M11_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
-  ["104|문자의 사용|1", "m1-symbolic-expression"],
-  ["104|문자의 사용|2", "m1-symbolic-expression"],
-  ["105|문자의 사용|3", "m1-value-of-expression"],
+  ["104|문자의 사용|1", "m1-algebraic-expressions"],
+  ["104|문자의 사용|2", "m1-algebraic-expressions"],
+  ["105|문자의 사용|3", "m1-algebraic-expressions"],
   /* p.111은 「일차식의 계산 (1)」, p.117은 「(2)」 — 제목만으로는 못 가른다 */
-  ["111|일차식의 계산|1", "m1-polynomial-linear"],
-  ["111|일차식의 계산|2", "m1-polynomial-linear"],
-  ["117|일차식의 계산|1", "m1-linear-expression-calc"],
-  ["117|일차식의 계산|2", "m1-linear-expression-calc"],
-  ["132|방정식과 그 해|1", "m1-equation-identity"],
-  ["132|방정식과 그 해|2", "m1-equation-identity"],
-  ["132|방정식과 그 해|3", "m1-equation-identity"],
-  ["133|방정식과 그 해|4", "m1-equality-properties"],
-  ["139|일차방정식의 풀이|1", "m1-linear-equation-solve"],
-  ["139|일차방정식의 풀이|2", "m1-linear-equation-solve"],
-  ["139|일차방정식의 풀이|3", "m1-linear-equation-solve"],
+  ["111|일차식의 계산|1", "m1-linear-expression-ops"],
+  ["111|일차식의 계산|2", "m1-linear-expression-ops"],
+  ["117|일차식의 계산|1", "m1-linear-expression-ops"],
+  ["117|일차식의 계산|2", "m1-linear-expression-ops"],
+  ["132|방정식과 그 해|1", "m1-equation-basics"],
+  ["132|방정식과 그 해|2", "m1-equation-basics"],
+  ["132|방정식과 그 해|3", "m1-equation-basics"],
+  ["133|방정식과 그 해|4", "m1-equation-basics"],
+  ["139|일차방정식의 풀이|1", "m1-linear-equation"],
+  ["139|일차방정식의 풀이|2", "m1-linear-equation"],
+  ["139|일차방정식의 풀이|3", "m1-linear-equation"],
   /* p.156은 「일차방정식의 활용 (1)」, p.163은 「(2)」 */
-  ["156|일차방정식의 활용|1", "m1-linear-equation-apply"],
-  ["156|일차방정식의 활용|2", "m1-linear-equation-apply"],
-  ["163|일차방정식의 활용|1", "m1-linear-equation-apply"],
-  ["163|일차방정식의 활용|2", "m1-linear-equation-apply"],
+  ["156|일차방정식의 활용|1", "m1-linear-equation"],
+  ["156|일차방정식의 활용|2", "m1-linear-equation"],
+  ["163|일차방정식의 활용|1", "m1-linear-equation"],
+  ["163|일차방정식의 활용|2", "m1-linear-equation"],
 ]);
 
 /** IV. 좌표평면과 그래프 — 개념서 p.176·177·184·198·208 */
 export const KWR_M11_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
-  ["176|순서쌍과 좌표|1", "m1-coordinate-plane"],
-  ["176|순서쌍과 좌표|2", "m1-coordinate-plane"],
-  ["176|순서쌍과 좌표|3", "m1-coordinate-plane"],
-  ["177|순서쌍과 좌표|4", "m1-quadrants"],
-  ["184|그래프와 그 해석|1", "m1-graph-interpret"],
-  ["184|그래프와 그 해석|2", "m1-graph-interpret"],
-  ["198|정비례|1", "m1-direct-proportion"],
-  ["198|정비례|2", "m1-direct-proportion"],
-  ["198|정비례|3", "m1-direct-proportion"],
-  ["208|반비례|1", "m1-inverse-proportion"],
-  ["208|반비례|2", "m1-inverse-proportion"],
-  ["208|반비례|3", "m1-inverse-proportion"],
+  ["176|순서쌍과 좌표|1", "m1-coordinates"],
+  ["176|순서쌍과 좌표|2", "m1-coordinates"],
+  ["176|순서쌍과 좌표|3", "m1-coordinates"],
+  ["177|순서쌍과 좌표|4", "m1-coordinates"],
+  ["184|그래프와 그 해석|1", "m1-graphs"],
+  ["184|그래프와 그 해석|2", "m1-graphs"],
+  ["198|정비례|1", "m1-proportionality"],
+  ["198|정비례|2", "m1-proportionality"],
+  ["198|정비례|3", "m1-proportionality"],
+  ["208|반비례|1", "m1-proportionality"],
+  ["208|반비례|2", "m1-proportionality"],
+  ["208|반비례|3", "m1-proportionality"],
 ]);
