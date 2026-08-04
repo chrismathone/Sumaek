@@ -1,5 +1,12 @@
 import { config } from "dotenv";
-import { createSql, type Sql } from "@su-maek/db";
+import {
+  accountsOfOrganization,
+  createSql,
+  dropAccounts,
+  purgeOrganizationRows,
+  AUTONOMOUS_SLUG_PREFIX,
+  type Sql,
+} from "@su-maek/db";
 
 /* ─────────────────────────────────────────────────────────────
  * 자율 E2E 워크스페이스 (T6.2 · G-10).
@@ -33,8 +40,10 @@ import { createSql, type Sql } from "@su-maek/db";
  * 지울 수 있는 것만 지우고, 남는 조직은 `purgeTestData`가 세어 보고한다.
  * ───────────────────────────────────────────────────────────── */
 
-/** 이 픽스처가 만든 조직을 알아보는 표식 — 정리 스크립트와 **같은 규칙** */
-export const AUTONOMOUS_SLUG_PREFIX = "e2e-auto-";
+/* 조직 표식과 회수 절차는 `@su-maek/db`의 purge-workspace가 갖는다 —
+ * `pnpm purge:test-data`와 이 픽스처가 **같은 코드**로 치워야 한다. 각자
+ * 적으면 한쪽만 고쳐지고, 그 차이는 조직 목록이 늘어난 뒤에야 드러난다. */
+export { AUTONOMOUS_SLUG_PREFIX };
 
 export interface AutonomousQuestion {
   /** 본문에 답이 적혀 있다 — 스펙이 화면에서 읽어 그대로 답한다 */
@@ -260,21 +269,10 @@ export async function dropAutonomousWorkspace(
   if (!process.env.DATABASE_URL) return;
   const sql = createSql();
   try {
-    /* 소속(memberships)**과** 기본 워크스페이스 양쪽으로 찾는다.
-     *
-     * 소속만 보면 뒷정리가 두 번 도는 순간(중단된 실행을 나중에 쓸어내는
-     * 경우) 아무것도 못 찾는다 — 첫 정리가 이미 소속을 지웠기 때문이다.
-     * 실측으로 유령 계정 한 건이 그렇게 남았다. `default_organization_id`는
-     * 계정에 붙어 있어 조직 행이 사라질 때까지 남는다. */
-    const authIds = await sql<{ id: string }[]>`
-      select u.id::text as id from users u
-      where u.default_organization_id = ${workspace.organizationId}
-      union
-      select m.user_id::text as id from memberships m
-      where m.organization_id = ${workspace.organizationId}
-    `;
+    /* 계정을 **먼저** 찾아 둔다 — 아래 정리가 소속을 지우고 나면 못 찾는다 */
+    const authIds = await accountsOfOrganization(sql, workspace.organizationId);
     await purgeOrganizationRows(sql, workspace.organizationId);
-    await dropAccounts(sql, authIds.map((r) => r.id));
+    await dropAccounts(sql, authIds);
     /* 조직 행까지 지워 본다 — 증거가 남지 않은 실행(픽스처만 세우고 끝난
      * 경우)은 흔적 없이 사라진다. 학생이 하루를 마친 실행은 감사·진도
      * 기록이 참조하고 있어 여기서 막힌다. 막히는 것이 맞다. */
@@ -288,101 +286,4 @@ export async function dropAutonomousWorkspace(
   } finally {
     await sql.end({ timeout: 5 });
   }
-}
-
-/**
- * 로그인 계정을 지운다 — **auth와 public 양쪽**.
- *
- * `auth.users` 삭제는 `public.users`를 따라 지우지 않는다(복제 트리거는
- * insert에만 걸려 있다). auth만 지우면 로그인 못 하는 유령 행이 남아
- * 실행마다 쌓인다 — 실측으로 첫 스모크 실행에서 바로 드러났다.
- *
- * public 쪽을 **먼저** 지운다. 반대 순서로 하면 auth 삭제가 성공한 뒤
- * public 삭제가 참조로 막혔을 때 더 고약한 상태(로그인 불가 + 행 잔존)가
- * 된다. 참조가 남아 있으면 둘 다 그대로 두는 편이 낫다.
- */
-async function dropAccounts(sql: Sql, userIds: string[]): Promise<void> {
-  for (const id of userIds) {
-    try {
-      await sql`delete from users where id = ${id}`;
-    } catch (error) {
-      console.error(`[autonomous] users 행 삭제 실패 ${id}:`, (error as Error).message);
-      continue;
-    }
-    try {
-      await supabaseAdmin(`/admin/users/${id}`, { method: "DELETE" });
-    } catch (error) {
-      console.error(`[autonomous] 계정 삭제 실패 ${id}:`, (error as Error).message);
-    }
-  }
-}
-
-/**
- * 지울 수 없는 표 — 여기 적힌 것은 **시도조차 하지 않는다.**
- *
- * 앞의 넷은 트리거가 삭제를 막는다(불변 조건 15 · ADR-0015 · I-22). 뒤의
- * 셋은 조직 것이 아니다(교육과정은 공용, 계정은 전역). 시도해서 실패해도
- * 결과는 같지만, 「지우려다 막혔다」와 「지우지 않기로 했다」는 다른 말이고
- * 로그를 읽는 사람에게 그 차이가 전부다.
- */
-const UNDELETABLE = new Set([
-  "audit_events",
-  "mastery_evidences",
-  "progress_events",
-  "grade_decisions",
-  "learner_day_plans",
-  "learner_day_plan_items",
-  "organizations",
-  "users",
-]);
-
-export interface PurgeOrganizationResult {
-  /** 비운 표 */
-  cleared: string[];
-  /** 참조·불변으로 남은 표 — 조직 행이 남는 이유가 곧 이 목록이다 */
-  blocked: string[];
-}
-
-/**
- * 한 조직의 지울 수 있는 행을 전부 지운다.
- *
- * 삭제 **순서를 적지 않는다.** 참조 순서를 손으로 적으면 표가 하나 늘 때마다
- * 그 목록을 고쳐야 하고, 안 고치면 조용히 남는다. 대신 조직 컬럼을 가진 표를
- * 전부 훑고, 외래 키에 막힌 것은 다음 바퀴로 미룬다 — 더 지울 것이 없을
- * 때까지. 지울 수 없는 표만 사람이 정한다(UNDELETABLE).
- *
- * 정리 CLI(`pnpm purge:test-data`)도 같은 함수를 쓴다.
- */
-export async function purgeOrganizationRows(
-  sql: Sql,
-  organizationId: string,
-): Promise<PurgeOrganizationResult> {
-  const scoped = await sql<{ table_name: string }[]>`
-    select table_name from information_schema.columns
-    where table_schema = 'public' and column_name = 'organization_id'
-    order by table_name
-  `;
-  let remaining = scoped
-    .map((r) => r.table_name)
-    .filter((t) => !UNDELETABLE.has(t));
-  const cleared: string[] = [];
-
-  /* 바퀴를 도는 한 지운 것이 있으면 계속한다. 진전이 없으면 남은 것은
-   * 순서 문제가 아니라 지울 수 없는 것이다. */
-  for (;;) {
-    const failed: string[] = [];
-    for (const table of remaining) {
-      try {
-        await sql`delete from ${sql(table)} where organization_id = ${organizationId}`;
-        cleared.push(table);
-      } catch {
-        failed.push(table);
-      }
-    }
-    if (failed.length === remaining.length) break;
-    remaining = failed;
-    if (remaining.length === 0) break;
-  }
-
-  return { cleared, blocked: remaining };
 }

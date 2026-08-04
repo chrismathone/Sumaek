@@ -359,9 +359,22 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       await page.getByRole("button", { name: "제출 확정" }).click();
       await expect(page).toHaveURL(/\/learn\/results\//, { timeout: 60_000 });
       await expect(page.getByText("채점 결과")).toBeVisible();
-      /* 전부 맞혔다 — 문항 본문이 말한 답을 그대로 냈으므로 100점이어야
-       * 한다. 점수를 안 보면 「제출은 됐는데 채점이 엉뚱한」 상태를 놓친다. */
-      await expect(page.getByText("100점").first()).toBeVisible();
+      /* 전부 맞혔다 — 문항 본문이 말한 답을 그대로 냈으므로 만점이어야 한다.
+       * 점수를 안 보면 「제출은 됐는데 채점이 엉뚱한」 상태를 놓친다.
+       *
+       * 만점을 숫자로 박지 않는다. 출제 문항 수는 정책과 문제은행이 정하고
+       * (지금은 개념당 상한 3문항), 그 수가 바뀌면 총점만 달라진다. 재는
+       * 것은 **얻은 점수와 총점이 같은가**이지 그 값이 얼마인가가 아니다. */
+      const scoreLine = page.getByText(/^\d+(\.\d+)?점 \/ \d+(\.\d+)?점$/).first();
+      await expect(scoreLine).toBeVisible();
+      const [earned, outOf] = (await scoreLine.innerText())
+        .split("/")
+        .map((part) => Number(part.replace(/[^\d.]/g, "")));
+      expect(outOf).toBeGreaterThan(0);
+      expect(earned).toBe(outOf);
+      /* 오답 배지가 하나도 없다 — 「총점은 맞는데 문항 판정이 뒤집힌」
+       * 상태가 합계만으로는 드러나지 않는다 */
+      await expect(page.getByText("오답", { exact: true })).toHaveCount(0);
 
       /* 3) 하루가 **스스로** 닫힌다 — 마치기 버튼이 따로 없다. 필수를 다
        *    마치면 재투영이 완료로 굳히고, 그 시각이 화면에 붙는다 (T4.1). */
@@ -396,8 +409,14 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
 
     /* 「완료 1 · 기록 없음 1」 — 기록 없음을 미시작에 합치면 로그인 문제가
      * 「아직 안 했나 보다」로 묻힌다. 그래서 다른 칸이다. */
-    await expect(groupCard.getByText("완료").locator("..")).toContainText("1");
-    await expect(groupCard.getByText("기록 없음").locator("..")).toContainText("1");
+    /* 세는 줄 하나를 잡고 그 안에서 본다. 「기록 없음」이라는 문자열은 이
+     * 카드 안에 두 번 나온다 — 세는 줄과, 그 학생의 이름 옆 상태 배지.
+     * 아무 쪽이나 잡으면 strict mode로 죽거나(실측) 엉뚱한 쪽을 잰다. */
+    const counts = groupCard.locator("div").filter({ hasText: "기록 없음" }).last();
+    await expect(counts).toContainText("완료 1");
+    await expect(counts).toContainText("기록 없음 1");
+    /* 막힘이 0이다 — 평가↔노드 연결이 끊기면 여기가 2가 된다 */
+    await expect(counts).toContainText("막힘 0");
     /* 반 수업은 아직 마감 전이다 — 학생이 다 했다고 반이 끝나지 않는다 (I-21) */
     await expect(groupCard.getByText("수업 미마감")).toBeVisible();
 
@@ -433,9 +452,11 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       .getByLabel("못 나감")
       .check();
     await closeForm.getByRole("button", { name: "이대로 마감" }).click();
-    await expect(
-      teacher.getByRole("status").filter({ hasText: "마감" }),
-    ).toBeVisible();
+    /* 결과로 확인한다. 마감 알림은 그 수업 행 **안에** 그려지는데, 마감이
+     * 성공하면 그 행 자체가 목록에서 빠진다 — 알림을 든 컴포넌트가 사라지니
+     * 알림은 뜰 자리가 없다(자료 게시 버튼과 같은 모양의 함정). */
+    await expect(teacher.getByText("마감을 기다리는 수업이 없습니다.")).toBeVisible();
+    await expect(teacher.getByText("수업 마감됨")).toBeVisible();
 
     /* 여기서도 클릭이 없다 — 마감이 낸 이벤트를 워커가 받아 다시 계산하고,
      * 위험한 변경은 적용하지 않고 승인함에 올린다 (T4.3). */

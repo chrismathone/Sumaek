@@ -2,6 +2,7 @@ import { config } from "dotenv";
 config({ path: ["../../.env", ".env"] });
 import { createSql } from "../src/client";
 import { purgeTestData } from "../src/testing/purge-test-data";
+import { purgeAutonomousWorkspaces } from "../src/testing/purge-workspace";
 
 /**
  * 테스트 잔재 정리 CLI.
@@ -29,6 +30,20 @@ try {
   console.log(`  학생 오버라이드    ${r.learnerOverridesDeleted}  (딸린 학습자 일정 포함)`);
   console.log(`  사용권 삭제        ${r.contentRightsDeleted}`);
   console.log(`  학습 자료 삭제     ${r.materialsDeleted}  (딸린 진도 포함)`);
+
+  /* 자율 E2E는 실행마다 **조직 자체를** 새로 만든다 (빈 학원이어야 하므로
+   * 재사용할 수 없다). 위 정리는 데모 조직 **안**만 보므로 그 조직들에는
+   * 손도 대지 않는다 — 여기서 따로 회수한다. */
+  const w = await purgeAutonomousWorkspaces(sql, { dryRun });
+  console.log(`  자율 조직 삭제     ${w.organizationsDeleted}`);
+  console.log(
+    `  자율 조직 보관     ${w.organizationsKept}  (삭제 불가, 목록에서만 제외)` +
+      (w.keptBecauseOf.length > 0 ? `\n    막은 표: ${w.keptBecauseOf.join(", ")}` : ""),
+  );
+  console.log(
+    `  자율 계정 삭제     ${w.accountsDeleted}` +
+      (w.accountsBlocked > 0 ? `  · 막힘 ${w.accountsBlocked}` : ""),
+  );
 } finally {
   await sql.end();
 }
