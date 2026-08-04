@@ -241,8 +241,8 @@ Set-Location ..\Su-Maek-t1-1-day-state
 - [ ] RED와 GREEN 실행 결과가 기록됨
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t1-1-day-state`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t1-1-day-state`
 
 ### [] Phase 1, T1.2: 하루 계획 DB·저장소 RED→GREEN
 
@@ -288,8 +288,8 @@ Set-Location ..\Su-Maek-t1-2-day-db
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t1-2-day-db`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t1-2-day-db`
 
 ### [] Phase 1, T1.3: 오늘 계획 투영기·날짜 오류 수정 RED→GREEN
 
@@ -338,8 +338,8 @@ Set-Location ..\Su-Maek-t1-3-day-projection
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t1-3-day-projection`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t1-3-day-projection`
 
 ### [] Phase 1, T1.4: 학생 오늘 화면·항목 완료 동기화 RED→GREEN
 
@@ -382,8 +382,8 @@ Set-Location ..\Su-Maek-t1-4-today-ui
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t1-4-today-ui`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t1-4-today-ui`
 
 ---
 
@@ -430,8 +430,8 @@ Set-Location ..\Su-Maek-t2-1-node-editor
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t2-1-node-editor`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t2-1-node-editor`
 
 ### [] Phase 2, T2.2: 루트 노드 실행기·계획 항목 변환 RED→GREEN
 
@@ -469,8 +469,8 @@ Set-Location ..\Su-Maek-t2-2-node-executor
 - [ ] 신규 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t2-2-node-executor`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t2-2-node-executor`
 
 ### [] Phase 2, T2.3: 교재 범위·숙제 학생 실행 화면 RED→GREEN
 
@@ -511,8 +511,8 @@ Set-Location ..\Su-Maek-t2-3-homework
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t2-3-homework`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t2-3-homework`
 
 ### [] Phase 2, T2.4: 자료·루트 게시 준비도 게이트 RED→GREEN
 
@@ -553,8 +553,8 @@ Set-Location ..\Su-Maek-t2-4-readiness-gate
 - [ ] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t2-4-readiness-gate`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t2-4-readiness-gate`
 
 ---
 
@@ -607,8 +607,8 @@ Set-Location ..\Su-Maek-t3-1-assessment-domain
 - [x] 신규/변경 모듈 커버리지 80% 이상
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
-- [ ] `git worktree remove ..\Su-Maek-t3-1-assessment-domain`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t3-1-assessment-domain`
 
 ### [x] Phase 3, T3.2: 평가 생성 생산자·워커 핸들러 RED→GREEN
 
@@ -667,8 +667,8 @@ Set-Location ..\Su-Maek-t3-2-assessment-worker
 - `planned_node_ids`의 UUID 아닌 항목을 거른다 — 오버라이드 자리표시자 하나가 **모든 조직의** 생성을 멈출 수 있었다
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
-- [ ] `git worktree remove ..\Su-Maek-t3-2-assessment-worker`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t3-2-assessment-worker`
 
 ### [x] Phase 3, T3.3: 일일·확인테스트 노드 실행과 최신 학습 상태 반영 RED→GREEN
 
@@ -718,8 +718,8 @@ Set-Location ..\Su-Maek-t3-3-assessment-nodes
 3. **평가 노드가 존재하지 않는 블루프린트를 필수로 요구했다.** 블루프린트를 만드는 곳은 생성기뿐이다(즉 **산출물**이다). 교사가 고를 목록도 만들 화면도 없는데 파서가 거부하고 게이트가 막으며 "루트 빌더에서 블루프린트를 고르세요"라고 안내했다. 넣어도 생성기는 읽지 않았다. 실측: 블루프린트 283건 전부 생성 결과, 평가 노드 1건은 `blueprint_id` NULL. → 요구를 없앴다. 값이 오면 형식만 검사해 보관한다(재사용 기능이 생길 자리).
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
-- [ ] `git worktree remove ..\Su-Maek-t3-3-assessment-nodes`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t3-3-assessment-nodes`
 
 ### [x] Phase 3, T3.4: 자동 평가 실패 알림·수동 복구 RED→GREEN
 
@@ -772,8 +772,8 @@ Set-Location ..\Su-Maek-t3-4-assessment-recovery
 **남긴 것**: `e2e/tests/assessment-recovery.spec.ts`는 쓰지 않았다. 실패를 만들려면 워커를 띄우고 정책을 비운 조직을 만들어야 하는데, 그 준비 자체가 라이브 서버 픽스처(T6.2의 자율 E2E)와 겹친다. 지금은 통합 테스트 두 벌이 같은 경로를 끝에서 끝까지 덮는다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합 — **병행 세션 때문에 보류 중**
-- [ ] `git worktree remove ..\Su-Maek-t3-4-assessment-recovery`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t3-4-assessment-recovery`
 
 ---
 
@@ -830,8 +830,8 @@ Set-Location ..\Su-Maek-t4-1-learner-complete
 - **E-16 소비자는 T4.3에서.** 지금은 무소비를 근거와 함께 선언한다 — 붙일 수 있는 유일한 기존 토픽(`schedule.recalculate`)이 학생 한 명의 완료마다 반 전체를 재실체화하기 때문이다. 소비자를 지어내는 것은 T4.3의 설계(무엇을 다시 계획할지)를 이름만 빌려 앞당기는 일이고, 그것이 이 저장소가 `EVENT_WITHOUT_CONSUMER`로 막으려는 「있는 것처럼 보이는데 없는 것」이다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t4-1-learner-complete`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t4-1-learner-complete`
 
 ### [] Phase 4, T4.2: 반 수업 마감·실제 진도·SessionCompleted RED→GREEN
 
