@@ -174,8 +174,16 @@ export function LecturePlayer({
             p?.unloadModule?.("cc");
             const d = p?.getDuration?.() ?? 0;
             if (d > 0) setDuration(d);
-            // 이어 보기 — 지난번 지점으로
-            if (maxRef.current > 1) p?.seekTo(maxRef.current, true);
+            /* 이어 보기 — 지난번 지점으로. 단 **끝까지 본 영상은 그냥 둔다**:
+             * 끝 지점으로 옮겨 놓으면 재생을 눌러도 곧바로 끝나 다시 볼
+             * 길이 없다(실측). 처음부터 다시 보는 것은 막을 이유가 없다 —
+             * 이미 다 본 사람이다. */
+            const resumable = d > 0 ? maxRef.current < d - 5 : true;
+            if (maxRef.current > 1 && resumable) {
+              p?.seekTo(maxRef.current, true);
+            } else if (!resumable) {
+              setCurrent(0);
+            }
           },
           onStateChange: (e: { data: number }) => {
             // 1=재생, 2=일시정지, 0=끝
@@ -331,7 +339,10 @@ export function LecturePlayer({
                 ? playerRef.current?.pauseVideo()
                 : playerRef.current?.playVideo()
             }
-            className="rounded-[var(--radius-control)] border border-pen bg-pen px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            /* 폭을 고정한다 — 「재생」(두 자)과 「일시정지」(네 자)의 폭이
+               다르면 누를 때마다 뒤 버튼들이 좌우로 밀린다. 방금 누른 자리에
+               다른 버튼이 와 있는 것은 그 자체로 오작동처럼 느껴진다. */
+            className="w-20 shrink-0 rounded-[var(--radius-control)] border border-pen bg-pen px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {playing ? "일시정지" : "재생"}
           </button>
@@ -343,6 +354,22 @@ export function LecturePlayer({
           >
             ← 10초
           </button>
+          {/* 처음부터 — 뒤로 가는 것이므로 언제나 열려 있다. 되감아도
+              시청률은 깎이지 않는다(최고 기록만 남긴다) — 다 본 영상을
+              다시 보다가 「완료」가 풀리면 다음 단계가 도로 잠긴다. */}
+          {maxWatched > 5 && (
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={() => {
+                seekTo(0);
+                playerRef.current?.playVideo();
+              }}
+              className="rounded-[var(--radius-control)] border border-rule px-2.5 py-1.5 font-mono text-xs disabled:opacity-50"
+            >
+              처음부터
+            </button>
+          )}
           {/* 앞으로 감기는 본 데까지만 — 안 본 곳으로는 아예 누를 수 없다 */}
           <button
             type="button"
