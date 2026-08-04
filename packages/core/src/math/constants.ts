@@ -79,6 +79,12 @@ export const ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
   // 기본 연산·분수·근호
   "frac", "dfrac", "tfrac", "cfrac", "sqrt", "pm", "mp", "cdot", "times",
   "div", "ast", "circ", "bullet", "over",
+  /* `surd`는 **근호 안이 어디까지인지 모를 때** 쓰는 기호다. 중3 교재의
+   * 한 글꼴은 근호가 끝나는 자리에 아무 표시도 두지 않아(윗줄을 글리프를
+   * 늘여 그린다) 텍스트 층만으로는 범위를 알 수 없다. 그때 `\sqrt{…}`로
+   * 묶으면 파서가 범위를 지어내는 것이라 √ 기호만 남기고 검수함으로
+   * 보낸다. 그 자리가 화면에서 렌더는 되어야 검수자가 읽을 수 있다. */
+  "surd",
   // 절댓값·바닥·천장·괄호
   "left", "right", "lvert", "rvert", "lVert", "rVert", "lfloor", "rfloor",
   "lceil", "rceil", "langle", "rangle", "big", "Big", "bigg", "Bigg",

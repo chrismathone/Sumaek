@@ -119,6 +119,69 @@ const FRACTION_FONT = /EHboNA/;
 const FIGURE_LABEL_FONT = /KSCms-UHC/;
 
 /**
+ * **근호(√)는 글자가 아니라 가구다.**
+ *
+ * 조판기는 `√289`를 세 조각으로 앉힌다 — 갈고리+윗줄 시작(EHRoot `14`),
+ * 근호 안의 수(EHsang `289`), 윗줄 끝(EHRoot `6`). 여는 조각은 폭이
+ * 5~6pt이고 닫는 조각은 **폭이 0이다**(윗줄은 그림이라 글자 폭이 없다).
+ * 그 폭이 여는 쪽과 닫는 쪽을 가르는 유일한 근거다.
+ *
+ * 두 글꼴이 쓰인다. EHRoot는 근호 전용이라 그 글꼴의 조각은 전부 근호다.
+ * EHboNA는 분수·큰 괄호도 함께 나르므로 **관찰한 코드만** 받는다 — 그
+ * 글꼴의 세로셈 조각(¹²³)까지 폭 0이라, 생김새만으로 가르면 그것들이
+ * 닫는 근호가 되어 없는 √가 생긴다.
+ *
+ * 지면 대조: 중3-1 p.9 「√289」·「√0.7²」 · p.10 「√((-a)²)=a」 ·
+ * p.11 「√((-14)²)」.
+ */
+const RADICAL_FONT = /^EHRoot/;
+const RADICAL_BONA_OPEN = new Set(["'", '"', "®", "¾", "¿"]);
+const RADICAL_BONA_CLOSE = new Set([
+  "`", "Ã", "Â", "¨", "Ä", "§", "É", "Å", "a", "¶", "Ð", "·",
+]);
+
+/**
+ * 이 조각이 근호의 어느 쪽인가 — 아니면 null.
+ *
+ * `firstWidth`는 **첫 글자의 폭**이다. span 폭이 아니라 첫 글자로 재는
+ * 이유: 여는 조각은 `!%`·`14`처럼 갈고리(폭 6)와 폭 0인 윗줄 시작이 한
+ * span에 함께 온다. span 폭으로 재면 둘을 못 가른다.
+ *
+ * ## 두 글꼴이 다르게 온다 — **한쪽은 끝을 알 수 없다**
+ *
+ * EHRoot는 근호가 끝나는 자리에 폭 0(또는 1.2pt)짜리 마감 조각을 둔다.
+ * 중3-1 p.9 「√289」가 `14`(갈고리) · `289` · `6`(마감)으로 온다. 그래서
+ * 여닫이를 정확히 옮길 수 있다 — `\sqrt{289}`.
+ *
+ * EHboNA는 **마감 조각이 없다.** 갈고리 뒤 11.3pt 자리에 폭 0인 조각이
+ * 하나 더 오는데, 그것은 윗줄의 **시작점**이지 끝이 아니다(갈고리와의
+ * 간격이 근호 안 내용의 길이와 무관하게 늘 같다 — p.11에서 416.7→428.0,
+ * 469.5→480.8로 둘 다 11.3). 윗줄은 글리프를 가로로 늘여 그리므로 그
+ * 길이가 텍스트 층에 남지 않고, 벡터 도형으로도 오지 않는다.
+ *
+ * 그래서 EHboNA 근호는 **끝을 지어내지 않는다.** `\surd`(√ 기호만)로
+ * 옮기고 미해독으로 올려 검수함에 보낸다. `\sqrt{…}`로 묶으면 어디까지가
+ * 근호 안인지를 파서가 **꾸며 내는** 것이고, 지면의 `√((-6a)²)+√((-a)²)`이
+ * `√((-6a)²+√((-a)²))`이 되어도 화면은 멀쩡해 보인다.
+ */
+export function radicalPiece(
+  text: string,
+  font: string,
+  firstWidth: number | undefined,
+): { latex: string; certain: boolean } | null {
+  if (firstWidth === undefined) return null;
+  const first = [...text][0];
+  if (first === undefined) return null;
+  if (RADICAL_FONT.test(font)) {
+    return { latex: firstWidth > 2 ? "\\sqrt{" : "}", certain: true };
+  }
+  if (!/^EHboNA/.test(font)) return null;
+  if (RADICAL_BONA_OPEN.has(first)) return { latex: "\\surd ", certain: false };
+  if (RADICAL_BONA_CLOSE.has(first)) return { latex: "", certain: false };
+  return null;
+}
+
+/**
  * 분수 안의 **분자** 글리프 — 숫자 자판의 shift 행이다.
  * `;2!;` = 1/2 · `;6&;` = 7/6 · `;1#2%;` = 35/12 (모두 지면 대조).
  */

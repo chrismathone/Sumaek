@@ -4,6 +4,7 @@ import {
   joinKorean,
   joinLatex,
   overlineLastName,
+  radicalPiece,
   isOverlineOnly,
   mergeRaised,
   markSuperscripts,
@@ -487,6 +488,24 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
          * 이미 이어졌으면 그 결과에, 이 덩어리가 윗줄로 시작하면 바로 앞
          * 수식 조각에 씌운다. 혼자서는 아무 뜻이 없고, 그냥 두면 화면에
          * 낯선 글자가 나가면서 선분 표시는 사라진다. */
+        /* 근호는 글자가 아니라 가구다 — 폭으로 여닫이를 가린다.
+         * `\sqrt{`와 `}`가 서로 다른 조각에 있으므로 중괄호 깊이가
+         * 맞을 때까지 mergeUnbalancedMath가 이어 준다. */
+        const radical = radicalPiece(
+          span.text,
+          span.font,
+          span.chars?.[0] ? span.chars[0][2] - span.chars[0][0] : undefined,
+        );
+        if (radical !== null) {
+          raw += span.text;
+          latex =
+            radical.latex === "}"
+              ? latex + radical.latex
+              : joinLatex(latex, radical.latex);
+          /* 끝을 모르는 근호는 미해독으로 올린다 — 검수함으로 가야 한다 */
+          if (!radical.certain) unknown.push(span.text);
+          continue;
+        }
         if (isOverlineOnly(span.text)) {
           raw += span.text;
           if (latex !== "") {

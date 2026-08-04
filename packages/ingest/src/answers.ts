@@ -6,6 +6,7 @@ import {
   attachOverline,
   isOverlineOnly,
   mergeRaised,
+  radicalPiece,
   markSuperscripts,
   mergeUnbalancedMath,
   tidyBodyText,
@@ -895,8 +896,29 @@ export function parseAnswerPage(
       return;
     }
     if (isMath) {
-      /* 따로 선 윗줄 글리프(`AB` + `Ó`)는 앞 조각의 글자에 씌운다 —
-       * 혼자서는 씌울 글자가 없어 미해독으로 나간다 */
+      /* 근호는 글자가 아니라 가구다 — 첫 글자의 폭으로 여닫이를 가린다.
+       * 여는 조각과 닫는 조각이 서로 다른 span이라 이어 붙여야 √가 된다. */
+      const radical = radicalPiece(
+        raw,
+        font,
+        chars?.[0] ? chars[0][2] - chars[0][0] : undefined,
+      );
+      if (radical !== null) {
+        /* 끝을 모르는 근호(EHboNA)는 미해독으로 올린다 — 검수함으로 간다 */
+        const flag = radical.certain ? [] : [raw];
+        const last = runs[runs.length - 1];
+        if (last?.kind === "math") {
+          last.raw += raw;
+          last.latex =
+            radical.latex === "}"
+              ? last.latex + radical.latex
+              : joinLatex(last.latex, radical.latex);
+          last.unknown.push(...flag);
+        } else {
+          runs.push({ kind: "math", raw, latex: radical.latex, unknown: flag });
+        }
+        return;
+      }
       const previous = runs[runs.length - 1];
       /* 윗줄 글리프는 혼자서는 아무 뜻이 없다 — 씌울 글자를 찾아 준다.
        *

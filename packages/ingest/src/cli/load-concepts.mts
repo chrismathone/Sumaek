@@ -32,6 +32,13 @@ import {
   KWR_M22_CH2_TARGETS,
   KWR_M22_CH3_TARGETS,
   KWR_M22_CH4_TARGETS,
+  KWR_M31_CH1_TARGETS,
+  KWR_M31_CH2_TARGETS,
+  KWR_M31_CH3_TARGETS,
+  KWR_M31_CH4_TARGETS,
+  KWR_M32_CH1_TARGETS,
+  KWR_M32_CH2_TARGETS,
+  KWR_M32_CH3_TARGETS,
 } from "../profiles/kwr-2022";
 import {
   RPM_M1_CH1_CONCEPTS,
@@ -53,6 +60,15 @@ import {
   RPM_M22_CH3_CONCEPTS,
   RPM_M22_CH4_CONCEPTS,
 } from "../profiles/rpm-2022-concepts-m22";
+import {
+  RPM_M31_CH1_CONCEPTS,
+  RPM_M31_CH2_CONCEPTS,
+  RPM_M31_CH3_CONCEPTS,
+  RPM_M31_CH4_CONCEPTS,
+  RPM_M32_CH1_CONCEPTS,
+  RPM_M32_CH2_CONCEPTS,
+  RPM_M32_CH3_CONCEPTS,
+} from "../profiles/rpm-2022-concepts-m3";
 import type { SourceDump } from "../types";
 
 const args = process.argv.slice(2);
@@ -206,6 +222,70 @@ const M2_2: Record<string, ConceptChapter> = {
   },
 };
 
+/** 개념원리 중3-1 (교사용 224쪽) */
+const M3_1: Record<string, ConceptChapter> = {
+  I: {
+    number: "I",
+    title: "실수와 그 연산",
+    dumpRange: "8-59",
+    pages: [10, 15, 22, 23, 38, 46],
+    concepts: RPM_M31_CH1_CONCEPTS,
+    targets: KWR_M31_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "다항식의 곱셈과 인수분해",
+    dumpRange: "60-107",
+    pages: [62, 63, 71, 84, 89, 96],
+    concepts: RPM_M31_CH2_CONCEPTS,
+    targets: KWR_M31_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "이차방정식",
+    dumpRange: "108-159",
+    pages: [110, 115, 122, 136, 142, 147],
+    concepts: RPM_M31_CH3_CONCEPTS,
+    targets: KWR_M31_CH3_TARGETS,
+  },
+  IV: {
+    number: "IV",
+    title: "이차함수",
+    dumpRange: "160-224",
+    pages: [162, 163, 170, 176, 190, 191, 199, 204, 209],
+    concepts: RPM_M31_CH4_CONCEPTS,
+    targets: KWR_M31_CH4_TARGETS,
+  },
+};
+
+/** 개념원리 중3-2 (교사용 144쪽) */
+const M3_2: Record<string, ConceptChapter> = {
+  I: {
+    number: "I",
+    title: "삼각비",
+    dumpRange: "8-55",
+    pages: [10, 21, 36, 37, 44, 45],
+    concepts: RPM_M32_CH1_CONCEPTS,
+    targets: KWR_M32_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "원의 성질",
+    dumpRange: "56-111",
+    pages: [58, 59, 65, 71, 84, 85, 93, 100],
+    concepts: RPM_M32_CH2_CONCEPTS,
+    targets: KWR_M32_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "통계",
+    dumpRange: "112-144",
+    pages: [114, 126, 132],
+    concepts: RPM_M32_CH3_CONCEPTS,
+    targets: KWR_M32_CH3_TARGETS,
+  },
+};
+
 const BOOKS: Record<string, ConceptBook> = {
   "m1-1": {
     title: "개념원리 중학 수학 1-1 (2022 개정)",
@@ -221,6 +301,16 @@ const BOOKS: Record<string, ConceptBook> = {
     title: "개념원리 중학 수학 2-2 (2022 개정)",
     gradeBand: "middle-2",
     chapters: M2_2,
+  },
+  "m3-1": {
+    title: "개념원리 중학 수학 3-1 (2022 개정)",
+    gradeBand: "middle-3",
+    chapters: M3_1,
+  },
+  "m3-2": {
+    title: "개념원리 중학 수학 3-2 (2022 개정)",
+    gradeBand: "middle-3",
+    chapters: M3_2,
   },
 };
 

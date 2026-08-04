@@ -463,3 +463,134 @@ export const KWR_M22_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
   ["220|확률의 계산|2", "m2-probability"],
   ["220|확률의 계산|3", "m2-probability"],
 ]);
+
+/* ── 개념원리 중3-1 (교사용 224쪽) ────────────────────────────── */
+
+/** I. 실수와 그 연산 — 개념서 p.10·15·22·23·38·46 */
+export const KWR_M31_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["10|제곱근의 뜻과 표현|1", "m3-square-root"],
+  ["10|제곱근의 뜻과 표현|2", "m3-square-root"],
+  ["15|제곱근의 성질|1", "m3-square-root"],
+  ["15|제곱근의 성질|2", "m3-square-root"],
+  ["15|제곱근의 성질|3", "m3-square-root"],
+  ["22|무리수와 실수|1", "m3-irrational-numbers"],
+  ["22|무리수와 실수|2", "m3-irrational-numbers"],
+  ["22|무리수와 실수|3", "m3-irrational-numbers"],
+  ["23|무리수와 실수|4", "m3-irrational-numbers"],
+  ["23|무리수와 실수|5", "m3-real-order"], // 실수의 대소 관계
+  ["23|무리수와 실수|6", "m3-real-order"], // 제곱근표
+  ["38|제곱근의 곱셈과 나눗셈|1", "m3-radical-arithmetic"],
+  ["38|제곱근의 곱셈과 나눗셈|2", "m3-radical-arithmetic"],
+  ["38|제곱근의 곱셈과 나눗셈|3", "m3-radical-arithmetic"],
+  ["46|제곱근의 덧셈과 뺄셈|1", "m3-radical-arithmetic"],
+  ["46|제곱근의 덧셈과 뺄셈|2", "m3-radical-arithmetic"],
+  ["46|제곱근의 덧셈과 뺄셈|3", "m3-radical-arithmetic"],
+]);
+
+/** II. 다항식의 곱셈과 인수분해 — 개념서 p.62·63·71·84·89·96 */
+export const KWR_M31_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["62|곱셈 공식|1", "m3-poly-multiplication"],
+  ["62|곱셈 공식|2", "m3-poly-multiplication"],
+  ["62|곱셈 공식|3", "m3-poly-multiplication"],
+  ["63|곱셈 공식|4", "m3-poly-multiplication"],
+  ["63|곱셈 공식|5", "m3-poly-multiplication"],
+  ["71|곱셈 공식의 응용|1", "m3-poly-multiplication"],
+  ["71|곱셈 공식의 응용|2", "m3-poly-multiplication"],
+  ["71|곱셈 공식의 응용|3", "m3-poly-multiplication"],
+  ["84|인수분해 공식|1", "m3-factorization"],
+  ["84|인수분해 공식|2", "m3-factorization"],
+  ["84|인수분해 공식|3", "m3-factorization"],
+  ["84|인수분해 공식|4", "m3-factorization"],
+  /* p.89는 「인수분해 공식 ⑵」인데 원문자가 제목에서 빠져 p.84와 소단원
+   * 이름이 같다 — 쪽이 열쇠에 있어 갈린다 */
+  ["89|인수분해 공식|1", "m3-factorization"],
+  ["89|인수분해 공식|2", "m3-factorization"],
+  ["96|인수분해 공식의 응용|1", "m3-factorization"],
+  ["96|인수분해 공식의 응용|2", "m3-factorization"],
+  ["96|인수분해 공식의 응용|3", "m3-factorization"],
+]);
+
+/** III. 이차방정식 — 개념서 p.110·115·122·136·142·147 */
+export const KWR_M31_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["110|이차방정식과 그 해|1", "m3-quadratic-equation"],
+  ["110|이차방정식과 그 해|2", "m3-quadratic-equation"],
+  ["115|인수분해를 이용한 이차방정식의 풀이|1", "m3-quadratic-equation"],
+  ["115|인수분해를 이용한 이차방정식의 풀이|2", "m3-quadratic-equation"],
+  ["122|제곱근을 이용한 이차방정식의 풀이|1", "m3-quadratic-equation"],
+  ["122|제곱근을 이용한 이차방정식의 풀이|2", "m3-quadratic-equation"],
+  ["136|이차방정식의 근의 공식|1", "m3-quadratic-equation"],
+  ["136|이차방정식의 근의 공식|2", "m3-quadratic-equation"],
+  ["142|이차방정식의 근의 개수|1", "m3-quadratic-equation"],
+  ["142|이차방정식의 근의 개수|2", "m3-quadratic-equation"],
+  ["147|이차방정식의 활용|1", "m3-quadratic-equation"],
+  ["147|이차방정식의 활용|2", "m3-quadratic-equation"],
+]);
+
+/**
+ * IV. 이차함수 — 개념서 p.162·163·170·176·190·191·199·204·209
+ *
+ * 소단원 이름이 전부 「이차함수 y=ax²의 그래프」 꼴이라 수식이 빠지면
+ * 「이차함수 의 그래프」로 똑같아진다. 쪽이 열쇠에 있어 갈린다.
+ */
+export const KWR_M31_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["162|이차함수 의 그래프|1", "m3-quadratic-fn-concept"], // 이차함수란 무엇인가
+  ["162|이차함수 의 그래프|2", "m3-quadratic-fn-graph"],
+  ["163|이차함수 의 그래프|3", "m3-quadratic-fn-graph"],
+  ["163|이차함수 의 그래프|4", "m3-quadratic-fn-graph"],
+  ["170|이차함수 의 그래프|1", "m3-quadratic-fn-graph"],
+  ["170|이차함수 의 그래프|2", "m3-quadratic-fn-graph"],
+  ["176|이차함수 의 그래프|1", "m3-quadratic-fn-graph"],
+  ["176|이차함수 의 그래프|2", "m3-quadratic-fn-graph"],
+  ["190|이차함수 의 그래프|1", "m3-quadratic-fn-graph"],
+  ["191|이차함수 의 그래프|2", "m3-quadratic-fn-graph"],
+  ["199|이차함수의 식 구하기|1", "m3-quadratic-fn-graph"],
+  ["199|이차함수의 식 구하기|2", "m3-quadratic-fn-graph"],
+  ["199|이차함수의 식 구하기|3", "m3-quadratic-fn-graph"],
+  ["199|이차함수의 식 구하기|4", "m3-quadratic-fn-graph"],
+  ["204|이차함수의 최댓값과 최솟값|1", "m3-quadratic-fn-graph"],
+  ["204|이차함수의 최댓값과 최솟값|2", "m3-quadratic-fn-graph"],
+  ["209|이차함수의 활용|1", "m3-quadratic-fn-graph"],
+]);
+
+/* ── 개념원리 중3-2 (교사용 144쪽) ────────────────────────────── */
+
+/** I. 삼각비 — 개념서 p.10·21·36·37·44·45 */
+export const KWR_M32_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["10|삼각비|1", "m3-trig-ratio"],
+  ["21|임의의 예각의 삼각비의 값|1", "m3-trig-ratio"],
+  ["21|임의의 예각의 삼각비의 값|2", "m3-trig-ratio"],
+  ["21|임의의 예각의 삼각비의 값|3", "m3-trig-ratio"],
+  ["36|길이 구하기|1", "m3-trig-applications"],
+  ["36|길이 구하기|2", "m3-trig-applications"],
+  ["37|길이 구하기|3", "m3-trig-applications"],
+  ["44|넓이 구하기|1", "m3-trig-applications"],
+  ["45|넓이 구하기|2", "m3-trig-applications"],
+]);
+
+/** II. 원의 성질 — 개념서 p.58·59·65·71·84·85·93·100 */
+export const KWR_M32_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["58|원의 현|1", "m3-circle-chords-tangents"],
+  ["59|원의 현|2", "m3-circle-chords-tangents"],
+  /* p.65는 「원의 접선 ⑴」, p.71은 「⑵」 — 원문자가 제목에서 빠진다 */
+  ["65|원의 접선|1", "m3-circle-chords-tangents"],
+  ["71|원의 접선|1", "m3-circle-chords-tangents"],
+  ["71|원의 접선|2", "m3-circle-chords-tangents"],
+  ["84|원주각|1", "m3-inscribed-angle"],
+  ["85|원주각|2", "m3-inscribed-angle"],
+  ["85|원주각|3", "m3-inscribed-angle"],
+  ["93|원과 사각형|1", "m3-inscribed-angle"],
+  ["93|원과 사각형|2", "m3-inscribed-angle"],
+  ["93|원과 사각형|3", "m3-inscribed-angle"],
+  ["100|접선과 현이 이루는 각|1", "m3-inscribed-angle"],
+  ["100|접선과 현이 이루는 각|2", "m3-inscribed-angle"],
+]);
+
+/** III. 통계 — 개념서 p.114·126·132 */
+export const KWR_M32_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["114|산포도와 표준편차|1", "m3-dispersion"],
+  ["114|산포도와 표준편차|2", "m3-dispersion"],
+  ["126|상자그림|1", "m3-box-plot"],
+  ["126|상자그림|2", "m3-box-plot"],
+  ["132|산점도와 상관관계|1", "m3-scatter-correlation"],
+  ["132|산점도와 상관관계|2", "m3-scatter-correlation"],
+]);
