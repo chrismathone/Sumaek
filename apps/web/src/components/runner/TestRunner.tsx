@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { gradeAnswer, type GradeOutcome } from "@su-maek/core/grading";
 import type { StudentAnswer } from "@su-maek/contracts";
+import { QuestionBody } from "@/components/learn/QuestionText";
 import type { RunnerQuestion } from "./types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -136,10 +137,7 @@ export function TestRunner({
       <div className="min-h-[220px] px-5 py-6">
         <div className="flex gap-2">
           <span className="font-mono font-bold text-pen">{q.number}.</span>
-          <div
-            className="leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: q.bodyHtml }}
-          />
+          <QuestionBody lines={q.bodyLines} className="leading-relaxed" />
         </div>
 
         {q.kind === "multiple_choice" && q.choices && (

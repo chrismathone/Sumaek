@@ -70,13 +70,29 @@ export function splitInstructionLine(line: string): string[] {
 export const SYMBOL_MARK_OPEN = "";
 export const SYMBOL_MARK_CLOSE = "";
 
-/** 숫자 사이에 낀 ×는 곱셈이다 — 판별 기호로 보고 그림을 그리면 안 된다 */
-function isBetweenDigits(text: string, at: number): boolean {
-  return /[0-9]/.test(text[at - 1] ?? "") && /[0-9]/.test(text[at + 1] ?? "");
+/* 발문이 답 기호로 **선언한** 자리만 그린다.
+ *
+ * 선언 없이 글 속에 놓인 ×는 곱셈이다 — 「$2$ × $3$」처럼 수식 사이에 글자로
+ * 남은 곱셈 기호를 도형으로 그리면 뜻이 뒤집힌다. 정답 키를 보면 확실하지만
+ * 그건 화면마다 손에 쥐고 있지 않고(테스트·복습 질의는 정답을 아예 안
+ * 가져온다 — 그게 옳다), 그리는 방식을 정하자고 정답을 끌고 올 일은 아니다.
+ * 어차피 학생에게 그 기호를 답으로 만들어 주는 것은 **발문의 선언**이다 —
+ * 칩 목록을 정할 때(symbolOptionsFromBodyText) 이미 같은 근거를 쓴다.
+ *
+ * 선언의 꼴은 둘이다: 조건 뒤(「…이면 ◯」)이거나 지시 앞(「◯를 고르시오」,
+ * 「◯를 ( )안에 써넣으시오」). 실제 발문 세 꼴이 모두 여기 든다. */
+const DECLARED_BEFORE = /면\s*$/;
+const DECLARED_AFTER = /^\s*[를을]\s*(?:\(|고르|써넣|쓰)/;
+
+function isDeclaredSymbol(text: string, at: number): boolean {
+  return (
+    DECLARED_BEFORE.test(text.slice(0, at)) ||
+    DECLARED_AFTER.test(text.slice(at + 1))
+  );
 }
 
 /**
- * 본문 글자 속 ◯·△·×를 표식으로 감싼다(정본 글자로 통일).
+ * 발문이 선언한 ◯·△·×를 표식으로 감싼다(정본 글자로 통일).
  * 수식(`$…$`) 안은 건드리지 않는다 — 거기의 `\times`는 곱셈이다.
  */
 export function markSymbolGlyphs(text: string): string {
@@ -87,9 +103,9 @@ export function markSymbolGlyphs(text: string): string {
       let out = part;
       for (const { chip, mentions } of SYMBOL_CHIPS) {
         out = out.replace(new RegExp(mentions.source, "g"), (ch, at: number) =>
-          isBetweenDigits(out, at)
-            ? ch
-            : `${SYMBOL_MARK_OPEN}${chip}${SYMBOL_MARK_CLOSE}`,
+          isDeclaredSymbol(out, at)
+            ? `${SYMBOL_MARK_OPEN}${chip}${SYMBOL_MARK_CLOSE}`
+            : ch,
         );
       }
       return out;

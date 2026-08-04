@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { QuestionLine, SymbolGlyph } from "@/components/learn/QuestionText";
+import { QuestionBody, SymbolGlyph } from "@/components/learn/QuestionText";
 import { submitPracticeAction, type PracticeResult } from "./actions";
 
 /* 연습문제 한 묶음 — 한 화면에서 다 풀고 한 번에 채점받는다.
@@ -114,13 +114,7 @@ export function PracticeForm({
               <div className="flex items-start gap-2">
                 <span className="font-mono text-sm text-pen">{q.number}.</span>
                 <div className="flex-1">
-                  {/* 발문과 판별 대상이 각각 한 줄 — 「…고르시오. 11」을 한
-                      줄에 두면 11이 문장 꼬리처럼 묻힌다 */}
-                  <div className="space-y-1">
-                    {q.bodyLines.map((line, li) => (
-                      <QuestionLine key={li} html={line} />
-                    ))}
-                  </div>
+                  <QuestionBody lines={q.bodyLines} />
 
                   {q.kind === "multiple_choice" && q.choices ? (
                     <fieldset className="mt-3 space-y-2">

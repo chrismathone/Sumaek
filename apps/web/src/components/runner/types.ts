@@ -5,8 +5,9 @@ export interface RunnerQuestion {
   questionId: string;
   number: number;
   kind: "multiple_choice" | "short_answer";
-  /** renderMixedText('publish') 결과 — katex-error·원시 LaTeX 없음이 보장됨 */
-  bodyHtml: string;
+  /** renderQuestionBody('publish') 결과 — katex-error·원시 LaTeX 없음이 보장됨.
+   *  첫 줄이 발문, 뒤가 판별 대상이다 */
+  bodyLines: string[];
   choices?: Array<{ choiceId: string; order: number; html: string }>;
   points: number;
   /** 채점 키 — 데모 체험판에서만 클라이언트로 전달된다.
