@@ -84,6 +84,65 @@ export async function listDueReviews(input: {
   }));
 }
 
+/** 기한이 온 복습을 개념으로 묶은 것 — 오늘 화면이 「무엇을」 말하기 위한 것 */
+export interface DueReviewConcept {
+  conceptId: string;
+  conceptName: string;
+  count: number;
+  /** 그중 기한이 지난 것 */
+  overdueCount: number;
+}
+
+/**
+ * 기한이 온 복습 — 개념별 묶음.
+ *
+ * 오늘 화면은 예전에 건수만 세는 집계 질의를 따로 갖고 있었다. 개념 이름이
+ * 필요해진 김에 그 집계를 여기로 합친다 — 같은 사실("기한이 온 복습")을
+ * 두 곳에서 각자 정의하면 조건이 갈리는 순간 두 화면이 다른 수를 말한다.
+ * 총건수는 이 묶음을 더해서 얻는다.
+ *
+ * `canonical_concepts` 안쪽 조인도 **일부러** listDueReviews와 같게 두었다.
+ * 한쪽만 바깥 조인으로 세면 「5건 기다립니다」라고 해 놓고 복습 화면에는
+ * 4건만 나오는 어긋남이 생긴다.
+ *
+ * 정렬은 복습 화면과 같은 기준(오래된 기한 먼저) — 학생이 오늘 화면에서 본
+ * 첫 개념이 복습을 눌렀을 때 실제로 처음 나오는 개념이어야 한다.
+ */
+export async function listDueReviewConcepts(input: {
+  organizationId: string;
+  learnerId: string;
+  today: string;
+}): Promise<DueReviewConcept[]> {
+  const sql = getSharedSql();
+  const rows = await sql<
+    {
+      concept_id: string;
+      concept_name: string;
+      cnt: number;
+      overdue_cnt: number;
+    }[]
+  >`
+    select c.id::text as concept_id, c.name as concept_name,
+           count(*)::int as cnt,
+           count(*) filter (where r.due_on < ${input.today}::date)::int
+             as overdue_cnt
+    from review_items r
+    join canonical_concepts c on c.id = r.concept_id
+    where r.organization_id = ${input.organizationId}
+      and r.learner_id = ${input.learnerId}
+      and r.status = 'scheduled'
+      and r.due_on <= ${input.today}::date
+    group by c.id, c.name
+    order by min(r.due_on) asc, c.name asc
+  `;
+  return rows.map((r) => ({
+    conceptId: r.concept_id,
+    conceptName: r.concept_name,
+    count: r.cnt,
+    overdueCount: r.overdue_cnt,
+  }));
+}
+
 export interface ReviewAnswerResult {
   ok: boolean;
   correct: boolean;

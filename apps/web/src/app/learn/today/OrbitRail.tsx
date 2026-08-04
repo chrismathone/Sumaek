@@ -22,16 +22,30 @@ import type { OrbitState, StepState } from "@/lib/learn/today-steps";
  * ───────────────────────────────────────────────────────────── */
 
 /* 상태 뱃지 — 예전에는 done과 none의 클래스가 **문자 그대로 같았다**.
- * 라벨(할 차례 N건 / 완료 / 없음)은 그대로 두고 모양 문자와 선 모양을
- * 더한다. 라벨을 아이콘으로 **대체**하면 그것이 새 회귀다. */
+ * 라벨(남은 N건 / 완료 / 예정 N건 / 없음)은 그대로 두고 모양 문자와 선
+ * 모양을 더한다. 라벨을 아이콘으로 **대체**하면 그것이 새 회귀다.
+ *
+ * `upcoming`은 todo의 **속 빈 짝**이다 — 채운 삼각(▸)과 빈 삼각(▹), 실선과
+ * 점선. 「곧 할 것이지만 아직 아니다」를 색이 아니라 채움으로 말한다.
+ * 문자가 글꼴에 없어 깨지더라도 옆의 라벨이 같은 사실을 글자로 말한다 —
+ * 그래서 모양 문자는 aria-hidden이어도 안전하다. */
 export function StepBadge({ state, label }: { state: StepState; label: string }) {
   const style =
     state === "todo"
       ? "border-solid border-pen bg-pen text-white"
       : state === "done"
         ? "border-solid border-ink bg-surface text-ink"
-        : "border-dashed border-rule bg-paper text-ink-soft";
-  const mark = state === "todo" ? "▸" : state === "done" ? "✓" : "–";
+        : state === "upcoming"
+          ? "border-dashed border-pen bg-surface text-pen"
+          : "border-dashed border-rule bg-paper text-ink-soft";
+  const mark =
+    state === "todo"
+      ? "▸"
+      : state === "done"
+        ? "✓"
+        : state === "upcoming"
+          ? "▹"
+          : "–";
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] ${style}`}
