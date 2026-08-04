@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { QuestionLine, SymbolGlyph } from "@/components/learn/QuestionText";
 import { submitPracticeAction, type PracticeResult } from "./actions";
 
 /* 연습문제 한 묶음 — 한 화면에서 다 풀고 한 번에 채점받는다.
@@ -10,37 +11,11 @@ export interface PracticeItem {
   key: string;
   number: number;
   kind: string;
-  bodyHtml: string;
+  /** 렌더가 끝난 발문 — 발문과 판별 대상이 각각 한 줄이다 */
+  bodyLines: string[];
   choices: Array<{ choiceId: string; order: number; html: string }> | null;
   /** 판별 문항의 기호 칩 — 발문이 언급한 기호만 담긴다. 빈 배열이면 일반 단답 */
   symbolOptions: string[];
-}
-
-/* 기호 칩의 그림 — **글자가 아니라 도형으로 그린다.**
- *
- * ◯(U+25EF)·△(U+25B3)·×(U+00D7)는 폰트마다 글리프 크기가 제각각이다. 같은
- * font-size를 줘도 ◯는 크고 ×는 작게 나와, 칩 셋이 나란히 서면 눈에 띄게
- * 들쭉날쭉했다(실측). 이모지(⭕🔺❌)는 더 나쁘다 — OS마다 모양·색이 다르고
- * 색이 박혀 있어 잉크 색을 따르지 않는다.
- *
- * 같은 24×24 상자에 같은 선 굵기로 그리면 셋이 정확히 같은 무게가 된다.
- * 색은 currentColor라 눌림 상태·테마를 그대로 따른다. 제출 값은 여전히
- * 기호 문자 그대로다(채점이 문자열을 본다) — 바뀐 것은 보이는 그림뿐이다. */
-function SymbolGlyph({ symbol }: { symbol: string }) {
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.75,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden focusable="false">
-      {symbol === "◯" && <circle cx="12" cy="12" r="8.25" {...common} />}
-      {symbol === "△" && <path d="M12 3.9 L20.4 19 L3.6 19 Z" {...common} />}
-      {symbol === "×" && <path d="M6.2 6.2 L17.8 17.8 M17.8 6.2 L6.2 17.8" {...common} />}
-    </svg>
-  );
 }
 
 /* 판별 문항의 답은 키보드로 칠 수 없는 기호다(◯·△·×). 칩이 유일한 입력이고
@@ -139,7 +114,13 @@ export function PracticeForm({
               <div className="flex items-start gap-2">
                 <span className="font-mono text-sm text-pen">{q.number}.</span>
                 <div className="flex-1">
-                  <div dangerouslySetInnerHTML={{ __html: q.bodyHtml }} />
+                  {/* 발문과 판별 대상이 각각 한 줄 — 「…고르시오. 11」을 한
+                      줄에 두면 11이 문장 꼬리처럼 묻힌다 */}
+                  <div className="space-y-1">
+                    {q.bodyLines.map((line, li) => (
+                      <QuestionLine key={li} html={line} />
+                    ))}
+                  </div>
 
                   {q.kind === "multiple_choice" && q.choices ? (
                     <fieldset className="mt-3 space-y-2">
