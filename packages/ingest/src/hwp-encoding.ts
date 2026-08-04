@@ -115,6 +115,9 @@ const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
 /** 이 글꼴에서 온 `¹²³`는 지수가 아니라 세로셈·표 조각이다 */
 const FRACTION_FONT = /EHboNA/;
 
+/** 도형 안의 글자를 담는 글꼴 — 코드가 실제 글자보다 0x1F 작다 */
+const FIGURE_LABEL_FONT = /KSCms-UHC/;
+
 /**
  * 분수 안의 **분자** 글리프 — 숫자 자판의 shift 행이다.
  * `;2!;` = 1/2 · `;6&;` = 7/6 · `;1#2%;` = 35/12 (모두 지면 대조).
@@ -277,6 +280,24 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       /* 개념원리 중1-1 p.10 참고② 「a+0일 때, aÚ`=a로 정한다」 —
        * 지면은 a≠0이다. EHsang의 +는 진짜 덧셈이므로 EHyak에만 둔다. */
       ["+", "\\ne "],
+      /* 중2-2는 도형이라 합동·닮음 기호가 쏟아진다 — 둘 다 지면 대조:
+       * ª 본책 p.8 「△ABD≡△ACD」 · » 본책 p.74 「△ABC∽△DEF」 */
+      ["ª", "\\equiv "],
+      ["»", "\\backsim "],
+    ]),
+  },
+  {
+    /* 아랫자리 글꼴의 도(°) — 중2-2 본책 p.9 「58°」·「55°」.
+     * EHsang에서는 같은 자리를 `ù`가 맡는데 그쪽은 이미 표에 있다. */
+    font: /^EHhabu/,
+    map: new Map([["ù", "\\degree "]]),
+  },
+  {
+    /* 도형 기호 전용 글꼴 — 중2-2 본책 p.8 「△ABC」·p.40 「□ABCD」 */
+    font: /^NPSUSP/,
+    map: new Map([
+      ["s", "\\triangle "],
+      ["f", "\\square "],
     ]),
   },
   {
@@ -503,9 +524,27 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
     ? SUBSCRIPT_BY_FONT.find((f) => f.font.test(font))?.map
     : undefined;
 
+  /* 0) 그림 라벨 글꼴은 **코드가 통째로 밀려 있다.**
+   *
+   * 도형 안의 「A」·「cm」·「40°」가 이 글꼴로 오는데, 코드가 실제 글자보다
+   * 0x1F 작다. 중2-2 본책에서 947번 나온다. 밀려 있다는 근거는 지면 대조다:
+   *   `DN` = cm · `\x15\x11±` = 40° · `\x12\x14\x11±` = 130°
+   * 숫자가 U+0011~U+001A로 오는 것이 특히 중요하다 — 그 구간은 아래에서
+   * **조판 부호로 지워지는 자리**라, 밀어 주지 않으면 도형의 치수가 통째로
+   * 사라진다. 그래서 어떤 단계보다 먼저 한다. */
+  let work = FIGURE_LABEL_FONT.test(font ?? "")
+    ? [...raw]
+        .map((ch) => {
+          const code = ch.codePointAt(0)!;
+          if (code >= 0x03 && code <= 0x5a) return String.fromCodePoint(code + 0x1f);
+          return ch === "±" ? "°" : ch;
+        })
+        .join("")
+    : raw;
+
   /* 1) 분수를 먼저 걷어내 자리표시자로 바꾼다. 분수 안에 지수·곱셈이
    *    섞이는 경우가 없음을 지면에서 확인했으므로 순서상 안전하다. */
-  let work = raw.replace(FRACTION, (whole: string, inner: string) => {
+  work = work.replace(FRACTION, (whole: string, inner: string) => {
     const latex = decodeFraction(inner);
     if (latex === null) {
       unknown.push(whole);
@@ -522,9 +561,12 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    *      p.130 「△ABC=1/2×BC‾×OA‾」). 앞의 대문자 1~3자를 데려간다.
    *      LaTeX 명령을 만들어야 하므로 자리표시자로 치워 둔다 — 3)단계의
    *      글자별 통과 검사는 역슬래시를 모른다. */
-  work = work.replace(/([A-Z]{1,3})Ó/g, (_m, letters: string) =>
+  work = work.replace(/([A-Z]{1,3})[ÓÕ]/g, (_m, letters: string) =>
     stash(`\\overline{${letters}}`),
   );
+  /* 도(°)는 LaTeX 명령이라 자리표시자로 치워 둔다 — 3)단계의 글자별
+   * 통과 검사는 역슬래시를 모른다 */
+  work = work.replace(/°/g, () => stash("\\degree "));
 
   /** 이 글자가 위첨자 글리프면 그 내용, 아니면 undefined */
   const superscriptOf = (ch: string): string | undefined =>
@@ -712,6 +754,18 @@ export function joinLatex(left: string, right: string): string {
  * 말해 준** 조각들이라 한 지수임이 구조로 확실하다. 그쪽은 글리프표만 보고
  * 판단하는 자리라 숫자일 때만 잇는다.
  */
+/**
+ * 폭 0인 **윗줄 글리프만** 담은 조각인가 — 앞 글자에 씌우는 표시다.
+ *
+ * 선분 기호는 두 꼴로 온다. `PQÓ`처럼 글자 뒤에 붙어 오기도 하고
+ * (중2-1), `AB` + `Ó`처럼 **span이 따로 서기도** 한다(중2-2 본책 p.9,
+ * 도형 단원이라 526번). 따로 선 것은 앞 조각에 붙여 읽어야 한다 —
+ * 혼자서는 씌울 글자가 없어 미해독으로 나간다.
+ */
+export function isOverlineOnly(text: string): boolean {
+  return /^[ÓÕ]+$/.test(text);
+}
+
 export function mergeRaised(latex: string, inner: string): string {
   const tail = /\^\{([^{}]*)\}$/.exec(latex);
   if (tail) return `${latex.slice(0, -tail[0].length)}^{${tail[1]}${inner}}`;

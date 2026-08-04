@@ -3,6 +3,7 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  isOverlineOnly,
   mergeRaised,
   markSuperscripts,
   mergeUnbalancedMath,
@@ -883,6 +884,16 @@ export function parseAnswerPage(
       return;
     }
     if (isMath) {
+      /* 따로 선 윗줄 글리프(`AB` + `Ó`)는 앞 조각의 글자에 씌운다 —
+       * 혼자서는 씌울 글자가 없어 미해독으로 나간다 */
+      const previous = runs[runs.length - 1];
+      if (isOverlineOnly(raw) && adjacent && previous?.kind === "math") {
+        const rewritten = decodeHwpMath(previous.raw + raw, font);
+        previous.raw += raw;
+        previous.latex = rewritten.latex;
+        previous.unknown.push(...rewritten.unknown);
+        return;
+      }
       const decoded = stacked
         ? (() => {
             const top = decodeHwpMath(stacked.numerator, font);

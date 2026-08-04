@@ -34,6 +34,16 @@ export interface ExtractionProfile {
   fonts: {
     /** 수식 폰트 — 이 폰트의 span은 수식으로 해독한다 */
     math: RegExp;
+    /**
+     * 도형 **안**의 글자 전용 글꼴 — 꼭짓점 이름·치수·각도.
+     *
+     * 그림 영역을 벡터 뭉치로 알아내는 규칙(figures)이 이미 있지만, 선이
+     * 성긴 도형은 뭉치로 안 잡힌다. 그러면 라벨이 발문 한가운데로 새어
+     * 「다음 그림에서 △ABC가 A x 58° B C 이등변…」이 된다(중2-2 도형
+     * 단원에서 947개가 이 글꼴로 온다). 글꼴 자체가 「그림 안」이라는
+     * 뜻이므로 기하와 무관하게 라벨로 뺀다.
+     */
+    figureLabel: RegExp;
     /** 문항 번호 */
     questionNumber: { font: RegExp; minSize: number };
     /** 선택지 기호 ①②③④⑤ */

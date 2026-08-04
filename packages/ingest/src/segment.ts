@@ -3,6 +3,7 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  isOverlineOnly,
   mergeRaised,
   markSuperscripts,
   mergeUnbalancedMath,
@@ -60,6 +61,7 @@ function mergeStackedFractions(
   spans: IndexedSpan[],
   page: PageDump,
   profile: ExtractionProfile,
+  figures: readonly Rect[] = [],
 ): IndexedSpan[] {
   const math = spans.filter((s) => profile.fonts.math.test(s.font));
   const used = new Set<number>();
@@ -68,9 +70,19 @@ function mergeStackedFractions(
   /* 분수 막대 — 높이 0인 가로 선분이다. 이 막대를 근거로 삼는 것이 요점:
    * 기하만으로 「위아래로 가운데 맞춰 붙어 있으면 분수」라고 하면 선택지
    * ①과 ④ 같은 줄바꿈까지 분수로 묶어 버린다(실제로 그랬다). 막대는
-   * 분수에만 그려진다. */
+   * 분수에만 그려진다.
+   *
+   * **도형 안의 가로선은 뺀다.** 삼각형의 밑변도 높이 0인 가로 선분이라,
+   * 그 위아래의 꼭짓점 라벨이 분수가 됐다 — 중2-2 문항 0002의 발문에
+   * 「A/x」가 나타났다. 도형과 분수는 같은 벡터로 그려지므로 생김새로는
+   * 갈리지 않고, 갈라 주는 것은 「도형 뭉치 안이냐」다. */
   const bars = page.drawings.filter(
-    (d) => d.y1 - d.y0 < 1.5 && d.x1 - d.x0 >= 3,
+    (d) =>
+      d.y1 - d.y0 < 1.5 &&
+      d.x1 - d.x0 >= 3 &&
+      !figures.some(
+        (f) => d.x0 >= f.x0 - 2 && d.x1 <= f.x1 + 2 && d.y0 >= f.y0 - 2 && d.y1 <= f.y1 + 2,
+      ),
   );
 
   for (const bar of bars) {
@@ -462,6 +474,22 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
         j += 1;
       }
 
+      /* 따로 선 윗줄 글리프(`AB` + `Ó`)는 앞 조각에 붙여 읽는다 —
+       * 혼자서는 씌울 글자가 없어 미해독으로 나간다 */
+      for (let k = cluster.length - 1; k > 0; k -= 1) {
+        if (!isOverlineOnly(cluster[k]!.text)) continue;
+        const prev = cluster[k - 1]!;
+        const mark = cluster[k]!;
+        /* 글자 상자도 함께 이어야 markSuperscripts가 자릿수를 맞춘다 —
+         * 어긋나면 그 조각의 겹쳐 찍은 위첨자를 통째로 놓친다 */
+        const chars =
+          prev.chars && mark.chars ? [...prev.chars, ...mark.chars] : undefined;
+        cluster[k - 1] = chars
+          ? { ...prev, text: prev.text + mark.text, chars }
+          : { ...prev, text: prev.text + mark.text };
+        cluster.splice(k, 1);
+      }
+
       /* 덩어리의 기준 크기·기준선. 위첨자는 이보다 작고 위에 있다. */
       const baseSize = Math.max(...cluster.map((c) => c.size));
       const baseY1 = Math.max(...cluster.map((c) => c.y1));
@@ -567,6 +595,38 @@ function figureClusters(page: PageDump, area: Rect, profile: ExtractionProfile):
       clusters.push({ rect: { ...d }, count: 1 });
     }
   }
+
+  /* **한 번 훑는 것으로는 부족하다.**
+   *
+   * 선분을 만나는 순서에 따라 한 도형이 여러 뭉치로 갈린다 — 왼쪽 변을
+   * 먼저 만나 뭉치 A가 서고, 오른쪽 변이 뭉치 B가 된 뒤, 그 둘을 잇는
+   * 밑변이 A에만 붙는 식이다. 갈린 뭉치는 각각 12개를 못 넘겨 도형으로
+   * 인정받지 못하고, 그러면 그 안의 치수 라벨이 발문으로 샌다(중2-2 도형
+   * 단원). 겹치는 뭉치가 없어질 때까지 이어 붙인다. */
+  for (let merged = true; merged; ) {
+    merged = false;
+    for (let i = 0; i < clusters.length && !merged; i += 1) {
+      for (let j = i + 1; j < clusters.length && !merged; j += 1) {
+        const a = clusters[i]!.rect;
+        const b = clusters[j]!.rect;
+        const gap = profile.figures.clusterGap;
+        if (
+          a.x0 <= b.x1 + gap &&
+          a.x1 >= b.x0 - gap &&
+          a.y0 <= b.y1 + gap &&
+          a.y1 >= b.y0 - gap
+        ) {
+          clusters[i] = {
+            rect: boundsOf([a, b]),
+            count: clusters[i]!.count + clusters[j]!.count,
+          };
+          clusters.splice(j, 1);
+          merged = true;
+        }
+      }
+    }
+  }
+
   return clusters
     .filter(
       (c) =>
@@ -611,12 +671,22 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     else body.push(span);
   }
 
+  /* 도형 뭉치는 쪽 단위로 미리 잡는다. 문항을 먼저 만들고 나서 잡으면
+   * 도형 안의 치수 라벨(「90 cm」 「120 cm」)이 이미 발문에 섞여 버린 뒤다 —
+   * 문항 0148이 그랬다. 라벨은 그림의 일부이지 발문이 아니다. */
+  const pageFigures = figureClusters(
+    page,
+    { x0: 0, y0: topLimit, x1: page.width, y1: bottomLimit },
+    profile,
+  );
+
   /* 연립을 먼저 합친다 — 그 안에 2행 분수가 들어 있으면 분수 쪽이 먼저
    * 가져가 버려 연립의 한 줄이 비기 때문이다 */
   const prepared = mergeStackedFractions(
     mergeEquationSystems(body, profile),
     page,
     profile,
+    pageFigures,
   );
   const lines = toLines(prepared, profile, columnOf);
 
@@ -747,13 +817,6 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
   /* 도형 뭉치는 쪽 단위로 미리 잡는다. 문항을 먼저 만들고 나서 잡으면
    * 도형 안의 치수 라벨(「90 cm」 「120 cm」)이 이미 발문에 섞여 버린 뒤다 —
    * 문항 0148이 그랬다. 라벨은 그림의 일부이지 발문이 아니다. */
-  const pageFigures = figureClusters(
-    page,
-    { x0: 0, y0: topLimit, x1: page.width, y1: bottomLimit },
-    profile,
-  );
-
-
   const flush = (): void => {
     if (!current) return;
     const built = buildQuestion(
@@ -973,6 +1036,9 @@ function buildQuestion(
    * 「오른쪽 90cm그림과 같이」가 된다. 글자의 중심이 그림 안이면 그림의
    * 것으로 본다. */
   const insideFigure = (s: IndexedSpan): boolean => {
+    /* 도형 라벨 글꼴이면 기하를 볼 것도 없다 — 그 글꼴이 곧 「그림 안」이다.
+     * 선이 성긴 도형은 벡터 뭉치로 안 잡혀 상자가 서지 않는다. */
+    if (profile.fonts.figureLabel.test(s.font)) return true;
     const cx = (s.x0 + s.x1) / 2;
     const cy = (s.y0 + s.y1) / 2;
     return figureBoxes.some(
