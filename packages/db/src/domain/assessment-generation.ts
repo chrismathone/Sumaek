@@ -132,6 +132,13 @@ export interface PlanningSnapshot {
  * 있나 · 다음 주에 안 나오게 하려면 무엇을 고치나」에 답하려면 어느 수업의
  * 어느 노드가, 어느 정책으로 불렀는지가 필요하다. 교사가 화면에서 직접 누른
  * 생성에는 수업·노드가 없다 — 그때는 사람이 근거이고, null이 그 사실이다.
+ *
+ * `routeNodeId`는 여기(맥락 JSON)와 **컬럼** 양쪽에 쓴다. 맥락은 사람이
+ * 읽는 근거이고, 컬럼은 화면이 잇는 연결이다 — 학생의 하루를 그리는
+ * `listAssignments`가 `assessment_instances.route_node_id`를 읽어 평가를
+ * 그 노드에 붙인다. 컬럼이 비면 노드는 「예정된 평가가 아직 생성되지
+ * 않았습니다」로 영영 막히고, 필수 항목이 막힌 하루는 완료될 수 없다.
+ * 둘 다 같은 값에서 나오게 두는 이유가 그것이다(따로 적으면 갈린다).
  */
 function planningSnapshot(
   options: { sessionId?: string | null; routeNodeId?: string | null },
@@ -493,13 +500,14 @@ export async function generateDailyTest(options: {
     await tx`
       insert into assessment_instances (
         id, organization_id, blueprint_id, policy_id, policy_version, purpose, title,
-        learning_group_id, scheduled_date, status, generation_seed,
+        learning_group_id, scheduled_date, route_node_id, status, generation_seed,
         generation_context, time_limit_minutes, total_points,
         published_at, published_by
       ) values (
         ${assessmentId}, ${organizationId}, ${blueprintId}, ${policy.id}, ${policy.version},
         'formative', ${`일일테스트 · ${targetDate}`},
-        ${learningGroupId}, ${targetDate}, 'published', ${seed},
+        ${learningGroupId}, ${targetDate}, ${planningLink.routeNodeId},
+        'published', ${seed},
         ${tx.json({
           inputHash: selection.inputHash,
           outputHash: selection.outputHash,
@@ -782,13 +790,14 @@ export async function generateConfirmationTest(options: {
     await tx`
       insert into assessment_instances (
         id, organization_id, blueprint_id, policy_id, policy_version, purpose, title,
-        learning_group_id, scheduled_date, status, generation_seed,
+        learning_group_id, scheduled_date, route_node_id, status, generation_seed,
         generation_context, time_limit_minutes, total_points,
         published_at, published_by
       ) values (
         ${assessmentId}, ${organizationId}, ${blueprintId}, ${policy.id}, ${policy.version},
         'confirmation', ${`확인테스트 · ${targetDate}`},
-        ${learningGroupId}, ${targetDate}, 'published', ${seed},
+        ${learningGroupId}, ${targetDate}, ${planningLink.routeNodeId},
+        'published', ${seed},
         ${tx.json({
           inputHash: selection.inputHash,
           outputHash: selection.outputHash,

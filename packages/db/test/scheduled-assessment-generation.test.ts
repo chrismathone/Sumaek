@@ -129,6 +129,7 @@ interface Generated {
   purpose: string;
   scheduled_date: string;
   policy_id: string;
+  route_node_id: string | null;
   generation_context: {
     planDate?: string;
     sessionId?: string | null;
@@ -143,7 +144,8 @@ interface Generated {
 async function generated(purpose: string, date: string): Promise<Generated | null> {
   const [row] = await sql<Generated[]>`
     select a.id, a.purpose::text as purpose, a.scheduled_date::text as scheduled_date,
-           a.policy_id::text as policy_id, a.generation_context,
+           a.policy_id::text as policy_id, a.route_node_id::text as route_node_id,
+           a.generation_context,
            coalesce(
              (select array_agg(distinct k.concept_id::text)
               from assessment_questions q
@@ -520,6 +522,24 @@ describe.skipIf(!hasDb)("평가 노드가 실제 평가가 된다", () => {
 
     expect(confirmation?.generation_context.routeNodeId).toBe(NODE_CONFIRM);
     expect(confirmation?.generation_context.policySource).toBe("organization");
+  });
+
+  it("부른 노드가 **컬럼**에도 남는다 — 학생 화면이 그것으로 잇는다", () => {
+    /* generation_context에만 두면 근거는 남지만 **연결은 끊긴다.**
+     *
+     * 학생의 하루를 그리는 `listAssignments`는 `assessment_instances.
+     * route_node_id` **컬럼**을 읽어 평가를 루트 노드에 붙인다. 컬럼이
+     * 비어 있으면 그 노드는 실행기에서 「예정된 평가가 아직 생성되지
+     * 않았습니다」로 막히고, 같은 시험이 노드 없는 항목으로 한 번 더 나온다.
+     * 필수 항목 하나가 영원히 막혀 있으므로 그 학생의 하루는 **결코 완료될
+     * 수 없다** — 교사 현황판에도 영영 「막힘」이다.
+     *
+     * 실측: 이 컬럼을 채우는 코드가 어디에도 없었고, 운영 DB의
+     * assessment_instances 1884건 중 route_node_id가 있는 것은 0건이었다.
+     * 시드된 평가로만 돌던 기존 E2E는 평가 노드가 든 루트를 한 번도 학생
+     * 화면까지 끌고 가지 않아 드러나지 않았다 (T6.2 자율 E2E에서 발견). */
+    expect(dailyD1?.route_node_id).toBe(NODE_DAILY);
+    expect(confirmation?.route_node_id).toBe(NODE_CONFIRM);
   });
 
   it("생성 시점의 숙련도·복습을 쓴다 — 미리 계산해 둔 것이 아니다", () => {

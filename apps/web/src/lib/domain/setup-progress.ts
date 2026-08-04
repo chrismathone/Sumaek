@@ -110,7 +110,9 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
         facts.coursePeriods > 0
           ? `기간 ${facts.coursePeriods}개`
           : "학기·분기처럼 반이 속할 기간이 먼저 있어야 합니다.",
-      href: "/app/calendar",
+      /* 만들 폼이 있는 화면으로 보낸다. 달력은 만들어진 것을 보는 곳이다 —
+       * 거기엔 폼도, 설정으로 가는 링크도 없다. */
+      href: "/app/settings",
     },
     learning_group: {
       title: "반 만들기",
@@ -119,13 +121,13 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
         facts.learningGroups > 0
           ? `반 ${facts.learningGroups}개`
           : "학생과 일정이 붙을 자리입니다.",
-      href: "/app/classes",
+      href: "/app/settings",
     },
     learners: {
       title: "학생 등록",
       done: facts.learners > 0,
       detail: facts.learners > 0 ? `학생 ${facts.learners}명` : "아직 없습니다.",
-      href: "/app/students",
+      href: "/app/settings",
     },
     accounts: {
       /* 「발급함」이 아니라 「전부 발급됨」이다. 한 명이 로그인 못 하는 것은
@@ -138,7 +140,9 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
           : remainingAccounts === 0
             ? `${facts.learners}명 전부 연결됨`
             : `${remainingAccounts}명이 아직 로그인할 수 없습니다.`,
-      href: "/app/students",
+      /* 발급 화면이 따로 있다 (T5.2). 목록으로 보내면 교사가 거기서
+       * 계정 화면을 다시 찾아야 한다. */
+      href: "/app/students/accounts",
     },
     route: {
       title: "학습 루트 게시",
@@ -182,7 +186,9 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
           : facts.publishedRoutes > 0
             ? "차단 항목 없음"
             : "루트를 먼저 게시하세요.",
-      href: "/app/routes",
+      /* 준비도를 실제로 보여 주는 화면 (T5.4). 이 단계가 생길 때는 그
+       * 화면이 없어 루트 목록을 가리켰다. */
+      href: "/app/readiness",
     },
   };
 

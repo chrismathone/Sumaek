@@ -474,3 +474,39 @@ describe.skipIf(!hasDb)("계획층(②)을 건드리지 않는다", () => {
     expect(after).toEqual(before);
   });
 });
+
+describe.skipIf(!hasDb)("첫 투영이 겹쳐도 학생 화면이 죽지 않는다", () => {
+  it("같은 학생·같은 날짜를 동시에 처음 투영해도 한 계획만 생긴다", async () => {
+    /* 학생이 「오늘 학습」을 여는 순간이 그 하루의 **첫 투영**이다. 그 요청이
+     * 둘 겹치는 일은 드물지 않다 — 탭 두 개, 라우터 프리페치, 새로 고침 연타.
+     *
+     * 예전 구현은 `select … for update`로 기존 계획을 찾고 없으면 insert
+     * 했는데, **없는 행에는 잠글 것이 없다.** 둘 다 「없음」을 보고 둘 다
+     * 넣으면 learner_day_plans_uq가 뒤엣것을 막고, 그 예외가 그대로 올라가
+     * 학생은 「화면을 여는 중 오류가 났습니다」를 만난다. 유니크 인덱스는
+     * 두 행이 생기는 것을 막으려고 둔 것이지 화면을 죽이라고 둔 것이 아니다.
+     * (T6.2 자율 E2E에서 학생의 첫 로그인이 실제로 이 500을 만났다.) */
+    /* 넷을 겹친다. 둘로는 앞엣것이 먼저 커밋해 버려 경합이 안 나는 실행이
+     * 섞인다 — 재현되지 않는 회귀 테스트는 없는 것과 같다. */
+    const input = baseInput();
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => projectLearnerDayPlan(sql, input)),
+    );
+
+    // 전부 성공하고, 같은 계획을 가리킨다
+    expect(new Set(results.map((r) => r.planId)).size).toBe(1);
+    // 「내가 만들었다」고 말하는 쪽은 하나뿐이다
+    expect(results.filter((r) => r.created)).toHaveLength(1);
+
+    const rows = await sql<{ cnt: number }[]>`
+      select count(*)::int as cnt from learner_day_plans
+      where organization_id = ${ORG} and learner_id = ${LEARNER}
+        and plan_date = ${input.planDate}
+    `;
+    expect(rows[0]!.cnt).toBe(1);
+
+    // 항목도 한 벌만 — 두 투영이 같은 키를 두 번 넣지 않는다
+    const items = await itemRows(results[0]!.planId);
+    expect(items.map((i) => i.key).sort()).toEqual(["a", "b"]);
+  });
+});

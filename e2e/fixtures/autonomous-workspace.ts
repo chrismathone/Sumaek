@@ -96,18 +96,32 @@ async function supabaseAdmin<T>(
 }
 
 /**
- * 화면에서 **이름으로 집을 수 있는** 개념을 고른다.
+ * 화면에서 **이름으로 집을 수 있고**, 혼자서도 루트가 되는 개념을 고른다.
  *
- * 두 조건이 있다. 루트 빌더의 개념 목록은 이름순 100개로 잘리므로 그
- * 안에 있어야 하고, 이름이 그 안에서 **유일**해야 한다 — 같은 이름이 둘이면
- * Playwright가 strict mode로 죽는다. 이름을 스펙에 박지 않고 여기서 골라
- * 돌려주므로, 교육과정이 바뀌어도 스펙은 그대로다.
+ * 세 조건이 있다.
+ *   ① 루트 빌더의 개념 목록은 이름순 100개로 잘린다 — 그 안에 있어야 한다.
+ *   ② 그 목록 안에서 이름이 **유일**해야 한다. 같은 이름이 둘이면
+ *      Playwright가 strict mode로 죽는다.
+ *   ③ 승인된 **강한 선수 개념이 없어야** 한다. 있으면 루트 검증이
+ *      PREREQUISITE_GAP으로 막아 게시까지 갈 수 없다 — 실측으로 첫 실행이
+ *      「가감법」을 골라 여기서 멈췄다. 선수를 함께 넣어 루트를 키우는
+ *      길도 있지만, 그러면 픽스처가 교육과정 모양에 따라 커진다.
+ *
+ * 이름을 스펙에 박지 않고 여기서 골라 돌려주므로 교육과정이 바뀌어도
+ * 스펙은 그대로다.
  */
 async function pickConcept(sql: Sql): Promise<{ id: string; name: string }> {
   const rows = await sql<{ id: string; name: string }[]>`
-    select id::text as id, name from canonical_concepts
-    where status in ('reviewed', 'active')
-    order by name limit 100
+    select c.id::text as id, c.name from canonical_concepts c
+    where c.status in ('reviewed', 'active')
+      and not exists (
+        select 1 from concept_edges e
+        where e.to_concept_id = c.id
+          and e.kind = 'prerequisite'
+          and e.status in ('reviewed', 'active')
+          and e.provenance <> 'ai_suggested'
+      )
+    order by c.name limit 100
   `;
   const seen = new Map<string, number>();
   for (const r of rows) seen.set(r.name, (seen.get(r.name) ?? 0) + 1);

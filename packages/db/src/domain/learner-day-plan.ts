@@ -196,11 +196,24 @@ export async function projectLearnerDayPlan(
       };
     }
 
-    const created = !existingPlan;
-    const planId = existingPlan?.id ?? uuidv7();
+    let created = !existingPlan;
+    let planId = existingPlan?.id ?? uuidv7();
 
     if (created) {
-      await tx`
+      /* `for update`는 **없는 행을 잠그지 못한다.**
+       *
+       * 그래서 첫 투영이 겹치면 둘 다 「없음」을 보고 둘 다 넣는다. 학생이
+       * 「오늘 학습」을 처음 여는 순간이 정확히 그 지점이고, 탭 두 개·라우터
+       * 프리페치·새로 고침 연타면 흔히 겹친다. 예전에는 뒤엣것이
+       * learner_day_plans_uq에 걸려 예외가 그대로 화면까지 올라갔다 —
+       * 학생은 「화면을 여는 중 오류가 났습니다」를 만났다. 유니크 인덱스는
+       * 두 행이 생기는 것을 막으라고 둔 것이지 화면을 죽이라고 둔 것이
+       * 아니다 (T6.2 자율 E2E에서 첫 로그인이 이 500을 만났다).
+       *
+       * 충돌하면 넣지 않고, 먼저 만든 쪽의 행을 그대로 쓴다. 이 statement는
+       * 상대 트랜잭션이 끝날 때까지 기다렸다가 진행하므로, 아래 재조회는
+       * 이미 커밋된 행을 본다. */
+      const insertedRows = await tx<{ id: string }[]>`
         insert into learner_day_plans
           (id, organization_id, learner_id, plan_date, timezone, learning_group_id,
            source, source_ref_id, status, materialized_at, projection_hash)
@@ -208,7 +221,42 @@ export async function projectLearnerDayPlan(
                 ${input.timezone}, ${input.learningGroupId ?? null},
                 ${input.source}, ${input.sourceRefId ?? null},
                 'not_started', now(), ${hash})
+        on conflict (organization_id, learner_id, plan_date) do nothing
+        returning id::text
       `;
+      if (insertedRows.length === 0) {
+        const [raced] = await tx<
+          { id: string; status: string; completed_at: string | null }[]
+        >`
+          select id::text, status::text, completed_at::text
+          from learner_day_plans
+          where organization_id = ${input.organizationId}
+            and learner_id = ${input.learnerId}
+            and plan_date = ${input.planDate}
+          for update
+        `;
+        /* 충돌했는데 행이 없다 = 상대가 롤백했다. 그때는 우리가 만드는
+         * 것이 맞다 — 조용히 계획 없는 하루를 돌려주면 학생 화면이 빈다. */
+        if (!raced) throw new Error("PROJECTION_RACE_LOST_AND_GONE");
+        /* 먼저 만든 쪽이 완료까지 굳혔다면 재투영 대상이 아니다 — 위쪽
+         * 판정과 같은 규칙을 여기서도 지킨다. */
+        if (raced.status === "completed") {
+          return {
+            planId: raced.id,
+            created: false,
+            skippedCompleted: true,
+            status: "completed" as const,
+            completable: false,
+            inserted: 0,
+            updated: 0,
+            preserved: 0,
+            exempted: 0,
+            removed: 0,
+          };
+        }
+        planId = raced.id;
+        created = false;
+      }
     }
 
     const existingItems = await tx<ExistingItem[]>`

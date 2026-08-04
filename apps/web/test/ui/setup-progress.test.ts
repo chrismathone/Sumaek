@@ -179,4 +179,30 @@ describe("설정 진행 판정 (buildSetupProgress)", () => {
       expect(step.title.length).toBeGreaterThan(1);
     }
   });
+
+  it("「하러 가기」는 그 일을 **할 수 있는** 화면으로 간다", () => {
+    /* 갈 곳이 있는 것과 거기서 할 수 있는 것은 다르다.
+     *
+     * 과정 기간·반·학생을 만드는 폼은 셋 다 `/app/settings`에만 있다.
+     * 그런데 이 단계들은 각각 /app/calendar·/app/classes·/app/students —
+     * **목록 화면**을 가리키고 있었다. 거기엔 만들 폼도, 설정으로 가는
+     * 링크도 없다(학생 목록의 유일한 링크는 NEIS 연동이다). 학생 계정
+     * 단계는 발급 화면(/app/students/accounts)이 따로 있는데도 목록을
+     * 가리켰고, 준비도 단계는 T5.4가 만든 /app/readiness 대신 루트 목록을
+     * 가리켰다.
+     *
+     * 「빈 화면 열두 개」를 없애려고 만든 화면이 빈 화면으로 보내고 있었다.
+     * (T6.2 자율 E2E가 설정 화면만 따라가다 첫 단계에서 멈춰 드러났다.) */
+    const p = buildSetupProgress(facts());
+    const href = (id: string) => p.steps.find((s) => s.id === id)!.href;
+
+    expect(href("course_period")).toBe("/app/settings");
+    expect(href("learning_group")).toBe("/app/settings");
+    expect(href("learners")).toBe("/app/settings");
+    expect(href("accounts")).toBe("/app/students/accounts");
+    expect(href("materials")).toBe("/app/content/materials");
+    expect(href("route")).toBe("/app/routes");
+    expect(href("assessment_policy")).toBe("/app/settings");
+    expect(href("readiness")).toBe("/app/readiness");
+  });
 });
