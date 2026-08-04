@@ -190,7 +190,6 @@ export default async function BlankPage({
             <BlankForm
               setId={view.setId}
               stage={stage}
-              total={view.total}
               nextHref={nextHref}
               nextLabel={nextLabel}
             >

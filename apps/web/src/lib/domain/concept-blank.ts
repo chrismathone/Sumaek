@@ -176,7 +176,7 @@ export async function submitBlankAnswers(input: {
 
   const blanks = parseBlanks(set.blanks);
   const graded: Record<number, boolean> = {};
-  let found: string[] = [];
+  const found: string[] = [];
   let missing: string[] = [];
   let correct = 0;
 

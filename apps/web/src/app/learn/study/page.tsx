@@ -12,7 +12,6 @@ import { CompleteMaterialButton } from "@/components/learn/MaterialCard";
 import { LectureVideoCard } from "@/components/learn/LectureVideoCard";
 import { GatedNextLink, LectureGate } from "@/components/learn/LectureGate";
 import { ReadingBody } from "@/components/materials/ReadingBody";
-import { PracticeForm } from "@/app/learn/practice/PracticeForm";
 
 export const metadata: Metadata = { title: "개념 학습" };
 

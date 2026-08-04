@@ -917,8 +917,23 @@ where r.is_active = true
 group by r.scope_type, r.scope_id
 having count(*) > 1
 union all
+-- **앞으로 열릴 수업만** 본다. 과거 수업이 폐기된 리비전을 가리키는 것은
+-- 손상이 아니라 기록이다: 재실체화는 미래의 planned 수업만 지우고 다시
+-- 만들며(domain/schedule.ts), 과거 수업은 그때 무엇이 계획됐는지의 증거로
+-- 손대지 않고 남긴다(불변 5). 그 뒤 활성 리비전이 넘어가면 과거 수업의
+-- 포인터는 자연히 폐기본을 가리킨다.
+--
+-- 좁히지 않으면 **재실체화 한 번마다 위반이 영구히 쌓인다.** 실측:
+-- 위반 1건은 전부 과거 수업이었고 미래 수업은 0건이었으며, 아직 걸리지
+-- 않은 과거 planned 수업 83건은 각자의 반이 다시 실체화되는 순간 똑같이
+-- 걸린다. 늘 붉은 검사는 아무도 보지 않게 되고, 그때 진짜 위반이 묻힌다.
+--
+-- 이 검사가 잡아야 하는 것은 「학생이 앞으로 따라갈 일정이 활성본이 아니다」
+-- 이고, 그것은 아래 조건으로 그대로 잡힌다. 끝나지 않은 **과거** 수업이
+-- 남아 있는 문제는 별개다 — 반 마감 경로가 없어서 생기는 일이고(G-03),
+-- I-21의 '교사 마감 기록 없이 완료된 수업'이 그 반대편을 지킨다.
 select
-  '활성 리비전 없는 스코프에 수업 존재'::text,
+  '활성 리비전 없는 스코프에 앞으로 열릴 수업 존재'::text,
   ('learning_group:' || s.learning_group_id::text),
   count(*)::text
 from sessions s
@@ -928,6 +943,7 @@ where s.schedule_revision_id is not null
     where r.id = s.schedule_revision_id and r.is_active = true
   )
   and s.status in ('planned', 'confirmed')
+  and s.session_date >= current_date
 group by s.learning_group_id
 union all
 select

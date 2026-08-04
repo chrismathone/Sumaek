@@ -15,14 +15,12 @@ import { VoiceInputHint } from "@/components/learn/VoiceInput";
 export function BlankForm({
   setId,
   stage,
-  total,
   nextHref,
   nextLabel,
   children,
 }: {
   setId: string;
   stage: "one" | "two" | "full";
-  total: number;
   nextHref: string;
   nextLabel: string;
   children: React.ReactNode;

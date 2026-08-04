@@ -265,7 +265,12 @@ export function LecturePlayer({
   const watchedPct = total > 0 ? Math.min(100, (maxWatched / total) * 100) : 0;
   const headPct = total > 0 ? Math.min(100, (current / total) * 100) : 0;
   const done = percent >= COMPLETE_PERCENT || watchedPct >= COMPLETE_PERCENT;
-  const canForward = current + 10 <= maxRef.current;
+  /* 렌더는 **상태**를 읽는다. maxRef.current를 여기서 읽으면 ref가 바뀌어도
+   * 다시 그려지지 않아 앞으로 감기 단추가 낡은 값에 묶인다 — 게다가 바로
+   * 위 watchedPct는 maxWatched(상태)를 쓰므로, 두 줄이 같은 순간에 서로 다른
+   * 진도를 말한다. maxRef.current를 쓰는 모든 자리는 setMaxWatched를 함께
+   * 부르므로 두 값은 같다(ref는 콜백·이펙트가 즉시 읽으려고 두는 것이다). */
+  const canForward = current + 10 <= maxWatched;
 
   return (
     <div className="mt-3">
