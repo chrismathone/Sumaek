@@ -1027,8 +1027,8 @@ Set-Location ..\Su-Maek-t5-1-onboarding
 **남긴 것**: `e2e/tests/onboarding.spec.ts`. 빈 조직부터 끝까지 도는 흐름이라 T6.2의 자율 E2E와 픽스처가 그대로 겹친다 — `learner-day.spec.ts`(T1.4)·`teacher-day-progress.spec.ts`(T4.4)와 함께 한 자리에서 쓴다. `SetupWizard.tsx`는 만들지 않았다: 단계마다 이미 폼이 있는 화면이 있고, 마법사가 그 폼을 다시 그리면 같은 액션이 두 벌이 된다(REFACTOR 항목이 요구한 것과 반대). 이 화면은 **가리키기만** 한다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t5-1-onboarding`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t5-1-onboarding`
 
 ### [] Phase 5, T5.2: 학생 계정 제한 위임·일괄 발급·재설정 RED→GREEN
 
