@@ -1282,8 +1282,8 @@ Set-Location ..\Su-Maek-t6-2-autonomous-e2e
 **남긴 것**: `e2e/tests/assessment-recovery.spec.ts`(T3.4)는 여전히 쓰지 않았다. 생성이 **실패하는** 조직이 따로 필요한데(문항 0개), 이 픽스처는 성공하는 워크스페이스를 만든다. T6.3에서 두 번째 반으로 붙이는 편이 맞다 — 통합 테스트 두 벌이 같은 경로를 이미 끝에서 끝까지 덮는다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t6-2-autonomous-e2e`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t6-2-autonomous-e2e`
 
 ### [] Phase 6, T6.3: 동시성·부하·모바일·접근성 검증 RED→GREEN
 
