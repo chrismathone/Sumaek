@@ -193,18 +193,102 @@ export interface ConceptTarget {
   weight?: ConceptWeight[];
 }
 
-/** 열쇠: `소단원 제목|개념 번호` (공백 하나로 눌러 비교) */
+/**
+ * 열쇠: `쪽|소단원 제목|개념 번호` (공백 하나로 눌러 비교)
+ *
+ * **쪽이 열쇠에 들어가는 이유.** 이 책은 소단원 제목의 「(1)」·「(2)」를
+ * 다른 글꼴로 찍어서 추출된 제목에서 빠진다. 그래서 p.111 「일차식의
+ * 계산 (1)」의 개념1과 p.117 「(2)」의 개념1이 `소단원|번호`만으로는
+ * **똑같은 열쇠**가 되고, Map은 뒤엣것만 남긴다. p.156·163 「일차방정식의
+ * 활용 (1)·(2)」도 마찬가지다.
+ *
+ * 지금 표에서는 그 네 자리가 어차피 같은 정본 개념을 가리켜서 결과가
+ * 달라지지 않는다 — **아직은.** 개념을 더 잘게 나누면 그날부터 조용히
+ * 틀리기 시작한다. 쪽은 허용목록에 이미 사람이 확인해 적어 둔 값이므로
+ * 열쇠에 넣어도 새로 알아낼 것이 없다.
+ */
+export function conceptTargetKey(
+  page: number,
+  subsection: string,
+  no: string | null,
+): string {
+  return `${page}|${subsection.replace(/\s+/g, " ").trim()}|${no ?? "?"}`;
+}
+
+/** I. 소인수분해 — 개념서 p.10·11·17·30·35 */
 export const KWR_M11_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
-  ["소인수분해|1", "m1-prime-composite"],
-  ["소인수분해|2", "m1-prime-factorization"],
-  ["소인수분해|3", "m1-prime-factorization"],
-  ["소인수분해를 이용하여 약수 구하기|1", "m1-divisors"],
-  ["공약수와 최대공약수|1", "m1-gcd"],
-  ["공약수와 최대공약수|2", "m1-gcd"],
-  ["공배수와 최소공배수|1", "m1-lcm"],
-  ["공배수와 최소공배수|2", "m1-lcm"],
+  ["10|소인수분해|1", "m1-prime-composite"],
+  ["10|소인수분해|2", "m1-prime-factorization"],
+  ["11|소인수분해|3", "m1-prime-factorization"],
+  ["17|소인수분해를 이용하여 약수 구하기|1", "m1-divisors"],
+  ["30|공약수와 최대공약수|1", "m1-gcd"],
+  ["30|공약수와 최대공약수|2", "m1-gcd"],
+  ["35|공배수와 최소공배수|1", "m1-lcm"],
+  ["35|공배수와 최소공배수|2", "m1-lcm"],
+  /* 개념3 「최대공약수와 최소공배수의 관계」는 제목이 질문형이 아니라
+   * 예전 파서가 통째로 놓쳤다. 두 개념을 함께 쓰지만 자료는 한 곳에만
+   * 걸 수 있으므로, 뒤에 배우는 최소공배수 쪽에 둔다. */
+  ["35|공배수와 최소공배수|3", "m1-lcm"],
 ]);
 
-export function conceptTargetKey(subsection: string, no: string | null): string {
-  return `${subsection.replace(/\s+/g, " ").trim()}|${no ?? "?"}`;
-}
+/** II. 정수와 유리수 — 개념서 p.50·51·56·70·71·81·89 */
+export const KWR_M11_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["50|정수와 유리수|1", "m1-integers-rationals"],
+  ["50|정수와 유리수|2", "m1-integers-rationals"],
+  ["51|정수와 유리수|3", "m1-integers-rationals"],
+  ["51|정수와 유리수|4", "m1-integers-rationals"],
+  ["56|수의 대소 관계|1", "m1-rational-order"],
+  ["56|수의 대소 관계|2", "m1-rational-order"],
+  ["56|수의 대소 관계|3", "m1-rational-order"],
+  ["70|유리수의 덧셈과 뺄셈|1", "m1-rational-arithmetic"],
+  ["70|유리수의 덧셈과 뺄셈|2", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|3", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|4", "m1-rational-arithmetic"],
+  ["71|유리수의 덧셈과 뺄셈|5", "m1-rational-arithmetic"],
+  ["81|유리수의 곱셈|1", "m1-rational-arithmetic"],
+  ["81|유리수의 곱셈|2", "m1-rational-arithmetic"],
+  ["89|유리수의 곱셈|3", "m1-rational-arithmetic"],
+  /* 네 연산이 섞인 계산 — RPM의 「덧셈 뺄셈 곱셈 나눗셈의 혼합 계산」과
+   * 같은 자리다. 곱셈·나눗셈이 아니라 혼합 계산 개념에 건다. */
+  ["89|유리수의 곱셈|4", "m1-rational-arithmetic"],
+]);
+
+/** III. 문자와 식 — 개념서 p.104·105·111·117·132·133·139·156·163 */
+export const KWR_M11_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["104|문자의 사용|1", "m1-algebraic-expressions"],
+  ["104|문자의 사용|2", "m1-algebraic-expressions"],
+  ["105|문자의 사용|3", "m1-algebraic-expressions"],
+  /* p.111은 「일차식의 계산 (1)」, p.117은 「(2)」 — 제목만으로는 못 가른다 */
+  ["111|일차식의 계산|1", "m1-linear-expression-ops"],
+  ["111|일차식의 계산|2", "m1-linear-expression-ops"],
+  ["117|일차식의 계산|1", "m1-linear-expression-ops"],
+  ["117|일차식의 계산|2", "m1-linear-expression-ops"],
+  ["132|방정식과 그 해|1", "m1-equation-basics"],
+  ["132|방정식과 그 해|2", "m1-equation-basics"],
+  ["132|방정식과 그 해|3", "m1-equation-basics"],
+  ["133|방정식과 그 해|4", "m1-equation-basics"],
+  ["139|일차방정식의 풀이|1", "m1-linear-equation"],
+  ["139|일차방정식의 풀이|2", "m1-linear-equation"],
+  ["139|일차방정식의 풀이|3", "m1-linear-equation"],
+  /* p.156은 「일차방정식의 활용 (1)」, p.163은 「(2)」 */
+  ["156|일차방정식의 활용|1", "m1-linear-equation"],
+  ["156|일차방정식의 활용|2", "m1-linear-equation"],
+  ["163|일차방정식의 활용|1", "m1-linear-equation"],
+  ["163|일차방정식의 활용|2", "m1-linear-equation"],
+]);
+
+/** IV. 좌표평면과 그래프 — 개념서 p.176·177·184·198·208 */
+export const KWR_M11_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["176|순서쌍과 좌표|1", "m1-coordinates"],
+  ["176|순서쌍과 좌표|2", "m1-coordinates"],
+  ["176|순서쌍과 좌표|3", "m1-coordinates"],
+  ["177|순서쌍과 좌표|4", "m1-coordinates"],
+  ["184|그래프와 그 해석|1", "m1-graphs"],
+  ["184|그래프와 그 해석|2", "m1-graphs"],
+  ["198|정비례|1", "m1-proportionality"],
+  ["198|정비례|2", "m1-proportionality"],
+  ["198|정비례|3", "m1-proportionality"],
+  ["208|반비례|1", "m1-proportionality"],
+  ["208|반비례|2", "m1-proportionality"],
+  ["208|반비례|3", "m1-proportionality"],
+]);

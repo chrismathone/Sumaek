@@ -699,14 +699,54 @@ export function extractConceptPages(
       ) {
         continue;
       }
-      /* 개념 제목 (질문형) — 같은 줄에 상호참조가 섞여 올 수 있다 */
-      const titleSpan = line.spans.find(
-        (s) =>
-          profile.conceptTitle.font.test(s.font) &&
-          s.size >= profile.conceptTitle.minSize &&
-          s.size <= profile.conceptTitle.maxSize,
-      );
-      if (titleSpan && /\?$/.test(cleanBodyText(titleSpan.text).trim())) {
+      /* 개념 제목 — 같은 줄에 상호참조가 섞여 올 수 있다.
+       *
+       * **한 조각만 집으면 잘린다.** 제목은 쉼표와 수식에서 span이 갈라진다:
+       *   p.163 「거리, 속력, 시간에 대한 문제」 → "거리" + " 속력" + " 시간에 대한 문제"
+       *   p.198 「정비례 관계 y=ax의 그래프는 어떻게 그리는가?」
+       *          → "정비례 관계 " + (수식) + "의 그래프는 어떻게 그리는가?"
+       * 앞 조각만 쓰면 제목이 「거리」·「정비례 관계」가 된다. 이건 화면에
+       * 나가는 이름이자 **재적재 때 같은 자료인지 가리는 열쇠**라서, 잘리면
+       * 서로 다른 개념이 같은 이름으로 부딪친다.
+       *
+       * 그래서 제목 글꼴 조각을 왼쪽부터 전부 이어 붙인다. 쉼표와 수식은
+       * 빠지지만 그건 RPM 유형 제목과 같은 사정이다 — 지면에 없는 글자를
+       * 지어내지 않는다. */
+      const titleSpans = line.spans
+        .filter(
+          (s) =>
+            profile.conceptTitle.font.test(s.font) &&
+            s.size >= profile.conceptTitle.minSize &&
+            s.size <= profile.conceptTitle.maxSize,
+        )
+        .sort((a, b) => a.x0 - b.x0);
+      const titleSpan = titleSpans[0];
+      const titleText = titleSpans
+        .map((s) => cleanBodyText(s.text))
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim();
+      /* 번호 배지는 제목 왼쪽에서 제목 줄과 세로로 겹친다 */
+      const numberSpan = titleSpan
+        ? numberBadges.find(
+            (s) => s.x1 <= titleSpan.x0 + 2 && s.y0 < line.y && s.y1 > line.y - 16,
+          )
+        : undefined;
+      /**
+       * 제목임을 아는 근거는 **둘**이다.
+       *
+       * 처음에는 물음표만 봤다. 이 책의 개념 제목이 대개 질문형이기
+       * 때문인데(「최대공약수는 어떻게 구하는가?」), 전부는 아니다 —
+       * p.163 「거리, 속력, 시간에 대한 문제」·「농도에 대한 문제」는
+       * 명사구다. 그 쪽은 개념 블록이 **0개**로 나오고 본문 31줄이
+       * 통째로 미분류가 됐다. 허용목록에 넣었는데도 아무것도 안 나온
+       * 것이라, 미분류 수를 보지 않았으면 그냥 없는 줄 알았을 것이다.
+       *
+       * 번호 배지(DINPro-Bold 17.5~20pt의 한두 자리 숫자)가 제목 왼쪽에
+       * 붙어 있는 것이 더 확실한 근거다 — 개념이 아닌 줄에는 그 배지가
+       * 없다. 물음표는 배지를 못 읽었을 때의 보조 근거로 남긴다.
+       */
+      if (titleSpan && titleText !== "" && (numberSpan || /\?$/.test(titleText))) {
         const xrefText = line.spans
           .filter(
             (s) =>
@@ -715,18 +755,11 @@ export function extractConceptPages(
           .map((s) => cleanBodyText(s.text))
           .join("")
           .trim();
-        /* 번호 배지는 제목 왼쪽에서 제목 줄과 세로로 겹친다 */
-        const numberSpan = numberBadges.find(
-          (s) =>
-            s.x1 <= titleSpan.x0 + 2 &&
-            s.y0 < line.y &&
-            s.y1 > line.y - 16,
-        );
         current = {
           subsection,
           unit,
           no: numberSpan ? cleanBodyText(numberSpan.text).trim() : null,
-          title: cleanBodyText(titleSpan.text).trim(),
+          title: titleText,
           xref: profile.xref.pattern.test(xrefText) ? xrefText : null,
           page: page.page,
           titleY: line.y,

@@ -3,6 +3,7 @@ import type postgres from "postgres";
 import { processExpression } from "@su-maek/core/math";
 import type { ExtractedConcept } from "./concepts";
 import type { ConceptExtractionProfile } from "./profiles/kwr-2022";
+import { conceptTargetKey } from "./profiles/kwr-2022";
 import type { ConceptDefinition } from "./profiles/rpm-2022-concepts";
 import type { BookRef, RightsRef, SourceRef } from "./load";
 import type { Run } from "./types";
@@ -193,7 +194,7 @@ export async function loadConceptMaterials(
   };
 
   for (const block of input.blocks) {
-    const key = `${block.subsection.replace(/\s+/g, " ").trim()}|${block.no ?? "?"}`;
+    const key = conceptTargetKey(block.page, block.subsection, block.no);
     const slug = input.targets.get(key);
     const conceptId = slug ? conceptIdBySlug.get(slug) : undefined;
     if (!conceptId) {

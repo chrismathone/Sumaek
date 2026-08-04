@@ -4,6 +4,7 @@ import {
   joinKorean,
   joinLatex,
   markSuperscripts,
+  mergeUnbalancedMath,
 } from "./hwp-encoding";
 import { isInvisibleInk } from "./ink";
 import type { ExtractionProfile } from "./profiles/types";
@@ -347,11 +348,13 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
     const text = cleanBodyText(head.text);
     i += 1;
     if (text.trim() === "") continue;
-    const last = runs[runs.length - 1];
+    const last: Run | undefined = runs[runs.length - 1];
     if (last?.kind === "text") last.text = joinKorean(last.text, text);
     else runs.push({ kind: "text", text });
   }
-  return runs;
+  /* 2행 분수는 앞뒤로 틈이 벌어져 따로 떨어진다 — 그런데 그 앞이 `{-`로
+   * 열린 채 끝났으면 같은 수식이다. 중괄호 깊이로 붙인다. */
+  return mergeUnbalancedMath(runs);
 }
 
 /** 조각 배열을 마커 기준으로 쪼갠다 (①②③ 선택지, ㄱㄴㄷ 보기) */
@@ -870,14 +873,28 @@ function buildQuestion(
       ? boundsOf(allSpans)
       : { x0: columnLeft, y0: 0, x1: columnLeft + columnWidth, y1: 0 };
 
+  /* 발문은 여러 줄이 한 문단으로 이어진다. 줄이 바뀌는 자리에서도 수식이
+   * 조각날 수 있으므로(2행 분수가 줄 끝에 걸린 경우) 문단 단위로 한 번 더
+   * 붙인다. 선택지·보기도 각각 한 덩어리다. */
   return {
     printedNumber: current.number,
     page: page.page,
     column: current.column,
     bbox,
-    stem,
-    choices: choices.length > 0 ? choices : null,
-    conditionBox,
+    stem: mergeUnbalancedMath(stem),
+    choices:
+      choices.length > 0
+        ? choices.map((c) => ({ ...c, runs: mergeUnbalancedMath(c.runs) }))
+        : null,
+    conditionBox: conditionBox
+      ? {
+          ...conditionBox,
+          items: conditionBox.items.map((i) => ({
+            ...i,
+            runs: mergeUnbalancedMath(i.runs),
+          })),
+        }
+      : null,
     figureBoxes,
     figureLabels,
     typeContext,

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cleanBodyText, decodeHwpMath, markSuperscripts } from "../src/hwp-encoding";
+import {
+  cleanBodyText,
+  decodeHwpMath,
+  markSuperscripts,
+  mergeUnbalancedMath,
+} from "../src/hwp-encoding";
+import type { Run } from "../src/types";
 
 /* ─────────────────────────────────────────────────────────────
  * 여기 적힌 기댓값은 전부 **지면을 열어 눈으로 확인한 것**이다.
@@ -109,16 +115,194 @@ describe("분수 — 안쪽은 분모·분자 교대다", () => {
   });
 
   it("규칙에 맞지 않는 분수는 억지로 풀지 않고 unknown으로 남긴다", () => {
-    // 홀수 길이 — 분모·분자 짝이 맞지 않는다
-    const got = decodeHwpMath(";1#2;");
+    // 분자 자리에 표에 없는 글자 — 반쪽짜리 분수를 만들지 않는다
+    const got = decodeHwpMath(";1Ø2;");
     expect(got.unknown.length).toBeGreaterThan(0);
-    expect(got.latex).toContain(";1#2;");
+    expect(got.latex).toContain(";1Ø2;");
+  });
+
+  it("분모만·분자만 있는 것은 분수가 아니다", () => {
+    // 8에 해당하는 글리프가 아직 표에 없다 — 그때 「1/12」 같은 것을 지어내면 안 된다
+    expect(decodeHwpMath(";12;").unknown.length).toBeGreaterThan(0);
+    expect(decodeHwpMath(";#%;").unknown.length).toBeGreaterThan(0);
+  });
+
+  /* 자릿수가 다른 분수 — 조판기가 글리프 벌을 바꾸는 자리다.
+   * 아홉 자리 전부 지면(중1-1 II·III단원)을 그려서 대조했다. */
+  it.each([
+    [";1£2;", "\\frac{3}{12}", "p.36 −3/12"],
+    [";1¢2;", "\\frac{4}{12}", "p.36 −4/12"],
+    [":Á3ª:", "\\frac{12}{3}", "p.38 −12/3"],
+    [";ª4¼;", "\\frac{20}{4}", "p.38 ④ 20/4"],
+    [";Á6ª;", "\\frac{12}{6}", "p.39 12/6"],
+    [";¢7ª;", "\\frac{42}{7}", "p.39 ⑤ −42/7"],
+    [":Á4¤:", "\\frac{16}{4}", "p.39 16/4"],
+    [":Á5°:", "\\frac{15}{5}", "p.46 −15/5"],
+    [";ª3Á;", "\\frac{21}{3}", "p.46 21/3"],
+    [";Á2°;", "\\frac{15}{2}", "p.46 −15/2"],
+    [";°9¢;", "\\frac{54}{9}", "p.49 54/9"],
+    [";1¦5;", "\\frac{7}{15}", "p.53 −7/15"],
+    [";1»4;", "\\frac{9}{14}", "p.60 9/14"],
+    [":£7¼:", "\\frac{30}{7}", "p.60 ④ 30/7"],
+    [":£3°:", "\\frac{35}{3}", "p.60 ⑤ 35/3"],
+    [";2»5;", "\\frac{9}{25}", "p.63 −9/25"],
+    // 여는·닫는 기호가 짝이 아닌 꼴 — 실측한 네 가지를 전부 건다
+    [";;ª4¼;;", "\\frac{20}{4}", "p.38 ;;…;;"],
+    [":Á3¼;;", "\\frac{10}{3}", "p.53 :…;; (짝이 안 맞는다)"],
+  ])("%s 는 %s 다 (%s)", (raw, expected) => {
+    expect(decodeHwpMath(raw).latex).toBe(expected);
+  });
+
+  it("분수 안의 위첨자 표식은 무시한다 — 분자 글리프는 원래 폭이 0이다", () => {
+    // 개념서 p.104 「a %=a/100」 · p.208 반비례 「y=a/x」
+    const mark = (s: string): string =>
+      s.replace(/A/g, "A").replace(/B/g, "B");
+    expect(decodeHwpMath(mark(";10A0;")).latex).toBe("\\frac{a}{100}");
+    expect(decodeHwpMath(mark(";[A;")).latex).toBe("\\frac{a}{x}");
+    expect(decodeHwpMath(mark(";1A;")).latex).toBe("\\frac{a}{1}");
+    expect(decodeHwpMath(mark(";cB;")).latex).toBe("\\frac{b}{c}");
+  });
+
+  it("¥ 는 8이다 — 마지막 한 자리 (개념서 p.89 「-8/15」)", () => {
+    expect(decodeHwpMath(";1¥5;").latex).toBe("\\frac{8}{15}");
+  });
+
+  it("분수가 잇달아 와도 뒤엣것을 삼키지 않는다", () => {
+    // 닫는 기호가 `;;`를 통째로 먹으면 1/3이 조용히 사라진다
+    expect(decodeHwpMath(";2!;;3!;").latex).toBe("\\frac{1}{2}\\frac{1}{3}");
+  });
+
+  /* 분수 안의 문자 — 정비례·반비례가 전부 이 꼴이다.
+   * 분자 자리와 분모 자리가 다른 코드로 온다는 것이 요점이다. */
+  it.each([
+    [";bA;", "\\frac{a}{b}", "p.128 문항 0953"],
+    [";aB;", "\\frac{b}{a}", "p.128 문항 0953"],
+    [";2{;", "\\frac{x}{2}", "p.135 문항 0989 y=-x/2"],
+    [";[#;", "\\frac{3}{x}", "p.135 문항 0990 y=-3/x"],
+    [";[};", "\\frac{y}{x}", "p.135 문항 0991 y/x=2"],
+  ])("%s 는 %s 다 (%s)", (raw, expected) => {
+    expect(decodeHwpMath(raw).latex).toBe(expected);
+  });
+
+  it("자릿수가 같은 옛 표기도 그대로다 — 규칙을 바꿔도 1단원이 흔들리면 안 된다", () => {
+    expect([";2!;", ";6&;", ";1#2%;"].map((s) => decodeHwpMath(s).latex)).toEqual([
+      "\\frac{1}{2}",
+      "\\frac{7}{6}",
+      "\\frac{35}{12}",
+    ]);
   });
 
   it("두 자리 분수의 자리표시자가 다른 수식과 섞여도 제자리에 돌아온다", () => {
     expect(decodeHwpMath("2Û`_;1#2%;_3").latex).toBe(
       "2^{2}\\times \\frac{35}{12}\\times 3",
     );
+  });
+});
+
+describe("큰 괄호 글꼴 — 코드가 한 짝씩 밀려 있다", () => {
+  /* 본책 p.64 문항 0471 한 줄에 세 겹이 다 나온다:
+   *   1/6 × [ -20 - { 3² + ( 1/4 - 1/6 ) × 12 } ]
+   * 바깥 대괄호만 다른 글꼴(EHSusic)이라 제 뜻 그대로다. */
+  it("EHboNA의 { 는 소괄호다 (별책 0346 「(-3/4)+(-1/3)」)", () => {
+    expect(decodeHwpMath("{", "EHboNA-Plain").latex).toBe("\\left(");
+    expect(decodeHwpMath("}", "EHboNA-Plain").latex).toBe("\\right)");
+  });
+
+  it("EHboNA의 [ 는 중괄호다 (별책 p.29 「×{(-6)²…}」)", () => {
+    expect(decodeHwpMath("[", "EHboNA-Plain").latex).toBe("\\left\\{");
+    expect(decodeHwpMath("]", "EHboNA-Plain").latex).toBe("\\right\\}");
+  });
+
+  it("다른 글꼴의 대괄호는 제 뜻 그대로다 — 바깥 대괄호는 EHSusic이다", () => {
+    expect(decodeHwpMath("[", "EHSusic-Plain").latex).toBe("[");
+    expect(decodeHwpMath("]", "EHSusic-Plain").latex).toBe("]");
+  });
+
+  it("분수 안의 [ ] 는 여전히 분모의 x·y다 — 분수를 먼저 걷어내기 때문", () => {
+    expect(decodeHwpMath(";[};", "EHboNB-Italic").latex).toBe("\\frac{y}{x}");
+  });
+
+  it("조각난 큰 괄호도 이어 붙는다 — \\left 짝을 깊이로 센다", () => {
+    const got = mergeUnbalancedMath([
+      { kind: "math", raw: "", latex: "\\left(-\\frac{3}{4}", unknown: [] },
+      { kind: "math", raw: "", latex: "\\right)", unknown: [] },
+    ]);
+    expect(got).toHaveLength(1);
+  });
+});
+
+describe("분수 글꼴의 ¹²³ — 지수가 아니라 세로셈·표 조각이다", () => {
+  it("EHboNA에서 온 ²는 지수로 옮기지 않는다 (문항 0265 보기 표)", () => {
+    const got = decodeHwpMath("²20", "EHboNA-Plain");
+    expect(got.latex).not.toContain("^{2}");
+    expect(got.unknown).toContain("²");
+  });
+
+  it("다른 글꼴의 ²는 그대로 지수다", () => {
+    expect(decodeHwpMath("x²", "EHsang-Italic").latex).toBe("x^{2}");
+  });
+});
+
+describe("조각난 수식 잇기", () => {
+  const math = (latex: string): Run => ({ kind: "math", raw: latex, latex, unknown: [] });
+
+  it("중괄호가 열린 채 끝난 조각은 다음 수식 조각과 붙인다", () => {
+    /* 별책 0346 — 지면은 `{-3/4}+{-1/3}={-9/12}+{-4/12}` 한 줄인데
+     * 마지막 4/12만 2행 분수라 앞뒤로 틈이 벌어져 세 조각이 됐다. */
+    const got = mergeUnbalancedMath([
+      math("{-\\frac{3}{4}}+{-\\frac{1}{3}}={-\\frac{9}{12}}+{-"),
+      math("\\frac{4}{12}"),
+      math("}"),
+    ]);
+    expect(got).toHaveLength(1);
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe(
+      "{-\\frac{3}{4}}+{-\\frac{1}{3}}={-\\frac{9}{12}}+{-\\frac{4}{12}}",
+    );
+  });
+
+  it("짝이 맞는 조각끼리는 붙이지 않는다 — 원래 두 수식일 수 있다", () => {
+    expect(mergeUnbalancedMath([math("2+3"), math("5-1")])).toHaveLength(2);
+  });
+
+  it("열린 중괄호 안의 쉼표는 수식의 일부다 — 순서쌍 (문항 1043 선택지)", () => {
+    const got = mergeUnbalancedMath([
+      math("{-1"),
+      { kind: "text", text: ", " },
+      math("-\\frac{2}{3}}"),
+    ]);
+    expect(got).toHaveLength(1);
+    // 쉼표 뒤 공백은 넣지 않는다 — 수식 모드에서 TeX가 알아서 벌린다
+    expect(got[0]!.kind === "math" && got[0]!.latex).toBe("{-1,-\\frac{2}{3}}");
+  });
+
+  it("뒤에 수식이 없으면 구두점을 삼키지 않는다 — 문장 끝 마침표", () => {
+    const got = mergeUnbalancedMath([math("{-1"), { kind: "text", text: ". " }]);
+    expect(got).toHaveLength(2);
+  });
+
+  it("사이에 한글이 들어오면 붙이지 않는다 — 거기는 진짜로 끊긴 자리다", () => {
+    const got = mergeUnbalancedMath([
+      math("{-"),
+      { kind: "text", text: "그러므로 " },
+      math("}"),
+    ]);
+    expect(got).toHaveLength(3);
+  });
+
+  it("닫는 괄호가 먼저 온 조각도 앞엣것에 붙인다", () => {
+    const got = mergeUnbalancedMath([math("}=-\\frac{13}{12}"), math("+1")]);
+    expect(got).toHaveLength(1);
+  });
+
+  it("이스케이프한 중괄호는 깊이로 세지 않는다", () => {
+    expect(mergeUnbalancedMath([math("\\{a\\}"), math("b")])).toHaveLength(2);
+  });
+
+  it("원래 배열을 건드리지 않는다", () => {
+    const runs = [math("{-"), math("1}")];
+    mergeUnbalancedMath(runs);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.kind === "math" && runs[0]!.latex).toBe("{-");
   });
 });
 

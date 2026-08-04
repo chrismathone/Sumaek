@@ -1,8 +1,11 @@
 /**
  * 개념서 추출 결과 → 학습 자료(learning_materials) 적재.
  *
- *   pnpm --filter @su-maek/ingest load-concepts \
+ *   pnpm --filter @su-maek/ingest load-concepts --chapter=<I|II|III|IV> \
  *     --dump=<개념서 덤프.json> --org=<uuid> --actor=<uuid> [--dry-run] [--verbose]
+ *
+ * **--chapter에 기본값이 없다.** 대단원마다 개념 쪽 허용목록과 잇는 표가
+ * 다르고, 틀린 것을 쓰면 자료가 엉뚱한 개념에 붙거나 통째로 안 들어간다.
  *
  * 문항 반입(load.mts)과 같은 안전 규칙: 멱등(같은 개념·제목은 다시 넣지
  * 않는다), draft로만 넣는다(게시는 사람이), 수식 게이트 실패는 보고한다.
@@ -14,31 +17,95 @@ import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { extractConceptPages } from "../concepts";
 import { loadConceptMaterials } from "../load-materials";
-import { KWR_2022, KWR_M11_CH1_TARGETS } from "../profiles/kwr-2022";
-import { RPM_M1_CH1_CONCEPTS } from "../profiles/rpm-2022-concepts";
+import {
+  KWR_2022,
+  KWR_M11_CH1_TARGETS,
+  KWR_M11_CH2_TARGETS,
+  KWR_M11_CH3_TARGETS,
+  KWR_M11_CH4_TARGETS,
+} from "../profiles/kwr-2022";
+import {
+  RPM_M1_CH1_CONCEPTS,
+  RPM_M1_CH2_CONCEPTS,
+  RPM_M1_CH3_CONCEPTS,
+  RPM_M1_CH4_CONCEPTS,
+} from "../profiles/rpm-2022-concepts";
 import type { SourceDump } from "../types";
 
 const args = process.argv.slice(2);
 const arg = (name: string): string | undefined =>
   args.find((a) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 
+/**
+ * 대단원마다 개념 쪽 허용목록·개념 정의·잇는 표가 다르다.
+ *
+ * **개념 쪽 허용목록은 사람이 확인한 값이다.** 문제 쪽은 조판 신호가 개념
+ * 쪽과 겹쳐, 추론에 맡겼더니 개념 하나가 문제 12쪽 분량(500줄)을 삼켰다.
+ * 여기 적힌 쪽은 두 가지로 확인했다 — 「N. 중단원」 머리글이 있는 쪽과
+ * 「…는가?」+핵심문제로 이어지는 쪽을 훑어 뽑은 뒤, 1단원 결과가 사람이
+ * 손으로 확인해 둔 10,11,17,30,35와 정확히 같은지 대조했다.
+ */
+const CHAPTERS = {
+  I: {
+    number: "I",
+    title: "소인수분해",
+    dumpRange: "6-47",
+    pages: [10, 11, 17, 30, 35],
+    concepts: RPM_M1_CH1_CONCEPTS,
+    targets: KWR_M11_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "정수와 유리수",
+    dumpRange: "48-101",
+    pages: [50, 51, 56, 70, 71, 81, 89],
+    concepts: RPM_M1_CH2_CONCEPTS,
+    targets: KWR_M11_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "문자와 식",
+    dumpRange: "102-173",
+    pages: [104, 105, 111, 117, 132, 133, 139, 156, 163],
+    concepts: RPM_M1_CH3_CONCEPTS,
+    targets: KWR_M11_CH3_TARGETS,
+  },
+  IV: {
+    number: "IV",
+    title: "좌표평면과 그래프",
+    dumpRange: "174-224",
+    pages: [176, 177, 184, 198, 208],
+    concepts: RPM_M1_CH4_CONCEPTS,
+    targets: KWR_M11_CH4_TARGETS,
+  },
+} as const;
+
 const dumpPath = arg("dump");
 const organizationId = arg("org");
 const actorUserId = arg("actor");
 const dryRun = args.includes("--dry-run");
 const verbose = args.includes("--verbose");
+const chapterKey = arg("chapter");
+const target = chapterKey ? CHAPTERS[chapterKey as keyof typeof CHAPTERS] : undefined;
 
-if (!dumpPath || (!dryRun && (!organizationId || !actorUserId))) {
+if (!dumpPath || !target || (!dryRun && (!organizationId || !actorUserId))) {
   console.error(
-    "사용법: load-concepts --dump=<덤프.json> --org=<uuid> --actor=<uuid> [--dry-run] [--verbose]",
+    "사용법: load-concepts --chapter=<I|II|III|IV> --dump=<덤프.json> \\\n" +
+      "                     --org=<uuid> --actor=<uuid> [--pages=50,51] [--dry-run] [--verbose]",
   );
+  if (chapterKey && !target) console.error(`\n  --chapter=${chapterKey} 는 없는 대단원입니다.`);
+  for (const [key, c] of Object.entries(CHAPTERS)) {
+    console.error(
+      `  --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(12)} ` +
+        `덤프 p.${c.dumpRange} · 개념 쪽 ${c.pages.join(",")}`,
+    );
+  }
   process.exit(1);
 }
 
 const dump = JSON.parse(readFileSync(dumpPath, "utf8")) as SourceDump;
-/* 개념 본문이 실리는 쪽 — 차례를 보고 사람이 확인한 값 (RPM의 --expect와
- * 같은 철학). 문제 쪽은 조판 신호가 개념 쪽과 겹쳐 추론만으로는 샌다. */
-const conceptPages = (arg("pages") ?? "10,11,17,30,35")
+/* --pages는 위 허용목록을 덮어쓴다 — 새 쪽을 시험해 볼 때만 쓴다 */
+const conceptPages = (arg("pages") ?? target.pages.join(","))
   .split(",")
   .map((p) => Number(p.trim()))
   .filter((p) => Number.isInteger(p) && p > 0);
@@ -46,6 +113,7 @@ const { concepts, chapter, unassignedLines } = extractConceptPages(dump, KWR_202
   conceptPages,
 });
 
+console.log(`대단원 ${target.number}. ${target.title}`);
 console.log(`개념서 ${dump.source.fileName}`);
 console.log(`  덤프 범위 p.${dump.source.extractedRange[0]}~${dump.source.extractedRange[1]}`);
 console.log(`  대단원: ${chapter ?? "(러닝헤드에서 못 읽음)"}`);
@@ -119,9 +187,9 @@ const result = await loadConceptMaterials(sql, {
     evidenceRef: "반입 시점 미확인",
   },
   profile: KWR_2022,
-  chapter: { number: "I", title: "소인수분해" },
-  concepts: RPM_M1_CH1_CONCEPTS,
-  targets: KWR_M11_CH1_TARGETS,
+  chapter: { number: target.number, title: target.title },
+  concepts: target.concepts,
+  targets: target.targets,
   blocks: concepts,
 });
 

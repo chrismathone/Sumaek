@@ -26,6 +26,7 @@ export type FindingKind =
   | "위첨자-소실"
   | "수식-조각남"
   | "수식-빈칸"
+  | "분수-납작해짐"
   | "과도한-공백"
   | "내용-없음"
   | "구매자-도장";
@@ -194,6 +195,35 @@ export function auditAnswer(printedNumber: string, a: ParsedAnswer): Finding[] {
     });
   }
   a.explanation.forEach((line, i) => inspect(printedNumber, `풀이 ${i}`, line, push));
+  /**
+   * **분모만 홀로 선 줄** — 2행 분수가 납작해진 자국이다.
+   *
+   * 조판기는 `-a/6`을 분자 `a`와 분모 `6` 두 span으로 앉히고 사이에 막대를
+   * 그린다. 그런데 앞의 마이너스가 분자와 **한 span**으로 오는 일이 있어
+   * (별책 1114의 `- a`), 그 span이 막대보다 넓어 짝짓기가 폭 검사에서
+   * 탈락한다. 그러면 분자는 윗줄에 남고 분모는 **혼자 다음 줄**이 된다.
+   *
+   * 결과가 고약하다 — 지면의 `C(-6, -a/6)`이 `C(-6, -a)`로 저장되고,
+   * **KaTeX는 아무 오류 없이 그린다.** 렌더 검사로는 영영 안 잡힌다.
+   * 실측 145곳(해설 955개 중).
+   *
+   * 그래서 모양으로 잡는다: 한 줄이 짧은 수식 **하나뿐**이면 그건 풀이의
+   * 한 단계가 아니라 떨어져 나온 분모다. 진짜 한 줄짜리 결론(`x=3`)은
+   * 등호나 연산자를 달고 있어 이 그물에 걸리지 않는다.
+   */
+  a.explanation.forEach((line, i) => {
+    if (line.length !== 1) return;
+    const only = line[0];
+    if (only?.kind !== "math") return;
+    if (!/^[0-9a-z]{1,3}$/.test(only.latex)) return;
+    push({
+      printedNumber,
+      where: `풀이 ${i}`,
+      kind: "분수-납작해짐",
+      detail: "짧은 수식이 혼자 한 줄을 차지했다 — 2행 분수의 분모가 떨어져 나온 자리다",
+      excerpt: only.latex,
+    });
+  });
   inspect(printedNumber, "채점기준", a.rubric, push);
   return out;
 }
