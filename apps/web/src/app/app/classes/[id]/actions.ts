@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { getSharedSql } from "@su-maek/db";
+import { closeSession, type NodeProgress } from "@su-maek/db/domain";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -184,4 +185,58 @@ export async function dismissAvailability(
   revalidatePath(`/app/classes/${parsed.data.learningGroupId}`);
   revalidatePath("/app/calendar");
   return { ok: true, message: "이벤트를 무시했습니다. 다음 재계산부터 반영되지 않습니다." };
+}
+
+/* ── 반 수업 마감 (T4.2 · E-02 · G-03) ──
+ *
+ * `SessionCompleted`는 계약도 소비자도 있었는데 **발행하는 곳이 없었다.**
+ * 그래서 수업은 영원히 planned에 머물렀고, 일정 엔진은 실제로 어디까지
+ * 나갔는지 영영 알지 못했다.
+ *
+ * 자동 마감은 하지 않는다. 실제 진도는 사람만 안다 — 학생이 다 했다고
+ * 반이 끝나는 것도 아니다(I-21).
+ */
+const PROGRESS_VALUES = ["completed", "partial", "skipped"] as const;
+
+export async function closeSessionAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !canWrite(DEFAULT_MATRIX, user.role, "groups")) {
+    return { ok: false, message: "수업을 마감할 권한이 없습니다." };
+  }
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const learningGroupId = String(formData.get("learningGroupId") ?? "");
+  if (!/^[0-9a-fA-F-]{36}$/.test(sessionId)) {
+    return { ok: false, message: "마감할 수업을 찾을 수 없습니다." };
+  }
+
+  /* 노드별 진행은 `node:<uuid>` 키로 온다 — 폼이 계획된 노드마다 한 줄을
+   * 내므로, 여기서 목록을 다시 만들지 않고 온 것을 그대로 읽는다. 계획
+   * 집합과의 대조는 도메인이 한다(화면이 아니라 서버가 진실을 안다). */
+  const nodeProgress: Record<string, NodeProgress> = {};
+  for (const [key, raw] of formData.entries()) {
+    if (!key.startsWith("node:")) continue;
+    const value = String(raw);
+    if (!(PROGRESS_VALUES as readonly string[]).includes(value)) {
+      return { ok: false, message: "진행 상태 값이 올바르지 않습니다." };
+    }
+    nodeProgress[key.slice(5)] = value as NodeProgress;
+  }
+
+  const note = String(formData.get("note") ?? "").trim();
+  const result = await closeSession(getSharedSql(), {
+    organizationId: user.organizationId,
+    sessionId,
+    actorUserId: user.userId,
+    nodeProgress,
+    note: note.length > 0 ? note : null,
+  });
+
+  if (result.ok && learningGroupId) {
+    revalidatePath(`/app/classes/${learningGroupId}`);
+  }
+  return { ok: result.ok, message: result.message };
 }

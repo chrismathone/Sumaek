@@ -31,10 +31,22 @@ const payloads = {
     learningGroupId: z.uuid().nullable(),
     publishedBy: z.uuid(),
   }),
+  /* E-02. 교사가 **실제로 어디까지 나갔는지** 확인한 기록이다 (T4.2).
+   * 학생 하루 완료(E-16)와 섞지 않는다 — 한 명이 다 했다고 반이 끝나지
+   * 않고, 반이 끝났다고 학생 하루가 끝나지 않는다 (I-21). */
   SessionCompleted: z.object({
     sessionId: z.uuid(),
     learningGroupId: z.uuid(),
     sessionDate: z.iso.date(),
+    timezoneId: z.string().optional(),
+    /** 배정된 담당 교사 — 실제로 마감을 누른 사람은 closedBy다 */
+    teacherId: z.uuid().nullable().optional(),
+    closedBy: z.uuid().optional(),
+    startedAt: z.iso.datetime({ offset: true }).optional(),
+    completedAt: z.iso.datetime({ offset: true }).optional(),
+    /** planning-engine이 partial·not_started면 미래 일정 preview를 만든다 */
+    coverage: z.enum(["full", "partial", "not_started"]).optional(),
+    note: z.string().nullable().optional(),
     /** 부분 완료·미진행 노드 요약 */
     progressSummary: z
       .object({

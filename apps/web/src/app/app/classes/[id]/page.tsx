@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedSql } from "@su-maek/db";
+import { listSessionsAwaitingClose } from "@su-maek/db/domain";
+import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
 import { requireAccess } from "@/lib/auth/require-access";
 import {
   ASSESSMENT_STATUS_LABEL,
@@ -13,6 +15,7 @@ import {
   trimScore,
 } from "@/lib/format";
 import { AvailabilityForm, DismissButton } from "./AvailabilityForm";
+import { SessionCloseList } from "./SessionCloseForm";
 
 const AVAILABILITY_KIND_LABEL: Record<string, string> = {
   learner_absence: "학습 불참",
@@ -72,7 +75,8 @@ export default async function ClassDetailPage({
   `;
   if (!group) notFound();
 
-  const [learners, assessments, upcoming, availabilityEvents] = await Promise.all([
+  const [learners, assessments, upcoming, availabilityEvents, awaitingClose] =
+    await Promise.all([
     sql<
       {
         id: string;
@@ -175,7 +179,32 @@ export default async function ClassDetailPage({
       order by e.created_at desc
       limit 12
     `,
+    /* 마감을 기다리는 수업 (T4.2 · G-03) — 「다가오는 수업」의 반대쪽이다.
+     * 그 목록은 미래만 보여 주므로, 끝난 수업은 어느 화면에도 없었다. */
+    listSessionsAwaitingClose(sql, {
+      organizationId: user.organizationId,
+      learningGroupId: id,
+      today,
+    }),
   ]);
+  const canCloseSession = canWrite(DEFAULT_MATRIX, user.role, "groups");
+  /* 차시 내용의 이름. 학생 화면의 nodeTitleMap을 쓰지 않는다 — 그쪽은
+   * 학생별 오버라이드 노드까지 푸는 함수라 learnerId가 필요하고, 반 화면에는
+   * 그 학생이 없다. 여기서 보는 것은 반 공통 루트 노드뿐이다. */
+  const closeNodeIds = [
+    ...new Set(awaitingClose.flatMap((s) => s.plannedNodeIds)),
+  ];
+  const closeNodeTitle: Record<string, string> = {};
+  if (closeNodeIds.length > 0) {
+    const titleRows = await sql<{ id: string; title: string | null }[]>`
+      select id::text, title from route_nodes
+      where organization_id = ${user.organizationId}
+        and id = any(${closeNodeIds}::uuid[])
+    `;
+    for (const r of titleRows) {
+      if (r.title) closeNodeTitle[r.id] = r.title;
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -317,6 +346,15 @@ export default async function ClassDetailPage({
             </ul>
           )}
         </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">마감할 수업</h2>
+        <SessionCloseList
+          sessions={awaitingClose}
+          nodeTitle={closeNodeTitle}
+          canClose={canCloseSession}
+        />
       </section>
 
       <section className="mt-8">

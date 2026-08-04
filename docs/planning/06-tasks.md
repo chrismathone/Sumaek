@@ -30,7 +30,7 @@
 |---|---|---|---|---|
 | G-01 | 최근 90일의 완료 테스트가 오늘 완료로 오인될 수 있음 | 오늘 날짜·오늘 계획 항목만으로 완료 판정 | P0 | T1.1, T1.3, T1.4 |
 | ~~G-02~~ **닫힘** | 하루 완료가 화면 계산일 뿐 서버에 확정 기록이 없음 | 계획·항목 테이블이 생기고(T1.2), 필수를 전부 마친 순간 `completed_at`과 `LearnerDayCompleted`(E-16)가 같은 트랜잭션에 남는다 — 계획 1건당 최대 1회(I-22), 재투영·완료 취소가 지우지 못한다(T4.1) | P0 | T1.2, T4.1 ✔ |
-| G-03 | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사 마감 또는 정책 기반 집계로 원자적 발행 | P0 | T4.2 |
+| ~~G-03~~ **닫힘** | `SessionCompleted` 계약은 있으나 제품 발행 경로가 없음 | 교사가 계획 노드별 실제 진행을 확인해 마감하면 `sessions`·`progress_events`·E-02가 한 트랜잭션에 남는다. 자동 마감은 만들지 않았다 — 진도는 사람만 안다 | P0 | T4.2 ✔ |
 | ~~G-04~~ **닫힘** | 일일·확인테스트가 교사 버튼으로만 생성됨 | 워커 생산자가 수업 24시간 전에 멱등 생성·배정하고(T3.1·T3.2), 평가 노드가 실제 평가가 되며(T3.3), 실패는 사유·조치와 함께 교사 업무함에 닿고 같은 멱등 키로 재실행된다(T3.4) | P0 | T3.1~T3.4 ✔ |
 | G-05 | `book_range`, `homework`, `confirmation_test` 노드가 학생 행동으로 연결되지 않음 | 모든 필수 노드가 실행기 또는 명시적 비필수 상태를 가짐 | P0 | T2.1~T2.3 |
 | G-06 | 문항 없는 연습 자료도 게시할 수 있어 학생이 영구 대기함 | 게시·루트 게시 전 실행 가능성 검증 | P0 | T2.4 |
@@ -833,7 +833,7 @@ Set-Location ..\Su-Maek-t4-1-learner-complete
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t4-1-learner-complete`
 
-### [] Phase 4, T4.2: 반 수업 마감·실제 진도·SessionCompleted RED→GREEN
+### [x] Phase 4, T4.2: 반 수업 마감·실제 진도·SessionCompleted RED→GREEN
 
 **담당**: backend-specialist + frontend-specialist
 
@@ -859,17 +859,22 @@ Set-Location ..\Su-Maek-t4-2-session-close
 3. **REFACTOR**: 자동 마감은 정책상 허용된 경우에만 실행하고 기본은 교사 확인으로 유지한다.
 
 **산출물**:
-- `apps/web/src/app/app/classes/[id]/SessionCloseForm.tsx`
-- `apps/web/src/app/app/classes/[id]/actions.ts`
-- `packages/db/src/domain/session-execution.ts`
-- `apps/web/test/integration/session-close.test.ts`
+- `packages/db/src/domain/session-execution.ts` — `closeSession`·`listSessionsAwaitingClose`
+- `packages/contracts/src/events/index.ts` — E-02 payload 확장(coverage·closedBy·note, 추가만)
+- `apps/web/src/app/app/classes/[id]/{SessionCloseForm.tsx,actions.ts,page.tsx}` — 「마감할 수업」
+- `packages/db/test/session-close.test.ts` (15) · `apps/web/test/integration/session-close.test.ts` (4)
 
 **인수 조건**:
-- [ ] 실제 진행 요약이 planned node 집합과 대조됨
-- [ ] `progress_events`와 `SessionCompleted`가 같은 트랜잭션에 있음
-- [ ] 완료·잠금 수업은 재마감 또는 자동 변경되지 않음
-- [ ] 한 명 미완료가 자동으로 반 전체 완료가 되지 않음
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 실제 진행 요약이 planned node 집합과 대조됨 — 양방향이다. 계획에 없는 노드는 적을 수 없고, 계획된 노드를 빠뜨려도 거부한다(조용히 「건너뜀」으로 만들지 않는다)
+- [x] `progress_events`와 `SessionCompleted`가 같은 트랜잭션에 있음 — 노드가 0개인 차시도 차시 단위 기록 한 줄을 남긴다. 없으면 정상 마감이 I-21의 「교사 마감 기록 없이 완료된 수업」과 같은 모양이 된다
+- [x] 완료·잠금 수업은 재마감 또는 자동 변경되지 않음 — 자동 마감 경로 자체를 만들지 않았다
+- [x] 한 명 미완료가 자동으로 반 전체 완료가 되지 않음 — 반대 방향(반 마감이 학생 하루를 완료시키지 않음)도 함께 고정
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `session-execution.ts` 문 100% · 분기 91%
+
+**설계 시 정정**:
+1. **E-02 카탈로그는 `in_progress → completed`를 발행 시점으로 적었다.** 그런데 `in_progress`로 넘기는 코드가 제품에 없다 — 수업은 `planned`에서 만들어져 그대로 있다. 그 상태를 요구하면 마감이 구조적으로 불가능하다. `planned`·`confirmed`·`in_progress` 셋에서 마감할 수 있게 했다.
+2. **자동 마감은 만들지 않았다.** 실제로 어디까지 나갔는지는 사람만 안다. 정책 훅을 미리 뚫어 두면 「켜면 도는 무언가」가 하나 늘고, 그 무언가는 진도 기록을 append-only 테이블에 쓴다 — 되돌릴 수 없는 것을 자동화하는 순서가 거꾸로다.
+3. **payload는 camelCase다.** 카탈로그 예시는 snake_case지만 정의처는 `packages/contracts`이고 코드 전체가 camelCase다 (E-16에서 같은 정정).
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합
