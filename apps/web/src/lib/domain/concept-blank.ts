@@ -1,7 +1,7 @@
 import "server-only";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "@su-maek/db";
-import { keywordCoverage, matchesTermAnswer } from "@su-maek/core/grading";
+import { matchesTermAnswer } from "@su-maek/core/grading";
 
 /* ─────────────────────────────────────────────────────────────
  * 개념 빈칸 — 인강을 보고 넘어가는 것이 아니라 인출하게.
@@ -152,11 +152,12 @@ export async function submitBlankAnswers(input: {
   blankSetId: string;
   /** one·two: position → 답. full: 자유 서술 한 덩어리 */
   answers: Record<number, string>;
-  essay?: string;
-  /** 글자로 못 찾은 핵심어를 **뜻으로** 다시 보는 판정자(3단계 전용).
-   *  네트워크를 쓰는 일이라 도메인이 직접 하지 않는다 — 호출자가 넣는다.
-   *  없으면 글자 판정만 쓴다. */
-  resolveMissing?: (essay: string, missing: string[]) => Promise<string[]>;
+  /** 글자가 어긋난 칸을 **뜻으로** 다시 보는 판정자. 네트워크를 쓰는 일이라
+   *  도메인이 직접 하지 않는다 — 호출자가 넣는다. 없으면 글자 판정만 쓴다.
+   *  돌려주는 것은 「맞은 것으로 볼 칸의 자리 번호」다. */
+  resolveNear?: (
+    pairs: Array<{ position: number; answer: string; submitted: string }>,
+  ) => Promise<number[]>;
 }): Promise<BlankGradeResult> {
   const sql = getSharedSql();
   const [set] = await sql<
@@ -179,32 +180,35 @@ export async function submitBlankAnswers(input: {
   let missing: string[] = [];
   let correct = 0;
 
-  if (set.stage === "full") {
-    const cover = keywordCoverage(input.essay ?? "", blanks.map((b) => b.answer));
-    found = cover.found;
-    missing = cover.missing;
-    /* 자기 말로 쓰는 자리다 — 글자가 없어도 **뜻이 맞으면 맞은 것**이다.
-     * 「소인수들의 곱으로 나타낸다」라고 쓴 학생이 「소인수분해」라는 낱말을
-     * 안 썼다는 이유로 틀리면, 3단계가 인출이 아니라 받아쓰기가 된다. */
-    if (missing.length > 0 && input.resolveMissing) {
-      const alsoCovered = await input.resolveMissing(input.essay ?? "", missing);
-      if (alsoCovered.length > 0) {
-        found = [...found, ...alsoCovered];
-        missing = missing.filter((m) => !alsoCovered.includes(m));
-      }
-    }
-    correct = found.length;
-  } else {
-    for (const b of blanks) {
-      const isRight = matchesTermAnswer(
-        input.answers[b.position] ?? "",
-        b.answer,
-        b.alternatives,
-      );
-      graded[b.position] = isRight;
-      if (isRight) correct += 1;
+  /* 글자로 먼저 본다 — 대부분 여기서 끝나고 공짜다 */
+  const near: Array<{ position: number; answer: string; submitted: string }> = [];
+  for (const b of blanks) {
+    const submitted = (input.answers[b.position] ?? "").trim();
+    const isRight = matchesTermAnswer(submitted, b.answer, b.alternatives);
+    graded[b.position] = isRight;
+    if (isRight) {
+      correct += 1;
+      found.push(b.answer);
+    } else if (submitted.length > 0) {
+      near.push({ position: b.position, answer: b.answer, submitted });
     }
   }
+
+  /* 글자가 어긋난 것만 **뜻으로** 다시 본다 — 「소인수들의 곱으로 나타내는
+   * 것」이라 제대로 쓴 학생이 낱말이 다르다는 이유로 틀리면 인출이 아니라
+   * 받아쓰기가 된다. 안 쓴 칸은 묻지 않는다(빈 답은 언제나 오답이다). */
+  if (near.length > 0 && input.resolveNear) {
+    const ok = await input.resolveNear(near);
+    for (const pos of ok) {
+      if (graded[pos] === false) {
+        graded[pos] = true;
+        correct += 1;
+        const b = blanks.find((x) => x.position === pos);
+        if (b) found.push(b.answer);
+      }
+    }
+  }
+  missing = blanks.filter((b) => !graded[b.position]).map((b) => b.answer);
   const total = blanks.length;
   const completed = total > 0 && correct === total;
 
@@ -247,9 +251,7 @@ export async function submitBlankAnswers(input: {
     completed,
     message: completed
       ? "모두 맞혔습니다."
-      : set.stage === "full"
-        ? `핵심어 ${total}개 중 ${correct}개를 담았습니다.`
-        : `${total}칸 중 ${correct}칸을 맞혔습니다.`,
+      : `${total}칸 중 ${correct}칸을 맞혔습니다.`,
   };
 }
 
@@ -303,21 +305,6 @@ export async function getBlankStage(input: {
   `;
   if (!set) return null;
   const blanks = parseBlanks(set.blanks);
-
-  /* full 단계는 본문을 주지 않는다 — 통째로 다시 쓰는 자리다 */
-  if (input.stage === "full") {
-    return {
-      setId: set.id,
-      conceptId: input.conceptId,
-      conceptName: set.concept_name,
-      stage: "full",
-      bodies: [],
-      orphans: [],
-      total: blanks.length,
-      status: (set.status as "in_progress" | "completed") ?? "none",
-      bestCorrect: set.best_correct ?? 0,
-    };
-  }
 
   const readings = await sql<{ id: string; title: string; body: unknown }[]>`
     select id::text, title, body from learning_materials

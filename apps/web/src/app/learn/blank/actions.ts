@@ -5,7 +5,7 @@ import {
   submitBlankAnswers,
   type BlankGradeResult,
 } from "@/lib/domain/concept-blank";
-import { resolveMissingBySemantics } from "@/lib/learn/blank-semantic";
+import { resolveNearAnswers } from "@/lib/learn/blank-semantic";
 
 /* 빈칸 제출 — 입력칸은 본문 HTML 안에 `b-{자리}`라는 이름으로 심겨 있고
  * (ReadingBody), 3단계는 하나의 textarea다. 제어 컴포넌트로 만들지 않았기
@@ -34,9 +34,8 @@ export async function submitBlankAction(
     learnerId: learner.learnerId,
     blankSetId: String(formData.get("setId") ?? ""),
     answers,
-    essay: String(formData.get("essay") ?? ""),
-    // 3단계 — 글자로 못 찾은 핵심어를 뜻으로 다시 본다(실패하면 글자 판정 그대로)
-    resolveMissing: resolveMissingBySemantics,
+    // 글자가 어긋난 칸을 뜻으로 다시 본다(실패하면 글자 판정 그대로)
+    resolveNear: resolveNearAnswers,
   });
   /* 쓴 답을 돌려준다 — 채점 뒤 폼이 다시 그려지면서 입력칸이 비기 때문이다.
    * 본문은 서버가 그린 HTML이라 defaultValue를 걸 자리가 없고, 답이 사라지면

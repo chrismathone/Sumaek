@@ -14,15 +14,17 @@ import { ReadingBody } from "@/components/materials/ReadingBody";
 import { LectureVideoCard } from "@/components/learn/LectureVideoCard";
 import { BlankForm } from "./BlankForm";
 
-export const metadata: Metadata = { title: "개념 확인" };
+/* 제목도 개념 학습과 같다 — 탭 이름이 바뀌면 「다른 화면으로 왔다」가 된다 */
+export const metadata: Metadata = { title: "개념 학습" };
 
 /* ─────────────────────────────────────────────────────────────
  * 개념 확인 (빈칸) — 인강을 보고 넘어가는 것이 아니라 인출하게.
  *
- * 화면은 **개념 섹션과 똑같다.** 같은 자료, 같은 카드(정의·예·핵심·순서),
- * 같은 배치에서 낱말만 입력칸으로 바뀌어 있다. 따로 만든 문장을 보여 주면
- * 방금 읽은 것과 다른 글을 보게 되고, 그러면 「배운 것을 떠올린다」가 아니라
- * 「새 문제를 푼다」가 된다.
+ * 화면은 **개념 학습과 똑같은 곳이다.** 제목도, 개념 차례도, 좌우 배치도,
+ * 카드도 그대로다 — 방금 읽던 그 자리에서 **낱말만 빈칸으로 바뀐다.**
+ * 제목이 「개념 확인」으로 바뀌고 차례가 사라지면 학생은 다른 화면으로 옮겨
+ * 왔다고 느끼고, 그 순간 「읽은 것을 떠올린다」가 「새 문제를 푼다」가 된다.
+ * 단계 표시만 조용히 덧붙인다.
  *
  * 단계는 발판을 걷어내는 순서다: one(핵심어 한둘) → two(뼈대까지) →
  * full(본문 없이 통째로 다시 쓰기).
@@ -74,6 +76,25 @@ export default async function BlankPage({
   ]);
   if (!view) redirect(`/learn/study?c=${conceptId}`);
 
+  /* 오늘 개념 차례 — 개념 학습과 **같은 동그라미 차례**를 그린다. 순서도
+   * 같은 질의(listMaterials의 개념명 정렬)에서 나오므로 번호가 어긋나지
+   * 않는다. */
+  const todayMaterials = await listMaterials({
+    organizationId: learner.user.organizationId,
+    learnerId: learner.learnerId,
+    conceptIds: scope.conceptIds,
+  });
+  const conceptOrder: string[] = [];
+  const doneOf = new Map<string, boolean>();
+  for (const m of todayMaterials) {
+    if (!conceptOrder.includes(m.conceptId)) {
+      conceptOrder.push(m.conceptId);
+      doneOf.set(m.conceptId, true);
+    }
+    if (m.progress !== "completed") doneOf.set(m.conceptId, false);
+  }
+  const pageNo = conceptOrder.indexOf(conceptId) + 1;
+
   /* 이 개념의 인강 — 개념 학습 화면과 같은 카드로 오른쪽에 둔다.
    * 폼 **밖**이다: 임베드가 아닌 영상은 카드 안에 자기 폼(다 봤어요)을
    * 갖는데, 폼 안에 폼을 넣으면 브라우저가 바깥 폼을 깨뜨린다. */
@@ -98,45 +119,74 @@ export default async function BlankPage({
 
   return (
     <div data-wide>
+      {/* 머리글 — 개념 학습과 **같은 것**이다. 문장만 지금 할 일을 말한다. */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
         <div>
-          <h1 className="font-[MaruBuri] text-2xl font-semibold break-keep">
-            {view.conceptName} — 개념 확인
-          </h1>
+          <h1 className="font-[MaruBuri] text-2xl font-semibold">개념 학습</h1>
           <p className="mt-1 text-sm break-keep text-ink-soft">
             {stage === "full"
-              ? "본문 없이 배운 개념을 다시 써 봅니다."
-              : "방금 읽은 그 자리에서 빠진 말을 채워 보세요."}
+              ? "본문 없이 배운 개념을 다시 써 봅니다. 기억이 안 나면 오른쪽 인강을 다시 봐도 됩니다."
+              : "방금 읽은 그 자리입니다. 빠진 말을 채워 보세요."}
           </p>
         </div>
-        {/* 단계 차례 — 어디쯤인지 숨기지 않는다 */}
-        <nav aria-label="단계" className="flex gap-1.5">
-          {stages.map((s) => (
-            <Link
-              key={s}
-              href={`/learn/blank?c=${conceptId}&s=${s}`}
-              aria-current={s === stage ? "page" : undefined}
-              className={`rounded-[var(--radius-control)] border px-3 py-1.5 font-mono text-xs ${
-                s === stage
-                  ? "border-pen bg-pen font-bold text-white"
-                  : "border-rule bg-surface text-ink-soft"
-              }`}
-            >
-              {STAGE_LABEL[s]}
-            </Link>
-          ))}
-        </nav>
+        {conceptOrder.length > 1 && (
+          <nav aria-label="개념 차례" className="flex flex-wrap gap-1.5">
+            {conceptOrder.map((id, i) => {
+              const isCurrent = id === conceptId;
+              const done = doneOf.get(id) ?? false;
+              return (
+                <Link
+                  key={id}
+                  href={`/learn/study?p=${i + 1}`}
+                  aria-current={isCurrent ? "page" : undefined}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border font-mono text-sm ${
+                    isCurrent
+                      ? "border-pen bg-pen font-bold text-white"
+                      : done
+                        ? "border-rule bg-paper text-ink-soft"
+                        : "border-pen/50 bg-surface text-pen"
+                  }`}
+                >
+                  {done && !isCurrent ? "✓" : i + 1}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
       </div>
 
       <section className="mt-3 rounded-lg border border-rule bg-surface p-5">
-        <p className="font-mono text-xs text-ink-soft">
-          {STAGE_LABEL[stage]} · 빈칸 {view.total}개
-        </p>
+        {/* 개념 학습과 같은 캡션·같은 제목 자리. 단계는 그 옆에 조용히 붙인다 */}
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="font-mono text-xs text-ink-soft">
+            개념 {pageNo}/{conceptOrder.length}
+          </p>
+          <nav aria-label="단계" className="flex gap-1">
+            {stages.map((s) => (
+              <Link
+                key={s}
+                href={`/learn/blank?c=${conceptId}&s=${s}`}
+                aria-current={s === stage ? "page" : undefined}
+                className={`rounded-[var(--radius-control)] px-1.5 py-0.5 font-mono text-[11px] ${
+                  s === stage
+                    ? "bg-pen font-bold text-white"
+                    : "border border-rule text-ink-soft"
+                }`}
+              >
+                {STAGE_LABEL[s]}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <h2 className="mt-0.5 text-lg font-semibold break-keep">
+          {view.conceptName}
+        </h2>
 
         {/* 개념 학습과 같은 배치 — 왼쪽 설명이 빈칸으로 바뀌었을 뿐이고,
             오른쪽 인강은 그 자리에 그대로 있다. */}
-        <div className="mt-3 grid gap-x-10 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
+        <div className="mt-4 grid gap-x-10 border-t border-rule-soft pt-4 lg:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
           <div className="pb-5">
+            <h3 className="font-mono text-xs text-ink-soft">설명</h3>
             <BlankForm
               setId={view.setId}
               stage={stage}

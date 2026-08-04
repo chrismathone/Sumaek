@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { submitBlankAction } from "./actions";
 import type { BlankGradeResult } from "@/lib/domain/concept-blank";
@@ -27,6 +27,21 @@ export function BlankForm({
   nextLabel: string;
   children: React.ReactNode;
 }) {
+  /* 음성 입력의 대상 — 학생이 **방금 누른 칸**이다. 칸마다 마이크를 두면
+   * 문장 사이에 버튼이 박혀 개념 섹션과 다른 화면이 된다. 아직 아무 칸도
+   * 안 눌렀으면 비어 있는 첫 칸으로 보낸다. */
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const lastFieldRef = useRef<HTMLInputElement | null>(null);
+  const pickTarget = () => {
+    const f = lastFieldRef.current;
+    if (f?.isConnected) return f;
+    const all = [
+      ...(formRef.current?.querySelectorAll<HTMLInputElement>('input[name^="b-"]') ??
+        []),
+    ];
+    return all.find((i) => i.value.trim().length === 0) ?? all[0] ?? null;
+  };
+
   const [state, action, pending] = useActionState<
     BlankGradeResult | null,
     FormData
@@ -52,31 +67,26 @@ export function BlankForm({
   }, [state]);
 
   return (
-    <form action={action}>
+    <form
+      ref={formRef}
+      action={action}
+      onFocusCapture={(e) => {
+        const t = e.target as HTMLElement;
+        if (t instanceof HTMLInputElement && t.name.startsWith("b-")) {
+          lastFieldRef.current = t;
+        }
+      }}
+    >
       <input type="hidden" name="setId" value={setId} />
 
-      {stage === "full" ? (
-        <div>
-          <label htmlFor="essay" className="block text-sm break-keep text-ink-soft">
-            배운 개념을 자기 말로 써 보세요. 핵심어 {total}개가 들어가면 됩니다.
-          </label>
-          <textarea
-            id="essay"
-            name="essay"
-            rows={8}
-            className="mt-2 block w-full rounded-lg border border-rule bg-surface px-3 py-2 text-[15px] leading-relaxed focus:border-pen focus:outline-none"
-          />
-          <VoiceInputHint
-            getTarget={() =>
-              document.getElementById("essay") as HTMLTextAreaElement | null
-            }
-          />
-        </div>
-      ) : (
-        /* 1·2단계는 **타이핑만**이다(소유자 결정). 칸이 여럿인 화면에서
-           마이크는 「어느 칸에 넣을지」를 학생이 먼저 정해야 해서, 한 낱말을
-           넣는 일이 되레 두 동작이 된다. 말로 하는 자리는 3단계다. */
-        children
+      {children}
+      {/* 3단계만 말로도 입력할 수 있다 — 칸이 많아 타이핑 부담이 크다.
+          1·2단계는 타이핑만이다(소유자 결정). */}
+      {stage === "full" && (
+        <VoiceInputHint
+          getTarget={pickTarget}
+          idle="채울 칸을 누른 뒤 말하면 그 칸에 들어갑니다."
+        />
       )}
 
       {/* 채점 결과 — 어느 칸이 틀렸는지는 칸 옆이 아니라 여기 모아서 말한다.
@@ -92,12 +102,7 @@ export function BlankForm({
           }`}
         >
           <p className="font-medium">{state.message}</p>
-          {stage === "full" && state.missing.length > 0 && (
-            <p className="mt-1 text-ink-soft">
-              빠진 말: {state.missing.join(" · ")}
-            </p>
-          )}
-          {stage !== "full" && !done && (
+          {!done && (
             <p className="mt-1 text-ink-soft">
               틀린 칸:{" "}
               {Object.entries(state.graded)
