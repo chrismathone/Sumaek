@@ -56,9 +56,11 @@
 
 ---
 
-## 2. 이벤트 15종
+## 2. 이벤트 17종
 
 각 항목의 `발행 시점`은 **어느 트랜잭션의 커밋과 함께인지**를 뜻한다.
+
+> E-01~E-15는 골프롬프트 2C 원안. **E-16·E-17은 [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md)이 추가했고 아직 구현 전이다**(각각 T4.1·T3.4). 새 소비자는 없다 — §1.2 등록부의 `planning-engine`·`assessment-generator`·`read-model`·`notifier`·`analytics`를 그대로 쓴다.
 
 ---
 
@@ -628,6 +630,82 @@
 
 ---
 
+### E-16 `LearnerDayCompleted`
+
+| 항목 | 값 |
+|---|---|
+| aggregate | `LearnerDayPlan` |
+| 발행 시점 | `learner_day_plans.status → completed` + `completed_at` 설정 트랜잭션 |
+| schema_version | 1 |
+| 소비자 | `planning-engine`, `read-model`, `notifier`, `analytics` |
+
+```jsonc
+"payload": {
+  "learner_day_plan_id": "01J...",
+  "learner_id": "01J...",
+  "learning_group_id": "01J...",            // 복습만 있는 날이면 null
+  "plan_date": "2026-08-04",
+  "timezone_id": "Asia/Seoul",
+  "completed_at": "2026-08-04T11:20:00Z",
+  "source": "learner_schedule",             // learner_schedule | group_session | review_only
+  "items": {
+    "required_total": 5,
+    "required_completed": 4,
+    "required_exempted": 1,
+    "optional_completed": 2
+  },
+  "route_node_ids": ["01J...", "01J..."]    // 오늘 항목이 나온 노드 (복습 항목은 빠짐)
+}
+```
+
+**이 이벤트는 반 수업을 완료시키지 않는다** (`I-21`). `sessions.status`를 바꾸는 소비자는 없다. 반 마감은 교사의 별도 명령이고 E-02가 나른다 — [ADR-0017](../adr/0017-learner-day-and-session-completion.md) §1.
+
+**멱등성**: `learner_day_plans`의 `UNIQUE (organization_id, learner_id, plan_date)`와 완료 CAS 전이로 계획 1건당 **최대 1회** 발행된다(`I-22`). 교사가 완료를 취소했다가 다시 완료돼도 **재발행하지 않는다** — `completed_at`이 이미 있기 때문이다.
+
+`planning-engine`은 `required_completed < required_total`인 완료(면제가 섞인 날)를 진도 계산에서 구분한다. 면제는 "했다"가 아니다.
+
+---
+
+### E-17 `DailyAssessmentGenerationFailed`
+
+| 항목 | 값 |
+|---|---|
+| aggregate | `Session` |
+| 발행 시점 | `assessment.generate` 작업이 **재시도 불가** 오류로 끝나거나 재시도 소진 후 `jobs.status='failed'`로 전이하는 트랜잭션 |
+| schema_version | 1 |
+| 소비자 | `notifier`, `read-model`, `analytics` |
+
+```jsonc
+"payload": {
+  "session_id": "01J...",
+  "learning_group_id": "01J...",
+  "route_node_id": "01J...",
+  "plan_date": "2026-08-05",
+  "purpose": "daily",                       // daily | confirmation
+  "job_id": "01J...",
+  "idempotency_key": "assessment.generate:01J...:2026-08-05:daily",
+  "reason": "insufficient_questions",       // insufficient_questions | no_blueprint |
+                                            // no_policy | rights_expired | transient_db
+  "retryable": false,
+  "attempt_count": 8,
+  "detail": {
+    "requested_count": 20,
+    "eligible_count": 3,
+    "shortfall_buckets": ["weakness", "spaced_review"]
+  },
+  "recovery_href": "/app/tests?session=01J...",
+  "failed_at": "2026-08-04T21:00:00Z"
+}
+```
+
+**왜 성공 이벤트가 없나**: 생성 성공은 E-04 `AssessmentPublished`가 이미 나른다. **왜 요청 이벤트가 없나**: 요청은 이벤트가 아니라 `jobs` 행이다 — 멱등 키·재시도 횟수·상태를 그 행이 이미 담는다. 같은 사실을 두 곳에 두면 둘이 어긋난다([ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4).
+
+**실패가 성공처럼 보이지 않는다**: 이 경로로 끝난 평가는 게시·배정되지 않는다. 학생 화면에서는 해당 하루 계획 항목이 `blocked`(사유 `assessment_generation_failed`)로 남고, 교사는 `recovery_href`로 복구 화면에 닿는다.
+
+`reason`이 `transient_db`면 `retryable=true`이고 이 이벤트는 **재시도가 모두 소진된 뒤에만** 발행된다. 백오프 중에는 발행하지 않는다 — 일시 장애로 교사에게 알림을 쏘지 않기 위해서다.
+
+---
+
 ## 3. 이벤트 → 소비자 매트릭스
 
 | 이벤트 | session-execution | planning-engine | assessment-generator | attempt-processor | mastery-engine | content-gatekeeper | curriculum-impact | read-model | notifier | analytics |
@@ -647,6 +725,10 @@
 | E-13 RenderArtifactValidated | | | | | | ● | | | | ● |
 | E-14 QuestionQuarantined | | | ● | ● | | ● | | ● | ● | ● |
 | E-15 ContentRightsRevoked | | | ● | | | ● | | ● | ● | ● |
+| E-16 LearnerDayCompleted | | ● | | | | | | ● | ● | ● |
+| E-17 DailyAssessmentGenerationFailed | | | | | | | | ● | ● | ● |
+
+E-16에 `session-execution` 열이 비어 있는 것이 `I-21`이다 — **학생 하루 완료를 받아 `sessions`를 바꾸는 소비자는 없다.**
 
 ---
 
@@ -658,9 +740,14 @@ flowchart LR
     E03["E-03 LearningAvailabilityChanged"] --> E08["E-08 ScheduleProposalCreated"]
     E02["E-02 SessionCompleted"] --> E08
     E07["E-07 MasteryUpdated"] --> E08
+    E16["E-16 LearnerDayCompleted"] --> E08
     E08 -->|"승인"| E09["E-09 ScheduleProposalApplied"]
     E09 --> S
-    S --> E04["E-04 AssessmentPublished"]
+    S --> J["job assessment.generate"]
+    J --> E04["E-04 AssessmentPublished"]
+    J -.->|"재시도 소진"| E17["E-17 DailyAssessmentGenerationFailed"]
+    E04 --> D["learner_day_plans 항목"]
+    D --> E16
     E04 --> E05["E-05 AttemptSubmitted"]
     E05 --> E06["E-06 GradeFinalized"]
     E06 --> E07
@@ -675,7 +762,11 @@ flowchart LR
     class E12,E14,E15 block
 ```
 
-**핵심 자동 순환**은 `E-01 → sessions → E-04 → E-05 → E-06 → E-07 → E-08 → E-09 → sessions`다. 이 순환이 제품의 노스스타이며, 각 화살표는 위 이벤트 계약으로 구현된다.
+**핵심 자동 순환**은 `E-01 → sessions → assessment.generate → E-04 → E-05 → E-06 → E-07 → E-08 → E-09 → sessions`다. 이 순환이 제품의 노스스타이며, 각 화살표는 위 이벤트 계약으로 구현된다.
+
+`sessions`와 `E-04` 사이의 `assessment.generate`는 **이벤트가 아니라 작업**이다([ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4·§5). 지금은 이 자리가 **비어 있고 교사의 버튼이 대신하고 있다** — `apps/worker/src/registry.ts`에 `assessment.*` 핸들러가 없다. T3.2가 채운다.
+
+**학생 순환**은 `E-04 → learner_day_plans 항목 → E-16 → E-08`이다. 반 순환(E-02)과 갈라져 있고, 합류점은 `E-08 ScheduleProposalCreated` 하나뿐이다 — 두 완료가 섞이지 않으면서도 미래 일정에는 둘 다 반영된다.
 
 `causation_id` 사용 예: `E-06`이 만든 `E-07`은 `causation_id = E-06.event_id`. `E-07`이 만든 `E-08`은 `causation_id = E-07.event_id`. `correlation_id`는 최초 사용자 요청의 `trace_id`로 전 사슬에 동일하게 유지된다. 한 번의 답안 제출이 만든 모든 후속 변경을 하나의 ID로 추적할 수 있다.
 

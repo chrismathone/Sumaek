@@ -229,6 +229,34 @@
 | 수동 대응 | 마이그레이션 역방향 스크립트 실행(각 마이그레이션에 필수 첨부) |
 | 런북 | [RB-14](../runbooks/14-deploy-migration-rollback.md) |
 
+### F-19 학생 하루가 차단되어 완주 불가
+
+> [ADR-0017](../adr/0017-learner-day-and-session-completion.md)이 정의한 상태. **아직 구현 전**(T1.2·T2.4·T4.4).
+
+| 항목 | 내용 |
+|---|---|
+| **반드시 유지할 동작** | 학생이 **왜** 막혔는지 알고, 교사가 **무엇을 고치면** 풀리는지 안다. 조용히 「할 일 없음」으로 보이지 않는다 |
+| 구조적 이유 | `learner_day_plan_items.blocked_reason`은 게시 준비도 게이트와 **같은 코드 레지스트리**를 쓴다. 교사가 게시 전에 보는 사유와 학생이 당일 만나는 사유가 같은 말이라야 복구 링크를 이을 수 있다 |
+| 대표 사유 | `material_missing` · `no_questions` · `rights_expired` · `account_unlinked` · `assessment_generation_failed` |
+| 탐지 | `blocked_day_plan_rate` — 오늘 계획 중 `status='blocked'` 비율. 반 단위로 1건이라도 있으면 교사 현황판에 노출 |
+| 자동 대응 | 없다. **차단을 자동으로 면제로 바꾸지 않는다** — 그러면 자료 미게시 사고가 「면제 처리됨」으로 위장된다(ADR-0017 §2) |
+| 수동 대응 | 사유별 복구(자료 연결·문항 추가·사용권 갱신·계정 연결·평가 재생성) 후 재투영. 필수에서 뺄 판단이면 교사가 명시적으로 `exempted` |
+| 주의 | **선택 항목의 차단은 완주를 막지 않는다.** 학생에게 알리되 하루는 끝낼 수 있다 |
+
+### F-20 자동 평가 생성 실패
+
+> [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §4~§5. **아직 구현 전**(T3.2·T3.4).
+
+| 항목 | 내용 |
+|---|---|
+| **반드시 유지할 동작** | 실패가 **성공처럼 게시·배정되지 않는다.** 빈 평가를 학생에게 내보내지 않는다 |
+| 구조적 이유 | 재시도 가능(`transient_db`)과 불가(`insufficient_questions`·`no_blueprint`·`rights_expired`)를 오류 코드로 가른다. E-17은 **재시도가 모두 소진된 뒤에만** 발행한다 — 일시 장애로 교사에게 알림을 쏘지 않기 위해서다 |
+| 탐지 | `assessment_generation_lag` — 수업 시작 N시간 전인데 `published` 평가가 없는 `sessions` 수. `jobs` DLQ 유입률 |
+| 자동 대응 | 지수 백오프 재시도(`attempt_count >= 8`이면 `failed`). 학생 화면에서는 해당 항목이 `blocked`로 남는다(F-19와 연결) |
+| 수동 대응 | 교사가 `/app/tests`에서 재실행 — **같은 멱등 키**를 쓴다. 문항 부족이면 준비도 화면으로 이동해 문항을 채운다 |
+| kill switch | `auto_question_publish`가 꺼져 있으면 생산자가 작업을 만들지 않고, 이미 만든 작업은 `pending`으로 보존해 재개 후 실행한다(작업을 버리지 않는다) |
+| ⚠ 선행 결함 | 현재 `assessments_idempotent_uq`가 반 공통 평가의 중복을 막지 못한다(G-15). 워커를 붙이기 **전에** 고쳐야 이 장애 모드의 「재시도해도 1건」이 성립한다 |
+
 ---
 
 ## 4. Kill switch 8종

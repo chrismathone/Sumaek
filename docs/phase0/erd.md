@@ -316,6 +316,85 @@ erDiagram
 | 불참 이벤트 멱등 | `UNIQUE (organization_id, source, external_event_id)` |
 | 인덱스 | `(organization_id, learning_group_id, starts_at)`, `(organization_id, teacher_id, starts_at)`, `(organization_id, status, starts_at)` |
 
+### 2.1 학생 계획과 학생 실행 — 3층
+
+`sessions`는 **반이 언제 무엇을 하는가**만 답한다. 학생 개인의 경로와, 그 학생이 오늘 실제로 무엇을 하고 끝냈는가는 각각 다른 층이다. 근거: [ADR-0018](../adr/0018-daily-plan-projection-and-assessment-scheduler.md) §1.
+
+| 층 | 테이블 | 답하는 질문 | 성질 | 상태 |
+|---|---|---|---|---|
+| ① 반 계획 | `sessions` | 이 반은 언제 어떤 노드를 하나 | 엔진 산출물 · 재계산 가능 | 구현됨 |
+| ② 학생 계획 | `learner_schedule_items` | 이 학생은 언제 어떤 노드를 하나 | 엔진 산출물 · 재계산 가능 | 구현됨 |
+| ③ 학생 실행 | `learner_day_plans` + `_items` | 이 학생이 오늘 **무엇을** 하고 **끝냈나** | 스냅샷 · 완료 이력 불변 | **T1.2 예정** |
+
+```mermaid
+erDiagram
+    SESSIONS ||--o{ LEARNER_SCHEDULE_ITEMS : "같은 시각이면 연결(선택)"
+    LEARNERS ||--o{ LEARNER_SCHEDULE_ITEMS : "개인 경로"
+    LEARNERS ||--o{ LEARNER_DAY_PLANS : "하루 실행"
+    LEARNER_DAY_PLANS ||--o{ LEARNER_DAY_PLAN_ITEMS : "펼친 항목"
+
+    LEARNER_SCHEDULE_ITEMS {
+        uuid id PK
+        uuid organization_id FK
+        uuid learner_id FK
+        uuid learning_group_id FK
+        uuid schedule_revision_id FK
+        uuid session_id FK "반 일정 밖으로 밀리면 null"
+        date item_date
+        text timezone
+        jsonb planned_node_ids
+        jsonb reason_codes "엔진 배치 이유"
+        boolean matches_group "false면 이 차시에서 갈라진다"
+        boolean is_rejoin "반 진도로 돌아오는 차시"
+    }
+    LEARNER_DAY_PLANS {
+        uuid id PK
+        uuid organization_id FK
+        uuid learner_id FK
+        date plan_date
+        text timezone
+        uuid learning_group_id FK "복습만 있는 날이면 null"
+        text source "learner_schedule|group_session|review_only"
+        uuid source_ref_id "learner_schedule_items.id | sessions.id"
+        text status "not_started|in_progress|blocked|completed"
+        timestamptz materialized_at "학생이 그날 처음 연 시각"
+        timestamptz completed_at "설정 후 불변 (I-22)"
+        timestamptz reopened_at "교사 완료 취소 — completed_at은 안 지운다"
+        text projection_hash "결정론 검증"
+    }
+    LEARNER_DAY_PLAN_ITEMS {
+        uuid id PK
+        uuid organization_id FK
+        uuid learner_day_plan_id FK
+        integer ordinal
+        text kind "reading|video|practice|assessment|review|book_range|homework"
+        boolean required
+        uuid route_node_id FK "복습이면 null"
+        text ref_type "learning_material|assessment_instance|review_batch"
+        uuid ref_id
+        text title_snapshot "그날 학생이 본 문구"
+        text status "pending|in_progress|completed|blocked|exempted"
+        text blocked_reason "준비도 게이트와 같은 코드"
+        timestamptz completed_at
+        boolean added_after_materialization "확정 후 추가 = 선택"
+    }
+```
+
+핵심 제약:
+
+| 제약 | 구현 |
+|---|---|
+| 한 학생·한 날짜 계획은 하나 | `UNIQUE (organization_id, learner_id, plan_date)` |
+| 멱등 재투영 | `learner_day_plan_items`에 `UNIQUE (learner_day_plan_id, kind, ref_id)` — UPSERT라 몇 번을 돌려도 행이 늘지 않는다 |
+| 완료 불변 (`I-22`) | `BEFORE UPDATE` 트리거: `completed_at IS NOT NULL`이면 그 컬럼 변경 차단. 완료 전이는 CAS(`WHERE status <> 'completed'`) + outbox INSERT 같은 트랜잭션 |
+| 반 상태 비침범 (`I-21`) | 하루 완료 경로가 `sessions`를 쓰지 않는다. 반 마감은 `session-execution`만 |
+| 완료 계획 재투영 제외 | 재투영 대상 질의에 `status <> 'completed'` |
+| 인덱스 | `(organization_id, plan_date, status)` 교사 현황판, `(organization_id, learning_group_id, plan_date)`, `(learner_day_plan_id, ordinal)` |
+
+**②를 ③으로 대체하지 않는 이유**: ②는 일정이 바뀔 때마다 덮어써야 하고(`I-12` 결정론), ③은 완료 이력이 역행하면 안 된다(`I-22`). 한 테이블에 두면 재계산마다 "덮어써도 되는 행"과 "건드리면 안 되는 행"을 런타임에 갈라야 하고, 그 판단이 틀리는 순간 학생의 완료 기록이 사라진다.
+
+**백필하지 않는다**: 마이그레이션 이전 날짜에는 계획 행이 없다. 과거 완주 여부는 어디에도 기록돼 있지 않아 역산하면 추정치이고, `completed_at`은 불변으로 소비자에게 흘러간다. 그 이전 날짜는 `empty`가 아니라 `no_record`로 구분해 표시한다 — ADR-0018 §6.
+
 ---
 
 ## 3. 교육과정
@@ -1460,6 +1539,9 @@ flowchart LR
 | `concept_masteries` | 활성 정책 버전만 | 이전 정책 버전 | — | 정책 버전 폐기 +1년 | DELETE |
 | `progress_events` | 180일 | ~3년 | dump | 3년 | 파티션 DROP |
 | `sessions` | 과정 기간 + 1년 | ~3년 | dump | 3년 | 파티션 없음, DELETE 배치 |
+| `learner_schedule_items` | 과정 기간 + 1년 | ~3년 | dump | 3년 | `sessions`와 같은 배치 |
+| `learner_day_plans` | 과정 기간 + 1년 | ~3년 | dump | 3년 | `sessions`와 같은 배치. **완료 계획은 학습 이력이라 기간 내 삭제·수정 금지**(`I-22`) |
+| `learner_day_plan_items` | 상위 계획과 동일 | 동일 | 동일 | 상위 계획 파기 시 | 부모 CASCADE |
 | `route_versions` | 게시 중 + superseded 1년 | ~3년 | dump | 3년 | 소프트 삭제 후 배치 |
 | `question_versions` | 영구 | — | — | 권한 `suspended` 확정 +30일 | 본문 파기, 메타·감사 유지 |
 | `source_files` (Storage) | 계약 기간 | +90일 | Cold 스토리지 | 권한 `suspended` +30일 | 객체 삭제 + 체크섬 기록 유지 |
@@ -1552,3 +1634,8 @@ DROP TABLE responses_2026_01;
 | 원본 중복 | `source_files UNIQUE (organization_id, sha256)` |
 | 숙련도 조회 | `concept_masteries (organization_id, student_id, canonical_concept_id, policy_version_id)` |
 | 복습 예정 | `review_items (organization_id, student_id, due_on) WHERE status='pending'` |
+| 학생 개인 차시 | `learner_schedule_items (organization_id, learner_id, item_date)` |
+| 하루 계획 고유 | `learner_day_plans UNIQUE (organization_id, learner_id, plan_date)` |
+| 교사 현황판 | `learner_day_plans (organization_id, plan_date, status)` — T4.4가 날짜·반으로 학생 상태를 훑는다 |
+| 하루 계획 항목 멱등 | `learner_day_plan_items UNIQUE (learner_day_plan_id, kind, ref_id)` |
+| 하루 계획 항목 순서 | `learner_day_plan_items (learner_day_plan_id, ordinal)` |

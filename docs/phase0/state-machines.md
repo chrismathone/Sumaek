@@ -470,13 +470,19 @@ stateDiagram-v2
 | 리포트 (`reports.status`) | `draft → generating → review_required → approved → exported`, `→ failed`, `→ archived` | `approved` 전에는 외부 SIS·LMS 내보내기 불가 |
 | 멤버십 (`memberships.status`) | `invited → active → suspended`, `invited → expired` | 초대 만료 14일 |
 | 조직 (`organizations.status`) | `active → suspended`, `active → closing → (복구) active \| purged` | `closing` 유예 30일 |
+| 학습자 하루 계획 (`learner_day_plans.status`) | `not_started → in_progress → completed`, 어느 상태에서든 `→ blocked`, `blocked → in_progress`(차단 해소). 항목이 없으면 파생 `empty` | **필수 항목 판정에서 계산되는 값**이며 직접 쓰지 않는다. `blocked`가 `completed`보다 우선한다 — 필수 항목 하나가 막히면 나머지를 다 해도 완료가 아니다. `completed_at`은 설정 후 불변(I-22). 교사의 완료 취소는 `completed_at`을 지우지 않고 `reopened_at`을 더한다 ([ADR-0017](../adr/0017-learner-day-and-session-completion.md) §6) |
+| 하루 계획 항목 (`learner_day_plan_items.status`) | `pending → in_progress → completed`, `→ blocked`, `→ exempted` | `blocked`(사고 — 완료를 막고 교사에게 알림)와 `exempted`(교사 판단 — 완료 분모에서 제외)를 **합치지 않는다.** 합치면 자료 미게시 사고가 「면제」로 위장된다. `blocked`는 `blocked_reason`을 반드시 가지며, 코드 목록은 게시 준비도 게이트와 같은 레지스트리를 쓴다 |
 
 ---
 
-## 13. 시스템 불변 조건 20개와 검증 방법
+## 13. 시스템 불변 조건 22개와 검증 방법
 
 `DB` = 데이터베이스 제약·트리거 / `SVC` = 도메인 서비스 / `TEST` = 자동 테스트.
 **세 열 중 최소 두 곳에 구현이 있어야 한다.** UI 검증만으로는 통과로 보지 않는다.
+
+> **I-01~I-20은 구현·검증 완료**(골프롬프트 2E 원안). **I-21·I-22는 [ADR-0017](../adr/0017-learner-day-and-session-completion.md)이 추가한 것으로 아직 구현 전이다** — 참조하는 `learner_day_plans`·`learner_day_plan_items` 테이블이 없다. 따라서 §13.1의 실행 쿼리 중 I-21·I-22는 아래에 문서로만 두고, `packages/db/src/checks/invariants.sql`에는 **T1.2의 마이그레이션과 함께** 넣는다. 지금 넣으면 `psql -f invariants.sql`과 `pnpm verify:recovery`가 없는 테이블을 조회해 실패한다.
+>
+> 이 때문에 `docs/phase0/backup-recovery.md`, `docs/runbooks/05-db-failure-pitr.md`, `docs/runbooks/README.md`, `packages/db/src/checks/invariants.sql`의 "불변 조건 20개" 문구가 일시적으로 이 문서와 어긋난다. 정합은 T1.2(하네스 추가)와 T6.4(문서 갱신)에서 맞춘다.
 
 | # | 불변 조건 | DB 제약 | 도메인 서비스 | 테스트 |
 |---|---|---|---|---|
@@ -500,6 +506,8 @@ stateDiagram-v2
 | **I-18** | 학생에게 게시된 콘텐츠에 `katex-error`·원시 LaTeX 폴백·미검증 SVG·필수 렌더 산출물 누락이 없다 | `question_versions.publish_gate_status='passed'`가 아니면 `assessment_questions` INSERT 차단 트리거; `diagram_assets.sanitize_status='passed'` 검증 | 게시 게이트 10조건 | 시각 회귀 테스트(1280·360·A4) + DOM 검사: `katex-error` 클래스·`.math-raw`·빈 KaTeX 노드 0건 / 골든 코퍼스 전량 |
 | **I-19** | 게시된 평가의 각 수식은 원본·정규화본·렌더러 버전·의미 지문으로 재현 가능 | `assessment_questions`에 `renderer_version`·`katex_version`·`normalizer_version` NOT NULL; `math_expressions`에 `raw_source`·`normalized_latex`·`semantic_fingerprint` NOT NULL | 게시 시 버전 3종 복사 | 결정성 테스트: 저장된 버전으로 재렌더 → `render_hash` 일치 / web·pdf·hwpx 의미 지문 불일치 0건 |
 | **I-20** | 외부 행정 연동은 허용 목록 밖의 결제·상담·전자출결·보호자 연락 데이터를 영속화하지 않는다 | 금지 컬럼명 스키마 게이트(`scripts/boundary-check.mjs`); `integration_connections.field_allowlist` NOT NULL | 어댑터 zod `.strict()` + 폐기 필드 카운터 | 계약 테스트: 금지 필드를 포함한 페이로드 주입 → 저장 0건, `discarded_field_count` 증가 / 스키마 전체에 금지 토큰 0건 |
+| **I-21** | 학습자 하루 완료는 반 `sessions` 상태를 직접 바꾸지 않는다 | `learner_day_plans`에 `sessions` 쓰기 권한 없음; `sessions.status` 전이는 `session-execution` 경로에서만 | 하루 완료 명령은 `learner_day_plans`·`outbox_events`만 INSERT/UPDATE. 반 마감은 별도 명령(교사 확인) | 속성 테스트: 반 전원의 하루 완료 전후로 해당 `sessions` 행의 `status`·`completed_at`·시간 컬럼 불변 / 통합 테스트: 30명 완료 후 `SessionCompleted` 발행 0건 |
+| **I-22** | `learner_day_plans.completed_at`은 설정 후 변경·삭제되지 않고, `LearnerDayCompleted`는 계획 1건당 최대 1회 발행된다 | `learner_day_plans`에 `BEFORE UPDATE` 트리거 (`completed_at IS NOT NULL`이면 그 컬럼 변경 차단); `UNIQUE (organization_id, learner_id, plan_date)` | 완료 전이는 CAS(`WHERE status <> 'completed'`)이고 outbox INSERT와 같은 트랜잭션. 교사의 완료 취소는 `reopened_at`만 더한다 | 동시성 테스트: 같은 학생·날짜 완료 10회 동시 → 성공 1, `learner_day_plans` 1행, outbox 1건 / 재개방 후 재완료 시 outbox 추가 0건 |
 
 ### 13.1 불변 조건 회귀 하네스
 
@@ -527,6 +535,30 @@ JOIN question_versions qv ON qv.id = aq.question_version_id
 JOIN assessment_instances ai ON ai.id = aq.assessment_instance_id
 WHERE ai.status IN ('published','open','closed','grading','finalized')
   AND qv.publish_gate_status <> 'passed';
+
+-- I-21: 학생 하루 완료만 있고 교사 마감이 없는데 session이 완료된 경우
+-- (반 마감은 progress_events를 반드시 남긴다 — 없으면 학생 완료가 넘어온 것이다)
+SELECT s.id, s.session_date
+FROM sessions s
+WHERE s.status = 'completed'
+  AND NOT EXISTS (SELECT 1 FROM progress_events pe WHERE pe.session_id = s.id);
+
+-- I-22: 완료 계획 1건에 LearnerDayCompleted가 2회 이상 발행된 경우
+SELECT (payload->>'learnerDayPlanId') AS plan_id, count(*)
+FROM outbox_events
+WHERE event_type = 'LearnerDayCompleted'
+GROUP BY 1 HAVING count(*) > 1;
+
+-- I-22: 필수 항목이 남았는데 완료로 표시된 계획
+SELECT p.id, p.learner_id, p.plan_date
+FROM learner_day_plans p
+WHERE p.status = 'completed'
+  AND EXISTS (
+    SELECT 1 FROM learner_day_plan_items i
+    WHERE i.learner_day_plan_id = p.id
+      AND i.required
+      AND i.status NOT IN ('completed','exempted')
+  );
 ```
 
 이 하네스는 ① CI 통합 테스트, ② 운영 일 배치(위반 시 SEV2 알림), ③ 복구 후 검증([backup-recovery.md](./backup-recovery.md))에서 동일하게 실행한다.
