@@ -964,7 +964,7 @@ export function parseAnswers(
       // 같은 번호가 두 번 나오면 앞엣것을 남긴다 (뒤는 「다시 풀기」 참조다)
       if (!byNumber.has(parsed.printedNumber)) byNumber.set(parsed.printedNumber, parsed);
     }
-    const last = parsedPage[parsedPage.length - 1] ?? carry;
+    const last: ParsedAnswer | null = parsedPage[parsedPage.length - 1] ?? carry;
     carry = last && last.answer.length === 0 ? last : null;
   }
   return byNumber;

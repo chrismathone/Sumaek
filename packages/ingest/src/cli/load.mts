@@ -1,9 +1,12 @@
 /**
  * 추출 결과 → 문제은행 적재.
  *
- *   pnpm --filter @su-maek/ingest load \
+ *   pnpm --filter @su-maek/ingest load --chapter=<I|II|III|IV> \
  *     --book=<본책 덤프.json> --answers=<별책 덤프.json> \
- *     --org=<uuid> --actor=<uuid> [--range=1-213] [--dry-run]
+ *     --org=<uuid> --actor=<uuid> [--range=214-523] [--dry-run]
+ *
+ * **--chapter에 기본값이 없다.** 대단원마다 개념 표가 다르고, 틀린 표를
+ * 보면 문항이 개념 없이 들어가면서도 오류가 나지 않는다.
  *
  * --dry-run이 기본이 아닌 이유: 실수로 넣는 것보다 실수로 안 넣는 편이 낫다고
  * 생각하기 쉽지만, 여기서 진짜 위험한 것은 **반쯤 넣는 것**이다. 문항별로
@@ -20,6 +23,16 @@ import { RPM_2022 } from "../profiles/rpm-2022";
 import {
   RPM_M1_CH1_CONCEPTS,
   RPM_M1_CH1_TITLE_TO_CONCEPT,
+  RPM_M1_CH1_UNIT_TO_CONCEPT,
+  RPM_M1_CH2_CONCEPTS,
+  RPM_M1_CH2_TITLE_TO_CONCEPT,
+  RPM_M1_CH2_UNIT_TO_CONCEPT,
+  RPM_M1_CH3_CONCEPTS,
+  RPM_M1_CH3_TITLE_TO_CONCEPT,
+  RPM_M1_CH3_UNIT_TO_CONCEPT,
+  RPM_M1_CH4_CONCEPTS,
+  RPM_M1_CH4_TITLE_TO_CONCEPT,
+  RPM_M1_CH4_UNIT_TO_CONCEPT,
 } from "../profiles/rpm-2022-concepts";
 import { extractPage } from "../segment";
 import type { SourceDump } from "../types";
@@ -32,14 +45,74 @@ const bookDumpPath = arg("book");
 const answersDumpPath = arg("answers");
 const organizationId = arg("org");
 const actorUserId = arg("actor");
-if (!bookDumpPath || !answersDumpPath || !organizationId || !actorUserId) {
+
+/**
+ * 대단원 — 단원마다 개념 표가 다르다.
+ *
+ * 예전에는 1단원이 코드에 박혀 있었다. 2단원 덤프를 그대로 넣으면 문항은
+ * 들어가지만 대단원이 「I. 소인수분해」로 기록되고 개념은 1단원 표를 봐서
+ * 전부 못 걸린다 — **오류 없이** 그렇게 된다. 그래서 인자로 뺐고 기본값을
+ * 두지 않는다.
+ */
+const CHAPTERS = {
+  I: {
+    number: "I",
+    title: "소인수분해",
+    range: [1, 213] as const,
+    concepts: RPM_M1_CH1_CONCEPTS,
+    titleToConcept: RPM_M1_CH1_TITLE_TO_CONCEPT,
+    unitToConcept: RPM_M1_CH1_UNIT_TO_CONCEPT,
+  },
+  II: {
+    number: "II",
+    title: "정수와 유리수",
+    range: [214, 523] as const,
+    concepts: RPM_M1_CH2_CONCEPTS,
+    titleToConcept: RPM_M1_CH2_TITLE_TO_CONCEPT,
+    unitToConcept: RPM_M1_CH2_UNIT_TO_CONCEPT,
+  },
+  III: {
+    number: "III",
+    title: "문자와 식",
+    range: [524, 914] as const,
+    concepts: RPM_M1_CH3_CONCEPTS,
+    titleToConcept: RPM_M1_CH3_TITLE_TO_CONCEPT,
+    unitToConcept: RPM_M1_CH3_UNIT_TO_CONCEPT,
+  },
+  IV: {
+    number: "IV",
+    title: "좌표평면과 그래프",
+    range: [915, 1123] as const,
+    concepts: RPM_M1_CH4_CONCEPTS,
+    titleToConcept: RPM_M1_CH4_TITLE_TO_CONCEPT,
+    unitToConcept: RPM_M1_CH4_UNIT_TO_CONCEPT,
+  },
+} as const;
+
+const chapterKey = arg("chapter");
+const chapter = chapterKey ? CHAPTERS[chapterKey as keyof typeof CHAPTERS] : undefined;
+if (!bookDumpPath || !answersDumpPath || !organizationId || !actorUserId || !chapter) {
   console.error(
-    "사용법: load --book=<본책.json> --answers=<별책.json> --org=<uuid> --actor=<uuid> [--range=1-213] [--dry-run]",
+    "사용법: load --chapter=<I|II|III|IV> --book=<본책.json> --answers=<별책.json> \\\n" +
+      "             --org=<uuid> --actor=<uuid> [--range=214-523] [--dry-run]",
   );
+  if (chapterKey && !chapter) {
+    console.error(`\n  --chapter=${chapterKey} 는 없는 대단원입니다.`);
+  }
+  for (const [key, c] of Object.entries(CHAPTERS)) {
+    console.error(
+      `  --chapter=${key.padEnd(4)} ${c.number}. ${c.title.padEnd(12)} ` +
+        `${String(c.range[0]).padStart(4, "0")}~${String(c.range[1]).padStart(4, "0")}`,
+    );
+  }
   process.exit(1);
 }
 
-const [from, to] = (arg("range") ?? "1-213").split("-").map(Number) as [number, number];
+/* --range의 기본값은 그 대단원의 인쇄 번호 구간이다. 1-213을 그대로 두면
+ * 2단원 덤프에서 0문항이 나오고, 그것이 성공처럼 보인다. */
+const [from, to] = (arg("range") ?? `${chapter.range[0]}-${chapter.range[1]}`)
+  .split("-")
+  .map(Number) as [number, number];
 const dryRun = args.includes("--dry-run");
 
 const bookDump = JSON.parse(readFileSync(bookDumpPath, "utf8")) as SourceDump;
@@ -65,6 +138,7 @@ const questions = bookDump.pages
 
 const answers = parseAnswers(answersDump, RPM_2022_ANSWERS);
 
+console.log(`대단원 ${chapter.number}. ${chapter.title}`);
 console.log(`본책 ${bookDump.source.fileName}`);
 console.log(`  문항 ${questions.length}개 (${from}~${to} 구간)`);
 console.log(`별책 ${answersDump.source.fileName}`);
@@ -108,9 +182,10 @@ const result = await loadQuestions(sql, {
     evidenceRef: "반입 시점 미확인",
   },
   profile: RPM_2022,
-  chapter: { number: "I", title: "소인수분해" },
-  concepts: RPM_M1_CH1_CONCEPTS,
-  titleToConcept: RPM_M1_CH1_TITLE_TO_CONCEPT,
+  chapter: { number: chapter.number, title: chapter.title },
+  concepts: chapter.concepts,
+  titleToConcept: chapter.titleToConcept,
+  unitToConcept: chapter.unitToConcept,
   questions,
   answers,
 });

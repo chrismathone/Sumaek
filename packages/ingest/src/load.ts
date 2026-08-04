@@ -65,7 +65,19 @@ export interface LoadInput extends LoadTarget {
   /** 이 반입이 다루는 단원 (출처 메타데이터에 실린다) */
   chapter: { number: string; title: string };
   concepts: ConceptDefinition[];
+  /** 유형·소단원 제목 → 개념 */
   titleToConcept: ReadonlyMap<string, ConceptWeight[]>;
+  /**
+   * **중단원** 제목 → 개념. 유형·소단원 표와 반드시 나뉘어 있어야 한다.
+   *
+   * 한 표에 같이 두었더니 중1-1 1단원에서 「소인수분해」 키가 두 번 들어가
+   * (소단원용 1개 · 중단원용 3분할) Map이 뒤엣것만 남겼다. 소단원
+   * 「소인수분해」 문항이 단일 개념 대신 3분할로 조용히 들어갔고, 어디에도
+   * 표시가 나지 않았다. 교재는 계층마다 같은 이름을 쓴다 —
+   * 중1-1 3단원에도 중단원 「일차방정식의 풀이」와 소단원 「일차방정식의
+   * 풀이」가 함께 있다. 표를 나누는 것이 유일한 해법이다.
+   */
+  unitToConcept: ReadonlyMap<string, ConceptWeight[]>;
   questions: ExtractedQuestion[];
   answers: Map<string, ParsedAnswer>;
 }
@@ -199,6 +211,30 @@ function buildAnswerKey(
       ],
     },
   };
+}
+
+/**
+ * 제목으로 개념 표를 찾는다 — **정확히 일치할 때만.**
+ *
+ * 부분 일치로 하면 「최대공약수와 최소공배수의 관계」가 「최대공약수」에
+ * 잘못 걸린다. 비교 전에 공백만 눌러 준다(지면의 □는 벡터라 텍스트로는
+ * 공백만 남아 제목 가운데가 두 칸 벌어진다).
+ */
+const normalizedTables = new WeakMap<
+  ReadonlyMap<string, ConceptWeight[]>,
+  Map<string, ConceptWeight[]>
+>();
+function lookupConcept(
+  table: ReadonlyMap<string, ConceptWeight[]>,
+  title: string | undefined,
+): ConceptWeight[] | undefined {
+  if (!title) return undefined;
+  let normalized = normalizedTables.get(table);
+  if (!normalized) {
+    normalized = new Map([...table].map(([k, v]) => [normalizeConceptKey(k), v]));
+    normalizedTables.set(table, normalized);
+  }
+  return normalized.get(normalizeConceptKey(title));
 }
 
 export async function loadQuestions(
@@ -523,17 +559,10 @@ export async function loadQuestions(
       /* 개념은 **교재의 계층**을 따라 찾는다: 유형 → 소단원 → 중단원.
        * 「중단원 마무리」에는 유형 머리글이 아예 없어서, 중단원까지
        * 내려가지 않으면 51문항이 개념 없이 남는다. */
-      const candidates = [
-        question.typeContext?.title,
-        question.unit?.title,
-      ].filter((t): t is string => typeof t === "string" && t !== "");
-      const lookup = new Map(
-        [...input.titleToConcept].map(([k, v]) => [normalizeConceptKey(k), v]),
-      );
       const weights =
-        candidates
-          .map((t) => lookup.get(normalizeConceptKey(t)))
-          .find((w) => w !== undefined) ?? [];
+        lookupConcept(input.titleToConcept, question.typeContext?.title) ??
+        lookupConcept(input.unitToConcept, question.unit?.title) ??
+        [];
       for (const weight of weights) {
         const conceptId = conceptIdBySlug.get(weight.slug);
         if (!conceptId) continue;
