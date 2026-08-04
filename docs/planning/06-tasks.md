@@ -877,8 +877,8 @@ Set-Location ..\Su-Maek-t4-2-session-close
 3. **payload는 camelCase다.** 카탈로그 예시는 snake_case지만 정의처는 `packages/contracts`이고 코드 전체가 camelCase다 (E-16에서 같은 정정).
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t4-2-session-close`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t4-2-session-close`
 
 ### [] Phase 4, T4.3: 실제 진도·숙련도 기반 미래 일정 변경안 RED→GREEN
 
