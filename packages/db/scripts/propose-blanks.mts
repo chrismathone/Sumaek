@@ -53,6 +53,8 @@ interface Block {
   content?: Run[];
   items?: unknown;
   title?: string;
+  tone?: string;
+  label?: string;
 }
 
 function runsToText(runs: Run[] | undefined): string {
@@ -72,6 +74,14 @@ function bodyToPlain(body: unknown): string {
       }
       if (b.type === "text") return b.text ?? "";
       if (b.type === "paragraph") return runsToText(b.content);
+      if (b.type === "callout") {
+        const inner = (Array.isArray(b.content) ? b.content : []) as Block[];
+        const lines = inner
+          .filter((x) => x.type === "paragraph")
+          .map((x) => runsToText(x.content))
+          .filter(Boolean);
+        return lines.length > 0 ? `[${b.label ?? b.tone ?? "참고"}] ${lines.join(" ")}` : "";
+      }
       if (b.type === "key_point" || b.type === "steps") {
         const items = Array.isArray(b.items) ? b.items : [];
         const lines = items
@@ -260,6 +270,21 @@ function buildFullStage(body: unknown[]): KeptBlank[] {
               ? runsToText(it as Run[])
               : runsToText((it as { content?: Run[] }).content),
           );
+        }
+      } else if (b.type === "callout") {
+        /* 예·참고·주의·보충 상자도 글이다 — 뚫는다. 안에 든 것 가운데
+         * 문단만 뚫고 수식·표는 그대로 둔다(뚫을 수 없는 곳). */
+        /* content가 두 모습으로 온다 — 블록 배열(paragraph…)이거나 런 배열
+         * 그대로다. 형태로 가른다: kind가 있으면 런이다. */
+        const items = (Array.isArray(b.content) ? b.content : []) as Array<
+          Block & { kind?: string }
+        >;
+        if (items.some((x) => typeof x.kind === "string")) {
+          push(runsToText(items as unknown as Run[]));
+        } else {
+          for (const inner of items) {
+            if (inner.type === "paragraph") push(runsToText(inner.content));
+          }
         }
       }
     }

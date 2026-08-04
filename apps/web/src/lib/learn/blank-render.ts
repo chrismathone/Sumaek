@@ -68,9 +68,42 @@ export function applyBlanks(
   const remaining = new Map(targets.map((t) => [t.position, t]));
   const order = [...targets].sort((a, b) => b.answer.length - a.answer.length);
 
+  /* 런 배열(글+수식 조각)을 이어 붙인 모습 — 제안기가 정답을 만들 때 쓴 것과
+   * 같은 규칙이어야 한다(수식은 $latex$). */
+  const runsToMixed = (runs: unknown): string | null => {
+    if (!Array.isArray(runs) || runs.length === 0) return null;
+    let out = "";
+    for (const r of runs) {
+      if (typeof r !== "object" || r === null) return null;
+      const o = r as { kind?: string; text?: string; math?: { latex?: string } };
+      if (o.kind === "math") out += `$${o.math?.latex ?? ""}$`;
+      else if (typeof o.text === "string") out += o.text;
+      else return null;
+    }
+    return out;
+  };
+
   /* 블록 트리의 모든 문자열을 훑는다 — text·runs.text·term·title·items…
    * 계약(reading.ts)이 문자열을 담는 키를 여럿 두고 있어 형태로 찾는다. */
   const walk = (node: unknown): unknown => {
+    /* **런 배열은 통째로 본다.** 3단계의 정답은 문장 전체이고, 그 문장에
+     * 수식이 끼어 있으면 글자가 런 여러 개로 쪼개져 있어 어느 한 문자열에도
+     * 통째로 들어 있지 않다(실측: 정의 내용이 하나도 안 뚫렸다). 이어 붙인
+     * 모습이 정답과 같으면 배열 전체를 표식 하나로 바꾼다. */
+    if (Array.isArray(node)) {
+      const joined = runsToMixed(node);
+      if (joined !== null) {
+        for (const t of order) {
+          if (!remaining.has(t.position)) continue;
+          if (joined.trim() === t.answer.trim()) {
+            remaining.delete(t.position);
+            return [
+              { kind: "text", text: blankToken(t.position, t.answer.length) },
+            ];
+          }
+        }
+      }
+    }
     if (typeof node === "string") {
       let s = node;
       for (const t of order) {
