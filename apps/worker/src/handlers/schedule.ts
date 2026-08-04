@@ -79,11 +79,16 @@ export async function handleScheduleRecalculate(
       learningGroupId: groupId,
       actorUserId: null, // 자동화 실행
       today,
+      /* 아무도 보고 있지 않은 실행이다 (T4.3). 고위험 변경은 적용하지 않고
+       * 변경안으로 남겨 교사 승인함에 올린다 — 교사가 버튼을 눌러 실행한
+       * 경우와 다르다. 그 클릭은 그 자체가 승인이다. */
+      automatic: true,
     });
     results[groupId] = {
       ok: result.ok,
       created: result.createdSessions,
       conflicts: result.conflicts,
+      pendingApproval: result.pendingApproval ?? null,
     };
     done.add(groupId);
     await checkpointJob(sql, job.id, { doneGroupIds: [...done] });

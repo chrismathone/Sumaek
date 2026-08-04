@@ -880,7 +880,7 @@ Set-Location ..\Su-Maek-t4-2-session-close
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t4-2-session-close`
 
-### [] Phase 4, T4.3: 실제 진도·숙련도 기반 미래 일정 변경안 RED→GREEN
+### [x] Phase 4, T4.3: 실제 진도·숙련도 기반 미래 일정 변경안 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -908,19 +908,23 @@ Set-Location ..\Su-Maek-t4-3-adaptive-plan
 3. **REFACTOR**: 자동 적용 가능 변경과 교사 승인 필요 변경을 명시적 정책 함수로 분리한다.
 
 **산출물**:
-- `packages/core/src/scheduling/adaptive.ts`
-- `packages/db/src/domain/schedule.ts`
-- `apps/worker/src/handlers/schedule.ts`
-- `packages/core/test/scheduling/adaptive-plan.test.ts`
+- `packages/core/src/scheduling/adaptive.ts` — `deriveProgress`·`classifyScheduleChange`
+- `packages/db/src/domain/schedule.ts` — 노드별 진도를 엔진 입력으로, 자동 실행의 승인 게이트
+- `apps/worker/src/handlers/schedule.ts` — 자동 재계산은 `automatic: true`
+- `packages/core/test/scheduling/adaptive-plan.test.ts` (16) · `packages/db/test/adaptive-reschedule.test.ts` (3)
 
 **인수 조건**:
-- [ ] 완료·잠금·과거 일정은 불변
-- [ ] 실제 미진행 노드가 다음 가용 슬롯으로 이동함
-- [ ] `learning_availability_events`의 불참이 변경안 입력에 반영됨
-- [ ] 학생별 숙련도 변화가 반 공통 루트를 직접 변조하지 않음 (`sessions` 행 수·시각 불변)
-- [ ] 고위험 변경은 proposal로 남고 승인 전 세션이 바뀌지 않음
-- [ ] 기존 `schedule-history-preservation.test.ts`·`learner-scope-schedule.test.ts`가 계속 통과함
-- [ ] 신규/변경 모듈 커버리지 80% 이상
+- [x] 완료·잠금·과거 일정은 불변 — 지난 수업 행은 그대로다. 엔진에게만 「이 노드는 아직 자리가 없다」고 말한다
+- [x] 실제 미진행 노드가 다음 가용 슬롯으로 이동함
+- [x] `learning_availability_events`의 불참이 변경안 입력에 반영됨 — 기존 경로 유지(휴강은 busy로, 학생 불참은 학습자 스코프로). 새로 모델링하지 않았다
+- [x] 학생별 숙련도 변화가 반 공통 루트를 직접 변조하지 않음 — 반 계산의 입력은 교사의 마감 기록뿐이다
+- [x] 고위험 변경은 proposal로 남고 승인 전 세션이 바뀌지 않음 — **자동 실행에만** 적용된다
+- [x] 기존 `schedule-history-preservation.test.ts`·`learner-scope-schedule.test.ts`가 계속 통과함
+- [x] 신규/변경 모듈 커버리지 80% 이상 — `adaptive.ts` 문 100% · 분기 86%
+
+**찾은 결함**: 완료 집합이 **수업 단위**로 파생되고 있었다 — `sessions.status`가 completed면 planned 노드를 전부 완료로 셌다. T4.2 이전에는 마감 경로가 없어 이 값이 늘 비어 드러나지 않았지만, 이제 교사가 노드별로 적는다. 그대로 두면 **「못 나감」이라고 말한 노드가 완료로 굳어 다시는 배치되지 않는다** — 정직하게 적을수록 진도가 사라진다. 고치는 데 세 곳이 필요했다: 완료 집합, `existingItems[].completed`, 그리고 지난 미진행 항목을 엔진 입력에서 빼는 것(앞의 둘만 고치면 엔진이 지난 자리를 `PAST_PRESERVED`로 보존해 미래 수업이 0건이었다 — 실측).
+
+**남긴 것**: E-16(학생 하루 완료) 소비자는 여전히 무소비 선언이다. 이번에 넓힌 것은 **반 진도**의 입력이고, 그 근거는 교사의 마감 기록이다. 학생 한 명의 하루 완료가 반 일정을 움직여서는 안 된다(I-21) — 학습자 스코프 재계산에 쓸지는 T5.4·T4.4에서 학생별 화면이 생긴 뒤 판단한다.
 
 **완료 시**:
 - [ ] 사용자 승인 후 main 병합

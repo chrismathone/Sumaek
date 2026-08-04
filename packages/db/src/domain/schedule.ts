@@ -3,6 +3,9 @@ import { getSharedSql } from "../client";
 import {
   ENGINE_VERSION,
   calculateSchedule,
+  classifyScheduleChange,
+  deriveProgress,
+  type SessionProgressFact,
   type BusyInterval,
   type LessonSlotRule,
   type RouteNodeInput,
@@ -29,6 +32,12 @@ export interface MaterializeResult {
   conflicts: number;
   firstDate: string | null;
   lastDate: string | null;
+  /**
+   * 자동 실행이 고위험이라 판단해 **적용하지 않고 변경안으로 남긴** 경우의
+   * 사유 (T4.3). 교사가 직접 실행한 경우에는 언제나 null이다 — 그 클릭이
+   * 곧 승인이다.
+   */
+  pendingApproval?: string[] | null;
 }
 
 export async function materializeGroupSchedule(options: {
@@ -38,6 +47,15 @@ export async function materializeGroupSchedule(options: {
   actorUserId: string | null;
   /** 기준 날짜 (워크스페이스 오늘, KST 기준) — 테스트 재현성 위해 주입 */
   today: IsoDate;
+  /**
+   * 자동 실행인가 (T4.3).
+   *
+   * 교사가 버튼을 누른 실행은 그 클릭이 곧 승인이므로 그대로 적용한다.
+   * 이벤트가 부른 자동 실행은 아무도 보고 있지 않으므로, 고위험 변경은
+   * 적용하지 않고 변경안으로 남긴다 — 학부모에게 이미 공지된 확인테스트
+   * 날짜가 아무도 모르게 밀리는 일을 막는다.
+   */
+  automatic?: boolean;
 }): Promise<MaterializeResult> {
   const sql = getSharedSql();
   const { organizationId, learningGroupId, today } = options;
@@ -155,16 +173,70 @@ export async function materializeGroupSchedule(options: {
       and learning_group_id = ${learningGroupId}
   `;
 
-  const completedNodeIds = new Set<string>();
+  /* 노드별 실제 진도 (T4.3 · T4.2의 마감 기록).
+   *
+   * 예전에는 완료 집합이 **수업 단위**였다: 수업이 completed면 그 수업의
+   * planned 노드를 전부 완료로 셌다. 마감 경로가 없던 동안에는 이 값이 늘
+   * 비어 있어 드러나지 않았지만, 이제 교사가 노드별로 「다 나감 / 일부만 /
+   * 못 나감」을 적는다 — 그대로 두면 **교사가 「못 나감」이라 말한 노드가
+   * 완료로 굳어 다시는 배치되지 않는다.** 정직하게 적을수록 진도가 사라진다. */
+  const progressRows = await sql<
+    { session_id: string; session_date: string; route_node_id: string; kind: string }[]
+  >`
+    select pe.session_id::text, s.session_date::text, pe.route_node_id::text, pe.kind
+    from progress_events pe
+    join sessions s on s.id = pe.session_id
+    where pe.organization_id = ${organizationId}
+      and pe.learning_group_id = ${learningGroupId}
+      and pe.route_node_id is not null
+      and pe.kind in ('node_completed', 'node_partial', 'node_skipped')
+    order by s.session_date, pe.route_node_id
+  `;
+  const OUTCOME_OF: Record<string, SessionProgressFact["outcome"]> = {
+    node_completed: "completed",
+    node_partial: "partial",
+    node_skipped: "skipped",
+  };
+  const progress = deriveProgress(
+    progressRows.map((r) => ({
+      sessionId: r.session_id,
+      date: r.session_date as IsoDate,
+      nodeId: r.route_node_id,
+      outcome: OUTCOME_OF[r.kind]!,
+    })),
+    { nodeOrder: nodes.map((n) => n.id) },
+  );
+
+  const completedNodeIds = new Set<string>(progress.completedNodeIds);
   const existingItems: ScheduledItem[] = [];
   for (const s of existingSessions) {
     const nodeIds = Array.isArray(s.planned_node_ids)
       ? (s.planned_node_ids as string[])
       : [];
     const completed = s.status === "completed";
-    if (completed) for (const n of nodeIds) completedNodeIds.add(n);
+    /* 마감 기록이 아예 없는 완료 수업(T4.2 이전에 만들어진 것)은 예전 규칙을
+     * 그대로 쓴다 — 기록이 없다고 이미 지나간 진도를 되돌리면, 반이 다음
+     * 실체화에서 지난 단원부터 다시 나간다. */
+    if (completed && !progressRows.some((p) => p.session_id === s.id)) {
+      for (const n of nodeIds) completedNodeIds.add(n);
+    }
     // 엔진 항목은 노드 단위 — 세션의 각 노드를 항목으로 전개
     for (const nodeId of nodeIds) {
+      /* 지난 수업에서 못 나간 노드는 **항목으로 넘기지 않는다.**
+       *
+       * existingItems는 엔진에게 「이 노드는 이미 자리가 있다」고 말하는
+       * 목록이다. 지난 자리를 그대로 넘기면 엔진은 그것을 PAST_PRESERVED로
+       * 보존하고 미래에 다시 잡지 않는다 — 완료 집합만 고쳐서는 못 나간
+       * 진도가 여전히 사라진다(실측: 미래 수업 0건).
+       *
+       * DB의 지난 수업 행은 건드리지 않는다. 기록은 그대로 남고, 엔진에게만
+       * 「이 노드는 아직 자리가 없다」고 말한다. 그것이 사실이다. */
+      if (
+        s.session_date < today &&
+        progress.carryOverNodeIds.includes(nodeId)
+      ) {
+        continue;
+      }
       existingItems.push({
         itemId: `${s.id}:${nodeId}`,
         nodeId,
@@ -173,7 +245,11 @@ export async function materializeGroupSchedule(options: {
         endTime: toHm(s.ends_at),
         minutes: 60,
         locked: s.locked_at !== null,
-        completed,
+        /* 항목의 완료도 **노드 단위**다. 수업 상태를 그대로 쓰면 못 나간
+         * 노드의 지난 항목이 「완료」로 보여, 엔진이 그것을 이미 끝난 것으로
+         * 보존하고 미래에 다시 배치하지 않는다 — 완료 집합만 고쳐서는
+         * 못 나간 진도가 여전히 사라진다. */
+        completed: completedNodeIds.has(nodeId),
       });
     }
   }
@@ -254,6 +330,65 @@ export async function materializeGroupSchedule(options: {
     return fail(
       `배치 불가 ${result.conflicts.length}건 — 기존 일정을 유지합니다. ${first.detail} 과정 기간·수업 시간을 늘리거나 루트를 줄이세요.`,
     );
+  }
+
+  /* ── 고위험 자동 변경은 승인을 받는다 (T4.3) ──
+   *
+   * 전부 자동으로 적용하면 학부모에게 공지된 확인테스트 날짜가 아무도 모르게
+   * 밀린다. 전부 승인으로 돌리면 승인함이 쌓여 아무도 보지 않게 되고, 그
+   * 순간 자동화가 없는 것과 같아진다. 기준은 「되돌리기 쉬운가」가 아니라
+   * **사람이 이미 그 날짜를 알고 있는가**다 (core/scheduling/adaptive.ts). */
+  const verdict = classifyScheduleChange({
+    diff: result.diff,
+    conflicts: result.conflicts,
+    checkpointNodeIds: engineNodes.filter((n) => n.isCheckpoint).map((n) => n.nodeId),
+  });
+  if (options.automatic && verdict.risk === "needs_approval") {
+    const pendingId = uuidv7();
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into schedule_change_proposals (
+          id, organization_id, scope_type, scope_id, trigger_type, status,
+          input_snapshot, input_hash, engine_version, seed, cutoff_at,
+          diff, reason_codes, conflicts, output_hash, failure_reason
+        ) values (
+          ${pendingId}, ${organizationId}, 'learning_group', ${learningGroupId},
+          'auto', 'pending',
+          ${tx.json({ summary: result.summary, itemCount: result.items.length } as never)},
+          ${result.inputHash}, ${input.engineVersion}, ${input.seed}, ${new Date()},
+          ${tx.json(result.diff as never)}, ${tx.json(result.reasonCodes as never)},
+          ${tx.json(result.conflicts as never)}, ${result.outputHash},
+          ${`승인 필요: ${verdict.reasons.join(", ")}`}
+        )
+      `;
+      /* 승인함에 닿아야 변경안이 존재한다 — 아무도 보지 않는 pending 행은
+       * 「아무 일도 일어나지 않음」과 구분되지 않는다. */
+      await tx`
+        insert into outbox_events (
+          id, organization_id, aggregate_type, aggregate_id, aggregate_version,
+          event_type, occurred_at, payload
+        ) values (
+          ${uuidv7()}, ${organizationId}, 'schedule_change_proposal', ${pendingId}, 1,
+          'ScheduleProposalCreated', now(),
+          ${tx.json({
+            proposalId: pendingId,
+            scopeType: "learning_group",
+            scopeId: learningGroupId,
+            reasons: verdict.reasons,
+          } as never)}
+        )
+      `;
+    });
+    return {
+      ok: true,
+      message: `일정 변경안을 만들었습니다 — 승인이 필요합니다 (${verdict.reasons.join(", ")}).`,
+      createdSessions: 0,
+      preservedSessions: 0,
+      conflicts: 0,
+      firstDate: null,
+      lastDate: null,
+      pendingApproval: verdict.reasons,
+    };
   }
 
   /* ── 적용: 제안 기록 + 세션 교체 (원자적) ── */
