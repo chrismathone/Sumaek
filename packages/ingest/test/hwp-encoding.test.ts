@@ -656,3 +656,29 @@ describe("원문 전체로 다시 읽기 — 조각 단위로는 앞을 못 고�
     );
   });
 });
+
+describe("호 기호 — 앞에도 뒤에도 온다", () => {
+  /* 선분 표시와 같은 사정이다. 폭이 0이라 조판이 앞뒤 어느 쪽에도 흘린다.
+   * 뒤쪽을 안 읽어서 중1-2 「원과 부채꼴」의 ⌒AB가 `ABµ`로 나갔다. */
+  it("글자 앞에 오는 호 (중3-2 「원의 성질」)", () => {
+    expect(decodeHwpMath("µAB", "EHyak-Plain").latex).toBe("\\overgroup{AB}");
+  });
+
+  it("글자 뒤에 오는 호 (중1-2 0591 「ABµ」)", () => {
+    expect(decodeHwpMath("ABµ", "EHyak-Plain").latex).toBe("\\overgroup{AB}");
+  });
+
+  it("등식 안에서도 읽는다 (중1-2 0580 「45=ADµ」)", () => {
+    expect(decodeHwpMath("45=ADµ", "EHyak-Plain").latex).toBe(
+      "45=\\overgroup{AD}",
+    );
+  });
+
+  /* 대문자가 앞설 때만 호로 읽는다 — 다른 책의 `aµ`는 지수 m이다.
+   * 이 가름선이 없으면 개념원리 중1-1 p.17 「A=aᵐ×bⁿ」이 망가진다. */
+  it("소문자 뒤의 µ 는 지수 m 그대로다", () => {
+    expect(decodeHwpMath("aµ`_bÇ`", "EHsang-Italic").latex).toBe(
+      "a^{m}\\times b^{n}",
+    );
+  });
+});

@@ -703,7 +703,14 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    * 중1-2 p.87 「µ BC=4µAC」. 공백을 건너뛰지 않으면 그 한 곳만 미해독이
    * 되어 같은 문항 안에서 ⌒BC는 깨지고 ⌒AC는 멀쩡한 꼴이 된다. */
   work = work.replace(/µ\s*([A-Z]{1,3})/g, (_m, letters: string) =>
-    stash(`\\overparen{${letters}}`),
+    stash(`\\overgroup{${letters}}`),
+  );
+  /* 호 기호가 **글자 뒤**에 오는 자리도 있다 — 중1-2 「원과 부채꼴」의
+   * `ABµ`·`ADµ`가 그렇다. 선분 표시와 같은 사정이다: 폭이 0이라 조판이
+   * 앞뒤 어느 쪽에도 흘릴 수 있다. 대문자가 앞설 때만 읽으므로 다른 권의
+   * `aµ`(=a^m)와 헷갈리지 않는다. */
+  work = work.replace(/([A-Z]{1,3})[  ]*µ/g, (_m, letters: string) =>
+    stash(`\\overgroup{${letters}}`),
   );
   /* 도(°)는 LaTeX 명령이라 자리표시자로 치워 둔다 — 3)단계의 글자별
    * 통과 검사는 역슬래시를 모른다 */
@@ -982,7 +989,7 @@ export function isArcOnly(text: string): boolean {
  * 바로 읽지만, 따로 서면 씌울 글자가 없어 미해독으로 나간다.
  */
 export function arcFirstName(latex: string): string {
-  return latex.replace(/^([^A-Z]*)([A-Z]{1,3})/, "$1\\overparen{$2}");
+  return latex.replace(/^([^A-Z]*)([A-Z]{1,3})/, "$1\\overgroup{$2}");
 }
 
 export function mergeRaised(latex: string, inner: string): string {

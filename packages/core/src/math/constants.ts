@@ -113,7 +113,10 @@ export const ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
   // 벡터·행렬
   "vec", "overrightarrow", "overleftarrow", "overleftrightarrow", "cdotp",
   /* 호(弧) 기호 — 중3-2 「원의 성질」이 `⌒AB`를 쓴다 */
-  "overparen",
+  /* 호(⌒)는 `overgroup`으로 그린다 — **KaTeX가 `overparen`을 못 그린다.**
+  * 예전에는 `overparen`을 냈고 그 식은 전부 렌더에 실패했다. 해독 테스트가
+  * 기대 문자열만 맞추고 실제로 그려지는지는 보지 않아서 오래 안 보였다. */
+  "overgroup",
   "begin", "end", "hline", "vert", "Vert",
   // 장식·강조
   "hat", "widehat", "tilde", "widetilde", "bar", "overline", "underline",
