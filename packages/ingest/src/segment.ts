@@ -7,7 +7,8 @@ import {
   isArcOnly,
   overlineLastName,
   radicalPiece,
-  isOverlineOnly,
+  isNameJoinOnly,
+  nameMarkOnly,
   mergeRaised,
   markSuperscripts,
   mergeUnbalancedMath,
@@ -530,13 +531,20 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
           if (!radical.certain) unknown.push(span.text);
           continue;
         }
-        if (isOverlineOnly(span.text)) {
+        /* 이음 조각(Õ·Í)만 온 조각은 원문에만 남기고 흘려보낸다 — 뜻은
+         * 뒤따르는 끝 조각이 정한다(중1-2 「위치 관계」의 `AB`·`Í`·`ê`). */
+        if (isNameJoinOnly(span.text)) {
+          raw += span.text;
+          continue;
+        }
+        const mark = nameMarkOnly(span.text);
+        if (mark !== null) {
           raw += span.text;
           if (latex !== "") {
-            latex = overlineLastName(latex);
+            latex = overlineLastName(latex, mark);
           } else {
             const owner = [...runs].reverse().find((r) => r.kind === "math");
-            if (owner?.kind === "math") owner.latex = overlineLastName(owner.latex);
+            if (owner?.kind === "math") owner.latex = overlineLastName(owner.latex, mark);
           }
           continue;
         }

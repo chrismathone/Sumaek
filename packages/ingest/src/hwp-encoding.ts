@@ -116,7 +116,21 @@ const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
 const FRACTION_FONT = /EHboNA/;
 
 /** 도형 안의 글자를 담는 글꼴 — 코드가 실제 글자보다 0x1F 작다 */
-const FIGURE_LABEL_FONT = /KSCms-UHC/;
+const FIGURE_LABEL_FONT = /KSC(ms-UHC|pc-EUC)/;
+
+/**
+ * 이름 위에 씌우는 **끝 조각**과 그 뜻.
+ *
+ * 셋이 한 쪽에 같이 나오고 답이 서로 다르다 — 선분 AC‾, 반직선 AC→,
+ * 직선 AC↔는 중1-2 「기본 도형」에서 서로 다른 것을 묻는다. 하나로
+ * 뭉뚱그리면 문항이 조용히 틀린 문항이 된다.
+ */
+const NAME_MARK: ReadonlyMap<string, string> = new Map([
+  ["Ó", "overline"],
+  ["ò", "overline"],
+  ["³", "overrightarrow"],
+  ["ê", "overleftrightarrow"],
+]);
 
 /**
  * **근호(√)는 글자가 아니라 가구다.**
@@ -631,18 +645,38 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
   // 2) 조판 부호 제거 · 특수 공백 정규화
   work = work.replace(DROPPABLE, "").replace(WIDE_SPACE, " ");
 
-  /* 2-1) 선분 기호. 지면의 AB 위 가로줄이 덤프에서는 **글자 뒤에 오는**
-   *      한 글리프(`Ó`)로 온다 — `PQÓ` = PQ‾ (중2-1 p.143 「PQ‾=6」,
-   *      p.130 「△ABC=1/2×BC‾×OA‾」). 앞의 대문자 1~3자를 데려간다.
+  /* 2-1) 선분·반직선·직선 기호. 지면의 가로줄과 화살표가 덤프에서는 **폭 0인
+   *      장식 글리프**로 온다. 두 갈래다:
+   *
+   *        이음 조각  Õ · Í   — 이름 글자 **사이**에 낀다
+   *        끝 조각    Ó · ò   선분   AC‾  (중2-1 p.143 「PQ‾=6」)
+   *                   ³       반직선 AB→ (중1-2 p.9)
+   *                   ê       직선   AB↔ (중1-2 「위치 관계」)
+   *
+   *      **끝 조각이 무엇이냐가 뜻을 정한다.** 중1-2 「기본 도형」은 한 쪽에서
+   *      셋을 나란히 쓰고 답이 서로 다르다 — 뭉뚱그리면 선분과 반직선이 같은
+   *      것이 된다. p.9를 그려서 눈으로 확인했다: `AÕMÓ`는 A와 M에 각각 줄을
+   *      긋는 것이 아니라 **둘 위로 이어진 한 줄**(AM‾)이다. 이전 표는 이음
+   *      조각을 끝 조각으로 잘못 알아 `\overline{A}\overline{M}`을 냈다.
+   *
    *      LaTeX 명령을 만들어야 하므로 자리표시자로 치워 둔다 — 3)단계의
    *      글자별 통과 검사는 역슬래시를 모른다. */
   /* 윗줄 글리프가 제 자리를 벗어난 것을 먼저 되돌린다. 폭이 0이라
    * 뒤따르는 글자와 x가 같고, 정렬에서 밀려 `PB=Ó`처럼 등호 뒤로 가는
    * 일이 잦다(별책 해설). 윗줄은 선분 이름 위에 그어지므로 바로 앞의
-   * 대문자 묶음이 임자다. */
-  work = work.replace(/([A-Z]{1,3})([^A-ZÓÕ]*)([ÓÕ])/g, "$1$3$2");
-  work = work.replace(/([A-Z]{1,3})[ÓÕ]/g, (_m, letters: string) =>
-    stash(`\\overline{${letters}}`),
+   * 대문자 묶음이 임자다.
+   *
+   * **`³`와 `ê`는 이 되돌리기에 넣지 않는다.** `³`는 다른 책에서 진짜
+   * 세제곱이라, 사이를 건너뛰게 하면 `AB=x³`가 반직선 AB가 된다. */
+  work = work.replace(/([A-Z][A-ZÕÍ]{0,4})([^A-ZÕÍÓò]*)([Óò])/g, "$1$3$2");
+  work = work.replace(
+    /([A-Z][A-ZÕÍ]{0,4})([Óò³ê])/g,
+    (whole: string, body: string, end: string) => {
+      const letters = body.replace(/[ÕÍ]/g, "");
+      /* 세제곱과 갈라야 한다 — 반직선 이름은 두 글자 이상이다(AB→). */
+      if (end === "³" && letters.length < 2) return whole;
+      return stash(`\\${NAME_MARK.get(end)!}{${letters}}`);
+    },
   );
   /* 호(弧) 기호는 **글자 앞**에 온다 — `µAB` = ⌒AB (중3-2 「원의 성질」).
    * 선분의 윗줄과 달리 위치가 안정적이라 그대로 읽으면 된다. */
@@ -848,7 +882,28 @@ export function joinLatex(left: string, right: string): string {
  * 혼자서는 씌울 글자가 없어 미해독으로 나간다.
  */
 export function isOverlineOnly(text: string): boolean {
-  return /^[ÓÕ]+$/.test(text);
+  return /^[ÓÕò]+$/.test(text);
+}
+
+/**
+ * 따로 선 조각이 **이름 위에 씌우는 표시뿐**이면 그 LaTeX 명령, 아니면 null.
+ *
+ * 끝 조각이 뜻을 정한다 — `Ó`·`ò`는 선분, `ê`는 직선이다. 이음 조각(`Õ`·`Í`)만
+ * 온 조각은 혼자서 아무것도 정하지 못하므로 여기서 걸러지지 않고
+ * isNameJoinOnly가 조용히 넘긴다. 뒤따르는 끝 조각이 일을 마무리한다.
+ *
+ * **반직선(`³`)은 일부러 뺐다.** 다른 책에서 진짜 세제곱으로 오는 글자라,
+ * 홀로 선 것을 반직선으로 단정하면 조용히 틀린다. 붙어 온 것만
+ * (대문자 둘 이상 뒤) 해독기가 읽고, 홀로 선 것은 미해독으로 검수함에 간다.
+ */
+export function nameMarkOnly(text: string): string | null {
+  const end = /^[ÕÍ]*([Óòê])[ÕÍ]*$/.exec(text)?.[1];
+  return end === undefined ? null : (NAME_MARK.get(end) ?? null);
+}
+
+/** 이음 조각만 담긴 조각인가 — 혼자서는 뜻이 없어 그냥 흘려보낸다 */
+export function isNameJoinOnly(text: string): boolean {
+  return /^[ÕÍ]+$/.test(text);
 }
 
 /**
@@ -873,8 +928,8 @@ export function attachOverline(text: string, mark: string): string {
  * 이미 `\overline{AB}`인 자리는 건드리지 않는다 — 대문자 바로 뒤가 `}`면
  * 그것이 이미 씌워졌다는 표시다.
  */
-export function overlineLastName(latex: string): string {
-  return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, "\\overline{$1}$2");
+export function overlineLastName(latex: string, command = "overline"): string {
+  return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, `\\${command}{$1}$2`);
 }
 
 /** 호(弧) 기호만 담긴 조각인가 — 뒤따르는 두 글자 위에 씌운다 */

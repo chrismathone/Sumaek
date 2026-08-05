@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   cleanBodyText,
   decodeHwpMath,
+  isNameJoinOnly,
   joinLatex,
   markSuperscripts,
   mergeUnbalancedMath,
+  nameMarkOnly,
+  overlineLastName,
 } from "../src/hwp-encoding";
 import type { Run } from "../src/types";
 
@@ -156,6 +159,74 @@ describe("선분 기호 — 글자 뒤에 오는 윗줄", () => {
   it("한 줄에 둘이 와도 각각 씌운다 (p.130 「1/2×BC‾×OA‾」)", () => {
     expect(decodeHwpMath("_BCÓ_OAÓ", "EHsang-Plain").latex).toBe(
       "\\times \\overline{BC}\\times \\overline{OA}",
+    );
+  });
+});
+
+describe("선분·반직선·직선 — 끝 조각이 뜻을 정한다 (중1-2 「기본 도형」)", () => {
+  /* 셋이 같은 쪽에 나란히 나오고 답이 서로 다르다. 중1-2 p.9를 그려서
+   * 눈으로 대조했다 — 「BA→」·「AC‾」가 한 문항 안에 같이 있다. */
+  it("AÕMÓ 는 AM‾ 이다 — 이음 조각은 글자를 가르지 않는다", () => {
+    expect(decodeHwpMath("AÕMÓ=8", "EHsang-Plain").latex).toBe(
+      "\\overline{AM}=8",
+    );
+  });
+
+  it("BÕA³ 는 반직선 BA 다 (p.9 「BA→」)", () => {
+    expect(decodeHwpMath("BÕA³", "EHsang-Plain").latex).toBe(
+      "\\overrightarrow{BA}",
+    );
+  });
+
+  it("CA³ 는 반직선 CA 다 — 세제곱이 아니다", () => {
+    expect(decodeHwpMath("CA³", "EHsang-Plain").latex).toBe(
+      "\\overrightarrow{CA}",
+    );
+  });
+
+  it("ABê 는 직선 AB 다", () => {
+    expect(decodeHwpMath("ABê", "EHsang-Plain").latex).toBe(
+      "\\overleftrightarrow{AB}",
+    );
+  });
+
+  /* 여기서 갈라 두지 않으면 다른 학년의 진짜 세제곱이 반직선이 된다.
+   * 반직선 이름은 두 글자 이상이라는 것이 가름선이다. */
+  it("대문자 하나 뒤의 ³ 는 그대로 세제곱이다", () => {
+    expect(decodeHwpMath("A³", "EHsang-Plain").latex).toBe("A^{3}");
+  });
+
+  it("등호 건너에 있는 ³ 를 끌어오지 않는다 — 세제곱을 반직선으로 만들지 않는다", () => {
+    expect(decodeHwpMath("AB=x³", "EHsang-Plain").latex).toBe("AB=x^{3}");
+  });
+});
+
+describe("따로 선 표시 조각 — 씌울 글자를 찾아 준다", () => {
+  it("Ó 만 담긴 조각은 선분 표시다", () => {
+    expect(nameMarkOnly("Ó")).toBe("overline");
+    expect(nameMarkOnly("ò")).toBe("overline");
+  });
+
+  it("ê 만 담긴 조각은 직선 표시다", () => {
+    expect(nameMarkOnly("ê")).toBe("overleftrightarrow");
+  });
+
+  /* 홀로 선 ³ 를 반직선으로 단정하지 않는다 — 조용히 틀리느니
+   * 미해독으로 검수함에 가는 편이 낫다 */
+  it("홀로 선 ³ 는 표시로 읽지 않는다", () => {
+    expect(nameMarkOnly("³")).toBeNull();
+  });
+
+  it("이음 조각만 온 것은 뜻을 정하지 않는다", () => {
+    expect(nameMarkOnly("Í")).toBeNull();
+    expect(isNameJoinOnly("Í")).toBe(true);
+    expect(isNameJoinOnly("Õ")).toBe(true);
+    expect(isNameJoinOnly("Ó")).toBe(false);
+  });
+
+  it("씌울 이름은 마지막 대문자 묶음이다", () => {
+    expect(overlineLastName("PQ=AB", "overleftrightarrow")).toBe(
+      "PQ=\\overleftrightarrow{AB}",
     );
   });
 });
