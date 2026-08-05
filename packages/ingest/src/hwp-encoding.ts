@@ -918,7 +918,9 @@ export function isNameJoinOnly(text: string): boolean {
  * 마지막 대문자 묶음이 그 이름이다.
  */
 export function attachOverline(text: string, mark: string): string {
-  const at = /([A-Z]{1,3})([^A-Z]*)$/.exec(text);
+  /* 이음 조각(Õ·Í)도 이름의 일부다 — 빼고 잡으면 `MÕB`에서 `B`만
+   * 데려가 「M̅B̅」가 「M \overline{B}」가 된다 */
+  const at = /([A-Z][A-ZÕÍ]{0,4})([^A-ZÕÍ]*)$/.exec(text);
   if (!at) return text + mark;
   return `${text.slice(0, at.index)}${at[1]}${mark}${at[2]}`;
 }
@@ -932,7 +934,11 @@ export function attachOverline(text: string, mark: string): string {
  * 그것이 이미 씌워졌다는 표시다.
  */
 export function overlineLastName(latex: string, command = "overline"): string {
-  return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, `\\${command}{$1}$2`);
+  return latex.replace(
+    /([A-Z][A-ZÕÍ]{0,4})([^A-ZÕÍ}]*)$/,
+    (_m, name: string, tail: string) =>
+      `\\${command}{${name.replace(/[ÕÍ]/g, "")}}${tail}`,
+  );
 }
 
 /** 호(弧) 기호만 담긴 조각인가 — 뒤따르는 두 글자 위에 씌운다 */

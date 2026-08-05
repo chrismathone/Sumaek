@@ -4,7 +4,9 @@ import {
   joinKorean,
   joinLatex,
   attachOverline,
+  isNameJoinOnly,
   isOverlineOnly,
+  nameMarkOnly,
   mergeRaised,
   radicalPiece,
   markSuperscripts,
@@ -940,7 +942,19 @@ export function parseAnswerPage(
        * 나가고 선분 표시는 사라진다.
        *
        * previous가 text일 수 있으므로 뒤에서부터 수식을 찾는다. */
-      if (isOverlineOnly(raw)) {
+      /* 이음 조각(Õ·Í)만 온 것은 흘려보낸다 — 뜻은 끝 조각이 정한다 */
+      if (isNameJoinOnly(raw)) {
+        const owner = [...runs].reverse().find((r) => r.kind === "math");
+        if (owner?.kind === "math") {
+          owner.raw += raw;
+          return;
+        }
+      }
+      /* 선분(Ó·ò)뿐 아니라 **직선(ê)**도 여기로 온다. 본책과 달리 별책은
+       * 이 갈래를 안 보고 있어서 「MN↔」이 화면에 `MNê`로 나갔다
+       * (중1-2 교과서문제 해설 63건). 표시 종류는 raw 그대로 넘겨
+       * decodeHwpMath가 끝 조각을 보고 정하게 한다. */
+      if (isOverlineOnly(raw) || nameMarkOnly(raw) !== null) {
         const owner = [...runs].reverse().find((r) => r.kind === "math");
         if (owner?.kind === "math") {
           const rewritten = decodeHwpMath(attachOverline(owner.raw, raw), font);

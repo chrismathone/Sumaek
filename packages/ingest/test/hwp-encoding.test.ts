@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachOverline,
   cleanBodyText,
   decodeHwpMath,
   isNameJoinOnly,
@@ -227,6 +228,20 @@ describe("따로 선 표시 조각 — 씌울 글자를 찾아 준다", () => {
   it("씌울 이름은 마지막 대문자 묶음이다", () => {
     expect(overlineLastName("PQ=AB", "overleftrightarrow")).toBe(
       "PQ=\\overleftrightarrow{AB}",
+    );
+  });
+
+  /* 별책 해설은 표시가 한참 밀려 따로 온다. 이음 조각을 빼고 잡으면
+   * 「M̅B̅」가 「M \overline{B}」가 된다 — 중1-2 교과서문제 해설에서
+   * 63건이 이 꼴로 나갔다. */
+  it("이음 조각도 이름의 일부다", () => {
+    expect(overlineLastName("MÕB")).toBe("\\overline{MB}");
+    expect(attachOverline("MÕB", "Ó")).toBe("MÕBÓ");
+  });
+
+  it("따로 온 직선 표시를 앞 이름에 씌운다 (별책 「MN↔」)", () => {
+    expect(decodeHwpMath(attachOverline("MN", "ê"), "EHsang-Plain").latex).toBe(
+      "\\overleftrightarrow{MN}",
     );
   });
 });

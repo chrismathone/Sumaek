@@ -45,6 +45,8 @@ interface Block {
 }
 interface Row {
   printed_number: string;
+  /** 어느 권인가 — 인쇄 번호는 권마다 0001부터 다시 시작한다 */
+  book: string | null;
   kind: string;
   body: Block[];
   choices: { choiceId: string; order: number }[] | null;
@@ -58,10 +60,11 @@ interface Row {
 }
 
 const rows = await sql<Row[]>`
-  select q.printed_number, q.kind, qv.body, qv.choices, qv.answer, qv.explanation, qv.rubric
+  select q.printed_number, q.source_ref->>'book' as book,
+         q.kind, qv.body, qv.choices, qv.answer, qv.explanation, qv.rubric
   from questions q join question_versions qv on qv.id = q.current_version_id
   where q.organization_id = ${organizationId} and q.source_ref is not null
-  order by q.printed_number
+  order by q.source_ref->>'book', q.printed_number
 `;
 
 /** 화면과 같은 규칙: 수식은 `$…$`로 감싸 이어 붙인다 */
@@ -120,19 +123,28 @@ const check = (number: string, surface: string, text: string): void => {
   bySurface.set(surface, stat);
 };
 
+/**
+ * 결함을 부르는 이름 — **권을 빼면 못 찾는다.**
+ *
+ * 인쇄 번호는 권마다 0001부터 다시 시작한다. 여섯 권이 되면서 「0051」만
+ * 적힌 보고서로는 어느 책을 다시 넣어야 하는지 알 수 없게 됐다.
+ */
+const label = (row: Row): string =>
+  `${(row.book ?? "?").replace(/^RPM 중학 수학 | \(2022 개정\)$/g, "")} ${row.printed_number}`;
+
 /** `$…$` 안쪽을 지운 나머지 — 여기 LaTeX 명령이 있으면 안 된다 */
 const stripMath = (s: string): string =>
   s.replace(/\$\$[\s\S]*?\$\$/g, " ").replace(/\$[^$]*\$/g, " ");
 
 for (const row of rows) {
-  check(row.printed_number, "발문(body)", blocksToText(row.body));
+  check(label(row), "발문(body)", blocksToText(row.body));
 
   const group = row.body.find((b) => b.type === "choice_group");
   for (const choice of group?.choices ?? []) {
-    check(row.printed_number, "선택지", runsToText(choice.content));
+    check(label(row), "선택지", runsToText(choice.content));
   }
 
-  check(row.printed_number, "해설", blocksToText(row.explanation));
+  check(label(row), "해설", blocksToText(row.explanation));
 
   /* 정답 — 화면의 formatAnswerKey가 만드는 문자열 그대로.
    * 이 칸은 renderMixedText를 **거치지 않는다**. 그래서 여기에 `$`나
@@ -144,7 +156,7 @@ for (const row of rows) {
        * 화면이 무엇을 그리는지와 다른 것을 검사하면 검사가 거짓말한다. */
       const raw = accepted.value ?? "";
       const shown = accepted.form === "expression" ? `$${raw}$` : raw;
-      check(row.printed_number, "정답(단답)", shown);
+      check(label(row), "정답(단답)", shown);
     }
   }
 
@@ -154,7 +166,7 @@ for (const row of rows) {
     if (/\\[a-zA-Z]+/.test(stripMath(row.rubric.raw))) {
       stat.failed += 1;
       findings.push({
-        number: row.printed_number,
+        number: label(row),
         surface: "채점기준",
         detail: `수식 밖에 LaTeX 명령: ${row.rubric.raw.slice(0, 60)}`,
       });
@@ -179,12 +191,27 @@ for (const f of findings) {
   byDetail.set(key, [...(byDetail.get(key) ?? []), f]);
 }
 console.log(`\n총 ${findings.length}건`);
+/* --verbose는 **전부** 낸다. 예전에는 자리별 20건에서 잘라 놓고 잘랐다는
+ * 말을 하지 않아, 154건짜리 보고서가 69건처럼 보였다. 재적재할 권을
+ * 고르는 자리라 잘린 줄 모르면 멀쩡한 책으로 착각한다. */
+const shown = verbose ? Number.POSITIVE_INFINITY : 4;
 for (const [key, list] of [...byDetail].sort((a, b) => b[1].length - a[1].length)) {
   console.log(`\n  ● ${key} — ${list.length}건`);
-  for (const f of list.slice(0, verbose ? 20 : 4)) {
+  for (const f of list.slice(0, shown)) {
     console.log(`      [${f.number}] ${f.detail.slice(0, 130)}`);
   }
-  if (!verbose && list.length > 4) console.log(`      … 외 ${list.length - 4}건`);
+  if (list.length > shown) console.log(`      … 외 ${list.length - shown}건`);
+}
+
+/* 권별 집계 — 재적재는 권 단위로 돈다 */
+const byBook = new Map<string, number>();
+for (const f of findings) {
+  const book = f.number.split(" ")[0] ?? "?";
+  byBook.set(book, (byBook.get(book) ?? 0) + 1);
+}
+console.log("\n권별:");
+for (const [book, n] of [...byBook].sort((a, b) => b[1] - a[1])) {
+  console.log(`  중${book.padEnd(6)} ${String(n).padStart(4)}건`);
 }
 
 await sql.end();
