@@ -1433,14 +1433,37 @@ function buildQuestion(
   const insideFigure = (s: IndexedSpan): boolean => {
     /* 도형 라벨 글꼴이면 기하를 볼 것도 없다 — 그 글꼴이 곧 「그림 안」이다.
      * 선이 성긴 도형은 벡터 뭉치로 안 잡혀 상자가 서지 않는다. */
+    /* **선택지 기호를 예외로 빼면 안 된다.** 도형이 선택지 자리까지 걸치면
+     * ①②③④⑤가 라벨로 빠져 선택지가 사라지길래 빼 봤더니, 이 교재에는
+     * 「오른쪽 그림은 … ①~⑤ 중 고르시오」 꼴이 있다 — 거기서 ①~⑤는 정말
+     * 그림 위에 찍힌 표시다. 빼내면 그 줄이 선택지 줄로 읽혀 발문이 통째로
+     * 사라진다(중1-1 1040·1041). 기호만으로는 못 가른다. */
     if (profile.fonts.figureLabel.test(s.font)) return true;
-    const cx = (s.x0 + s.x1) / 2;
     const cy = (s.y0 + s.y1) / 2;
     const m = profile.figures.labelMargin;
+    /* **양 끝을 다 본다.** 가운데 한 점으로 재면 긴 글이 통째로 라벨이 된다 —
+     * 「오른쪽 그림과 같은 원뿔대의 부피는?」은 152pt짜리 한 span인데, 그
+     * 가운데가 하필 유형 머리글 장식(x 98~130) 옆에 떨어져 발문이 빈 문항이
+     * 됐다(중1-2 0874). 치수 라벨은 짧아서 양 끝이 다 선 곁에 있다. */
+    const near = (x: number, strokes: (Rect & { fill: boolean })[]): boolean =>
+      strokes.some((d) => x >= d.x0 - m && x <= d.x1 + m && cy >= d.y0 - m && cy <= d.y1 + m);
+    const cx = (s.x0 + s.x1) / 2;
+    /* **한글 본문은 양 끝을 다 본다.**
+     *
+     * 가운데 한 점으로만 재면 긴 글이 통째로 라벨이 된다 — 「오른쪽 그림과
+     * 같은 원뿔대의 부피는?」은 152pt짜리 한 span인데 그 가운데가 하필 유형
+     * 머리글 장식 옆에 떨어져 발문이 빈 문항이 됐다(중1-2 0874).
+     *
+     * 그런데 **수식까지 그렇게 재면 안 된다.** 그래프에 붙는 식 라벨
+     * (`y=2x-2`·`x-y+2=0`)은 선 곁에 나란히 놓일 뿐 선에 둘러싸이지 않아
+     * 양 끝이 밖으로 나간다. 그것까지 발문으로 돌리면
+     * 「상수 a의 값x-y+2=0은?ax-y-1=0」이 된다. 이 교재는 수식과 한글이
+     * 글꼴로 갈리므로(프로파일 참고) 그 선을 그대로 쓴다. 치수·꼭짓점 이름도
+     * 전부 수식 글꼴이다. */
     return figureStrokes.some((strokes) =>
-      strokes.some(
-        (d) => cx >= d.x0 - m && cx <= d.x1 + m && cy >= d.y0 - m && cy <= d.y1 + m,
-      ),
+      profile.fonts.math.test(s.font)
+        ? near(cx, strokes)
+        : near(s.x0, strokes) && near(cx, strokes) && near(s.x1, strokes),
     );
   };
   const figureLabels: string[] = [];
