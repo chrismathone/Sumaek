@@ -160,9 +160,27 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  /* 아무것도 지우지 않는다. 응시·응답·채점 결정은 증거이고
-   * grade_decisions는 append-only다 (ADR-0015). 학습자·평가를 고정 ID로
-   * 재사용하므로 다음 실행이 같은 자리에 이어 쌓는다. */
+  /* 증거는 지우지 않는다 — 응시·응답·채점 결정은 append-only다 (ADR-0015).
+   *
+   * 다만 **제출까지 가지 않은 응시**는 상태를 맞춰 두고 끝낸다. 이 테스트는
+   * 마감을 재려고 응시 행을 직접 넣으므로(시작 시각을 과거로 밀어야 한다)
+   * 제품의 「같은 평가에 진행 중 응시는 하나」 보장을 우회한다. 남겨 두면
+   * `pnpm verify:recovery`가 I-09 위반으로 빨간불이 된다 — 실행 직후부터.
+   *
+   * beforeAll에도 같은 정리가 있다(중간에 죽은 실행 대비). 여기 것은 **이번
+   * 실행이 게이트를 빨갛게 두지 않게** 하는 것이다. */
+  if (!hasDb) return;
+  await sql`
+    update attempts a
+    set status = 'invalidated', updated_at = now()
+    where a.assessment_id in (${TIMED}, ${UNTIMED})
+      and a.status = 'in_progress'
+      and not exists (
+        select 1 from grade_decisions d
+        join responses r on r.id = d.response_id
+        where r.attempt_id = a.id
+      )
+  `;
 });
 
 describe.skipIf(!hasDb)("마감 전에는 그대로 저장된다", () => {

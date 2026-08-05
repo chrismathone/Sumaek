@@ -127,8 +127,21 @@ beforeAll(async () => {
   }
 });
 
-afterAll(() => {
-  /* 아무것도 지우지 않는다 — 위 주석 참고. 고정 ID라 다음 실행이 이어 쌓는다. */
+afterAll(async () => {
+  /* 증거는 지우지 않는다. 다만 제출까지 가지 않은 응시는 상태를 맞춰 두고
+   * 끝낸다 — 남기면 이번 실행 직후부터 `verify:recovery`가 I-09로 빨간불이
+   * 된다 (attempt-deadline.test.ts의 afterAll과 같은 이유). */
+  if (!hasDb) return;
+  await sql`
+    update attempts a
+    set status = 'invalidated', updated_at = now()
+    where a.assessment_id = ${ASSESSMENT} and a.status = 'in_progress'
+      and not exists (
+        select 1 from grade_decisions d
+        join responses r on r.id = d.response_id
+        where r.attempt_id = a.id
+      )
+  `;
 });
 
 /** 이번 실행의 회차. (평가·학습자·회차)가 유일하므로 앞 실행 다음부터 센다. */
