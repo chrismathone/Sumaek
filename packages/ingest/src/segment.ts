@@ -590,7 +590,19 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
          * `^{2}^{+}^{3}`이 되어 KaTeX가 이중 위첨자로 실패한다 */
         latex = raised ? mergeRaised(latex, piece) : joinLatex(latex, piece);
       }
-      if (latex !== "") runs.push({ kind: "math", raw, latex, unknown });
+      /* 이 덩어리를 읽은 글꼴 — 표시가 남으면 원문 전체로 다시 읽는 데 쓴다.
+       * 가구(근호·표시)가 아닌 첫 조각의 글꼴이 그 덩어리의 글꼴이다. */
+      const clusterFont = cluster.find(
+        (s) => !isNameJoinOnly(s.text) && nameMarkOnly(s.text) === null && !isArcOnly(s.text),
+      )?.font;
+      if (latex !== "")
+        runs.push({
+          kind: "math",
+          raw,
+          latex,
+          unknown,
+          ...(clusterFont === undefined ? {} : { font: clusterFont }),
+        });
       i = j;
       continue;
     }

@@ -678,6 +678,16 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    * **`³`와 `ê`는 이 되돌리기에 넣지 않는다.** `³`는 다른 책에서 진짜
    * 세제곱이라, 사이를 건너뛰게 하면 `AB=x³`가 반직선 AB가 된다. */
   work = work.replace(/([A-Z][A-ZÕÍ]{0,4})([^A-ZÕÍÓò]*)([Óò])/g, "$1$3$2");
+  /* 표시와 이름 사이에 공백이 흘러드는 자리가 있다 — 별책 해설의 「AD↔」가
+   * `AD ê`로 온다(중1-2 0098 등). 공백을 건너뛰지 않으면 그 자리만 날글자로
+   * 남는다. `³`는 여기서도 빼 둔다 — 「AB 3」이 반직선이 되면 안 된다. */
+  work = work.replace(
+    /([A-Z][A-ZÕÍ]{0,4})[  ]*([Óòê])/g,
+    (whole: string, body: string, end: string) => {
+      const letters = body.replace(/[ÕÍ]/g, "");
+      return stash(`\\${NAME_MARK.get(end)!}{${letters}}`);
+    },
+  );
   work = work.replace(
     /([A-Z][A-ZÕÍ]{0,4})([Óò³ê])/g,
     (whole: string, body: string, end: string) => {

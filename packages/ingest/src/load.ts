@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import type postgres from "postgres";
 import { processExpression } from "@su-maek/core/math";
 import type { ParsedAnswer } from "./answers";
-import { renderRuns } from "./answers";
+import { renderRuns, settleMarks } from "./answers";
 import type { ExtractionProfile } from "./profiles/types";
 import type { ConceptDefinition, ConceptWeight } from "./profiles/rpm-2022-concepts";
 import { normalizeConceptKey } from "./profiles/rpm-2022-concepts";
@@ -102,6 +102,9 @@ function toContractRuns(
   runs: Run[],
   expressions: { id: string; raw: string; latex: string }[],
 ): Block[] {
+  /* 표시 글리프가 남은 조각은 원문 전체로 다시 읽는다 — 조각 단위로
+   * 읽어 이어 붙이느라 마지막 표시 하나만 씌워진 자리가 있다. */
+  settleMarks(runs);
   return runs.map((run) => {
     if (run.kind === "text") return { kind: "text", text: run.text };
     const id = uuidv7();

@@ -619,3 +619,40 @@ describe("겹쳐 찍은 위첨자", () => {
     expect(markSuperscripts("2b", boxes([5.25]))).toBe("2b");
   });
 });
+
+describe("표시와 이름 사이의 공백 — 별책이 흘리는 자리", () => {
+  it("AD ê 는 직선 AD 다 (중1-2 0098 별책 해설)", () => {
+    expect(decodeHwpMath("AD ê", "EHsang-Italic").latex).toBe(
+      "\\overleftrightarrow{AD}",
+    );
+  });
+
+  it("공백이 없어도 같다", () => {
+    expect(decodeHwpMath("ADê", "EHsang-Italic").latex).toBe(
+      "\\overleftrightarrow{AD}",
+    );
+  });
+
+  /* `³`는 공백을 건너뛰지 않는다 — 「AB 3」이 반직선이 되면 안 된다 */
+  it("반직선은 공백을 건너뛰지 않는다", () => {
+    expect(decodeHwpMath("AB ³", "EHsang-Italic").latex).not.toContain(
+      "overrightarrow",
+    );
+  });
+});
+
+describe("원문 전체로 다시 읽기 — 조각 단위로는 앞을 못 고친다", () => {
+  it("표시가 여럿이면 전부 씌운다", () => {
+    expect(decodeHwpMath("APÓ=PQÓ=QBÓ", "EHsang-Italic").latex).toBe(
+      "\\overline{AP}=\\overline{PQ}=\\overline{QB}",
+    );
+  });
+
+  it("긴 등식에서도 전부 씌운다 (중1-2 0060)", () => {
+    expect(
+      decodeHwpMath("ANÓ=AMÓ+MNÓ=MBÓ+NBÓ", "EHsang-Italic").latex,
+    ).toBe(
+      "\\overline{AN}=\\overline{AM}+\\overline{MN}=\\overline{MB}+\\overline{NB}",
+    );
+  });
+});

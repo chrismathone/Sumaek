@@ -958,7 +958,8 @@ export function parseAnswerPage(
         const owner = [...runs].reverse().find((r) => r.kind === "math");
         if (owner?.kind === "math") {
           const rewritten = decodeHwpMath(attachOverline(owner.raw, raw), font);
-          owner.raw += raw;
+          owner.raw = attachOverline(owner.raw, raw);
+          owner.font ??= font;
           owner.latex = rewritten.latex;
           owner.unknown.push(...rewritten.unknown);
           return;
@@ -984,6 +985,7 @@ export function parseAnswerPage(
       const last = runs[runs.length - 1];
       if (last?.kind === "math" && adjacent) {
         last.raw += raw;
+        last.font ??= font;
         /* 위첨자 조각은 앞의 지수 **안으로** 들어간다 — 따로 씌우면
          * `^{2}^{+}^{3}`이 되어 KaTeX가 파싱에 실패한다 */
         last.latex = raised
@@ -992,7 +994,7 @@ export function parseAnswerPage(
         last.unknown.push(...decoded.unknown);
         return;
       }
-      runs.push({ kind: "math", raw, latex, unknown: decoded.unknown });
+      runs.push({ kind: "math", raw, latex, unknown: decoded.unknown, font });
       return;
     }
     if (text.trim() === "") return;
@@ -1188,7 +1190,35 @@ export function parseAnswers(
 }
 
 /** 조각들을 사람이 읽을 한 줄로 (검수 화면·로그용) */
+/** 이름 위에 씌우는 표시 — 결과에 날것으로 남아 있으면 안 되는 글자들 */
+const MARK_GLYPH = /[ÓÕòêÍ]/;
+
+/**
+ * 표시 글리프가 결과에 남았으면 **원문 전체로 다시 읽는다.**
+ *
+ * 별책은 수식을 조각으로 흘려 보내고, 파서는 조각마다 따로 읽어 이어
+ * 붙인다. 그래서 나중에 온 표시가 **앞 조각을 고치지 못한다** —
+ * `APÓ=PQÓ=QBÓ`의 원문은 온전한데 결과는 `APÓ=PQÓ=\overline{QB}`가 됐다.
+ * 마지막 하나만 씌워진 것이다. 여섯 권에서 181건이 이 꼴이었다.
+ *
+ * 원문을 통째로 주면 해독기는 셋 다 맞게 읽는다(확인함). 그래서 표시가
+ * 남았을 때만, 그리고 **다시 읽어서 실제로 표시가 사라질 때만** 갈아
+ * 끼운다. 조각 단위 처리가 하는 다른 일(좌표로 알아낸 위첨자, 2행 분수,
+ * 근호)을 통째 읽기가 못 하므로, 나아지지 않으면 손대지 않는다.
+ */
+export function settleMarks(runs: Run[]): void {
+  for (const run of runs) {
+    if (run.kind !== "math" || run.font === undefined) continue;
+    if (!MARK_GLYPH.test(run.latex)) continue;
+    const whole = decodeHwpMath(run.raw, run.font);
+    if (MARK_GLYPH.test(whole.latex)) continue;
+    run.latex = whole.latex;
+    run.unknown = whole.unknown;
+  }
+}
+
 export function renderRuns(runs: Run[]): string {
+  settleMarks(runs);
   return runs
     .map((r) => (r.kind === "text" ? r.text : `$${r.latex}$`))
     .join("")
