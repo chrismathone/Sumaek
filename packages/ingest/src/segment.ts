@@ -839,101 +839,114 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
   }[] = [];
   for (let i = 0; i < fullWidthLines.length; i += 1) {
     const line = fullWidthLines[i]!;
-    const text = cleanBodyText(line.spans.map((s) => s.text).join("")).trim();
-    const range = profile.patterns.sharedInstruction.exec(text);
-    if (!range) continue;
 
-    /* 같은 기준선에는 **옆 절반의 문항도 있다.** 단을 무시하고 줄을 세웠으니
-     * 그대로 쓰면 「… ◯, 합성수이면 △를 ( ) 0019 16 0020 27 안에 써넣으시오」가
-     * 된다. 지시문은 왼쪽에서 오른쪽으로 이어지다 큰 틈에서 끝난다 —
-     * 그 틈에서 자른다. */
-    /* 지시문이 오른쪽 절반에 있으면 같은 기준선의 **왼쪽 절반**이 줄의 앞을
-     * 차지한다. 줄머리부터 자르면 엉뚱한 절반을 지시문으로 읽는다.
-     * 「[」가 있는 span에서 시작한다. */
-    const startIdx = line.spans.findIndex((s) => s.text.includes("["));
-    const own = takeContiguous(
-      startIdx >= 0 ? line.spans.slice(startIdx) : line.spans,
-      profile,
-    );
-    const instructionX = own[0]?.x0 ?? 0;
-    const runs = toRuns(own, profile);
-    for (const s of own) instructionSpans.add(s.index);
-    /* 「[0001~0006]」은 지면에서 묶음을 가리키는 표식이지 문제의 말이 아니다.
-     * 학생 화면에 그대로 나가면 없는 문제 번호를 찾게 만든다. */
-    const head = runs[0];
-    if (head?.kind === "text") {
-      head.text = head.text.replace(profile.patterns.sharedInstruction, "").trimStart();
-    }
-    /* 지시문이 다음 줄로 넘어가는 일이 잦다 (「… ( ) / 안에 써넣으시오.」).
-     * 문항 번호로 시작하지 않는 바로 다음 줄까지만 이어 받는다. */
-    /* 이미 문장이 끝났으면 이어받지 않는다.
+    /* **한 기준선에 지시문이 둘 설 수 있다.**
      *
-     * 「다음 수의 약수를 모두 구하시오.」는 그 자체로 완결이다. 그런데도 다음
-     * 줄을 붙이다가 **첫 문항의 수를 지시문에 삼켰고**, 그 지시문이 0032~0035
-     * 넷 모두에 붙어 네 문항이 전부 같은 수를 묻는 꼴이 됐다. 결과만 보면
-     * 멀쩡해 보이고, 재현 검사에서 네 문항의 답이 똑같이 나와서야 드러났다. */
-    const ended = /[.?!]$/.test(cleanBodyText(own.map((s) => s.text).join("")).trim());
-    const next = ended ? undefined : fullWidthLines[i + 1];
-    if (next) {
-      // 이어지는 줄도 지시문이 시작한 x 언저리에서부터 읽는다
-      const nextOwn = takeContiguous(
-        next.spans.filter((s) => s.x0 >= instructionX - 12),
-        profile,
-      );
-      /* 문항 번호가 **줄 어디에라도** 있으면 그 줄은 이미 문항의 것이다.
-       * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다. */
-      const hasNumber = mergeAdjacent(
-        next.spans.filter((s) => s.x0 >= instructionX - 12),
-      ).some((g) => questionNumberOf(g, profile) !== null);
-      const nextText = cleanBodyText(nextOwn.map((s) => s.text).join("")).trim();
-      if (!hasNumber && !profile.patterns.sharedInstruction.test(nextText)) {
-        runs.push(...toRuns(nextOwn, profile));
-        for (const s of nextOwn) instructionSpans.add(s.index);
-        i += 1;
+     * 왼쪽 단과 오른쪽 단의 묶음이 같은 높이에서 시작하면 그렇다. 단을
+     * 무시하고 세운 줄에서는 이렇게 보인다:
+     *
+     *   [0146~0148] 오른쪽 그림과 같이 A[0156~0159] 다음 평행사변형의 넓이를…
+     *
+     * 첫 것만 보면 **뒤엣것이 통째로 사라진다.** 0156은 지시문이 제 영역에
+     * 걸쳐 있어 우연히 글자를 받지만 0157·0158·0159는 발문이 빈 채로 나간다.
+     * 그러니 「[」마다 잘라 각각을 따로 본다.
+     *
+     * 잘라서 보면 얻는 것이 하나 더 있다 — 지면에는 지시문이 아닌 대괄호도
+     * 있다(`y=3xÛ[5]`의 답 자리). 예전에는 줄에서 **첫 「[」**를 지시문의
+     * 시작으로 삼았기 때문에 그런 대괄호가 앞에 있으면 엉뚱한 자리부터
+     * 지시문으로 읽었다. 이제는 조각마다 표식이 맞는지 확인한다. */
+    const starts = line.spans.flatMap((s, idx) => (s.text.includes("[") ? [idx] : []));
+    let advance = 0;
+
+    for (let k = 0; k < starts.length; k += 1) {
+      const segment = line.spans.slice(starts[k]!, starts[k + 1]);
+      const own = takeContiguous(segment, profile);
+      const ownText = cleanBodyText(own.map((s) => s.text).join("")).trim();
+      const range = profile.patterns.sharedInstruction.exec(ownText);
+      if (!range) continue;
+
+      const instructionX = own[0]?.x0 ?? 0;
+      /* 이 지시문의 오른쪽 끝 — 옆 지시문이 시작하는 자리다. 이어지는 줄을
+       * 받을 때 옆 단까지 넘어가지 않게 막는다. */
+      const nextX = line.spans[starts[k + 1]!]?.x0 ?? Infinity;
+      const runs = toRuns(own, profile);
+      for (const s of own) instructionSpans.add(s.index);
+      /* 「[0001~0006]」은 지면에서 묶음을 가리키는 표식이지 문제의 말이 아니다.
+       * 학생 화면에 그대로 나가면 없는 문제 번호를 찾게 만든다. */
+      const head = runs[0];
+      if (head?.kind === "text") {
+        head.text = head.text.replace(profile.patterns.sharedInstruction, "").trimStart();
       }
-    }
-    /* **공유 지시문에 딸린 보기 상자.**
-     *
-     * 「[0026~0029] 다음 각을 보기에서 모두 고르시오.」 아래에 상자가 서고,
-     * 그 뒤에야 0026·0027이 온다. 상자는 어느 한 문항의 것이 아니라 넷
-     * 모두의 것인데, 문항 영역 밖에 있어 어디에도 안 붙었다 — 그러면 네
-     * 문항이 「보기에서 고르시오」로 끝나고 고를 것이 없다. 여섯 권에서
-     * 다섯 자리가 이렇다.
-     *
-     * 다음 문항 번호가 나오기 전까지의 줄에서 라벨과 항목을 걷는다. */
-    let sharedBox: { label: string; items: ConditionItem[] } | null = null;
-    for (let j = i + 1; j < fullWidthLines.length; j += 1) {
-      const l = fullWidthLines[j]!;
-      const hasNum = mergeAdjacent(l.spans).some(
-        (g) => questionNumberOf(g, profile) !== null,
-      );
-      if (hasNum) break;
-      const label = l.spans.find(
-        (s) =>
-          profile.fonts.conditionLabel.test(s.font) &&
-          profile.patterns.conditionLabel.test(s.text.trim()) &&
-          s.size < 8.5,
-      );
-      if (label) {
-        sharedBox = { label: label.text.trim(), items: [] };
+      /* 지시문이 다음 줄로 넘어가는 일이 잦다 (「… ( ) / 안에 써넣으시오.」).
+       * 문항 번호로 시작하지 않는 바로 다음 줄까지만 이어 받는다. */
+      /* 이미 문장이 끝났으면 이어받지 않는다.
+       *
+       * 「다음 수의 약수를 모두 구하시오.」는 그 자체로 완결이다. 그런데도 다음
+       * 줄을 붙이다가 **첫 문항의 수를 지시문에 삼켰고**, 그 지시문이 0032~0035
+       * 넷 모두에 붙어 네 문항이 전부 같은 수를 묻는 꼴이 됐다. 결과만 보면
+       * 멀쩡해 보이고, 재현 검사에서 네 문항의 답이 똑같이 나와서야 드러났다. */
+      const ended = /[.?!]$/.test(ownText);
+      const next = ended ? undefined : fullWidthLines[i + 1];
+      if (next) {
+        // 이어지는 줄도 지시문이 선 x 구간에서만 읽는다
+        const window = next.spans.filter((s) => s.x0 >= instructionX - 12 && s.x0 < nextX);
+        const nextOwn = takeContiguous(window, profile);
+        /* 문항 번호가 **줄 어디에라도** 있으면 그 줄은 이미 문항의 것이다.
+         * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다. */
+        const hasNumber = mergeAdjacent(window).some(
+          (g) => questionNumberOf(g, profile) !== null,
+        );
+        const nextText = cleanBodyText(nextOwn.map((s) => s.text).join("")).trim();
+        if (!hasNumber && !profile.patterns.sharedInstruction.test(nextText)) {
+          runs.push(...toRuns(nextOwn, profile));
+          for (const s of nextOwn) instructionSpans.add(s.index);
+          advance = 1;
+        }
+      }
+      /* **공유 지시문에 딸린 보기 상자.**
+       *
+       * 「[0026~0029] 다음 각을 보기에서 모두 고르시오.」 아래에 상자가 서고,
+       * 그 뒤에야 0026·0027이 온다. 상자는 어느 한 문항의 것이 아니라 넷
+       * 모두의 것인데, 문항 영역 밖에 있어 어디에도 안 붙었다 — 그러면 네
+       * 문항이 「보기에서 고르시오」로 끝나고 고를 것이 없다. 여섯 권에서
+       * 다섯 자리가 이렇다.
+       *
+       * 다음 문항 번호가 나오기 전까지의 줄에서 라벨과 항목을 걷는다. */
+      let sharedBox: { label: string; items: ConditionItem[] } | null = null;
+      for (let j = i + 1 + advance; j < fullWidthLines.length; j += 1) {
+        const l = fullWidthLines[j]!;
+        const hasNum = mergeAdjacent(l.spans).some(
+          (g) => questionNumberOf(g, profile) !== null,
+        );
+        if (hasNum) break;
+        const label = l.spans.find(
+          (s) =>
+            profile.fonts.conditionLabel.test(s.font) &&
+            profile.patterns.conditionLabel.test(s.text.trim()) &&
+            s.size < 8.5,
+        );
+        if (label) {
+          sharedBox = { label: label.text.trim(), items: [] };
+          for (const s of l.spans) instructionSpans.add(s.index);
+          continue;
+        }
+        if (!sharedBox) continue;
+        const parts = splitByMarker(l.spans, profile, conditionMarkerOf);
+        if (parts.length === 0) break;
+        for (const part of parts) {
+          sharedBox.items.push({ marker: part.marker, runs: toRuns(part.spans, profile) });
+        }
         for (const s of l.spans) instructionSpans.add(s.index);
-        continue;
       }
-      if (!sharedBox) continue;
-      const parts = splitByMarker(l.spans, profile, conditionMarkerOf);
-      if (parts.length === 0) break;
-      for (const part of parts) {
-        sharedBox.items.push({ marker: part.marker, runs: toRuns(part.spans, profile) });
-      }
-      for (const s of l.spans) instructionSpans.add(s.index);
-    }
 
-    sharedInstructions.push({
-      from: Number(range[1]),
-      to: Number(range[2]),
-      runs,
-      ...(sharedBox && sharedBox.items.length > 0 ? { box: sharedBox } : {}),
-    });
+      sharedInstructions.push({
+        from: Number(range[1]),
+        to: Number(range[2]),
+        runs,
+        ...(sharedBox && sharedBox.items.length > 0 ? { box: sharedBox } : {}),
+      });
+    }
+    i += advance;
   }
 
   /** 이 쪽 러닝헤드에서 읽은 계층 */
