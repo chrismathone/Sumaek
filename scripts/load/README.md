@@ -207,7 +207,7 @@ slo.md 9장이며, 나머지는 부하 중·후에 따로 확인한다.
 그렇지 않다. 쓰기만 재고 넘어가면 그 곱셈을 놓친다.
 
 ```bash
-k6 run -e BASE_URL=https://staging.example.com        -e STUDENT_COOKIE="$SB_STUDENT"        -e TEACHER_COOKIE="$SB_TEACHER"        -e GROUP_ID=0199...        scripts/load/autonomous-day.k6.js
+k6 run   -e BASE_URL=https://staging.example.com   -e STUDENT_COOKIE="$SB_STUDENT"   -e TEACHER_COOKIE="$SB_TEACHER"   -e GROUP_ID=0199...   scripts/load/autonomous-day.k6.js
 ```
 
 학생·교사 쿠키는 **다른 계정**이어야 한다. 하나만 주면 그쪽 시나리오만 돈다.

@@ -1335,8 +1335,8 @@ Set-Location ..\Su-Maek-t6-3-quality
 - **지연을 CI 임계값으로 걸지 않았다.** 개발기·공유 DB가 섞인 값이라 그것으로 빌드를 깨면 「환경이 느린 날」에 빨간불이 켜지고, 그러면 임계값을 올리게 된다. 정확성만 걸고 지연은 기록한다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t6-3-quality`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t6-3-quality`
 
 ### [] Phase 6, T6.4: 운영 모니터링·런북·릴리스 문서 갱신 RED→GREEN
 
