@@ -23,6 +23,7 @@
     "verify-templates": "tsx src/cli/verify-templates.mts",
     "variants": "tsx src/cli/variants.mts",
     "audit-katex": "tsx src/cli/audit-katex.mts",
+    "figure-census": "tsx src/cli/figure-census.mts",
     "strategy-review": "tsx src/cli/strategy-review.mts",
     "audit-content": "tsx src/cli/audit-content.mts",
     "delete-ingested": "tsx src/cli/delete-ingested.mts"
