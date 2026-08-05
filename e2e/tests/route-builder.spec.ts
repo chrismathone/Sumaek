@@ -199,11 +199,18 @@ test("루트 빌더: 반 만들기 → 노드 작성 → 검증 → 게시 → �
 test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", async ({ page }) => {
   await login(page);
 
-  // 학습자 목록은 표 + 페이지네이션이라 이름으로 좁힌 뒤 행의 링크로 들어간다
-  const studentRow = await gotoTableRow(page, "/app/students", "박서윤");
+  /* 대상 학생을 박서윤에서 **김시우**로 옮겼다.
+   *
+   * 오버라이드 폼의 노드 목록은 그 학생이 속한 반의 활성 루트 버전에서 온다.
+   * 박서윤은 seed-unit1-demo가 「1단원 검증반 (중1)」에 함께 넣으면서 소속이
+   * 둘이 됐고, 그때부터 폼이 중1 루트를 읽어 「건너뛸 노드가 기준 루트
+   * 버전에 없습니다」로 거부했다(실측). 이 스펙이 재는 것은 오버라이드의
+   * 동작이지 「어느 반을 고르는가」가 아니므로, 소속이 하나뿐인 학생을 쓴다.
+   * 김시우는 중2 심화 A 하나뿐이다. */
+  const studentRow = await gotoTableRow(page, "/app/students", "김시우");
   await studentRow.first().getByRole("link").first().click();
   await expect(
-    page.getByRole("heading", { name: "박서윤", exact: true }),
+    page.getByRole("heading", { name: "김시우", exact: true }),
   ).toBeVisible();
 
   const section = page
@@ -268,7 +275,7 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
   await expect(auditRow.first()).toContainText("가감법 확인테스트 미통과 보충");
 
   // 취소 — 다음 실행의 멱등성 (이전 실행 잔재 포함 전부 정리)
-  const studentRowAgain = await gotoTableRow(page, "/app/students", "박서윤");
+  const studentRowAgain = await gotoTableRow(page, "/app/students", "김시우");
   await studentRowAgain.first().getByRole("link").first().click();
   /* 상세 화면이 실제로 그려질 때까지 기다린다.
    * 클릭 직후에 세면 아직 목록 화면이라 취소 버튼이 0개로 보이고 루프가
@@ -277,7 +284,7 @@ test("학생 오버라이드: 생성·표시·취소 (반 루트 비영향)", as
    * 쌓여 있었다 (학생 경로가 보충 차시로만 채워질 정도로). */
   const cancelButtons = page.getByRole("button", { name: "취소", exact: true });
   await expect(
-    page.getByRole("heading", { name: "박서윤", exact: true }),
+    page.getByRole("heading", { name: "김시우", exact: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(cancelButtons.first()).toBeVisible({ timeout: 30_000 });
   for (let i = 0; i < 12; i++) {

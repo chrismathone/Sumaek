@@ -80,9 +80,17 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     // 문제은행 — 시드 문항과 권한 상태.
     // 검수·사용 권한이 서로 다른 칸으로 쪼개졌으므로 한 행에서 각각 단언한다.
     // (전체 화면 getByText는 검수 상태 필터의 <option value="published">게시</option>에 먼저 걸린다)
-    const questionRow = (
-      await gotoTableRow(page, "/app/content/questions", "가감법")
-    ).first();
+    /* 검수 상태 필터를 **화면의 것으로** 건다.
+     *
+     * 이름으로만 좁히고 첫 행을 잡던 것이, 교재 반입으로 초안 문항이 쌓이자
+     * 조용히 깨졌다 — 「가감법」 문항 85건 중 게시·사용 가능한 것은 둘뿐이라
+     * 첫 행이 검수 필요/확인 중으로 바뀌었다(실측). 재려는 것은 「검수·권한
+     * 상태가 각각 칸으로 보이는가」이지 「첫 행이 게시본인가」가 아니다.
+     * 필터를 걸면 문항이 얼마나 쌓이든 같은 것을 잰다. */
+    await page.goto(
+      `/app/content/questions?status=published&q=${encodeURIComponent("가감법")}`,
+    );
+    const questionRow = tableRow(page, "가감법").first();
     await expect(questionRow).toBeVisible();
     await expect(questionRow.getByText("게시", { exact: true })).toBeVisible();
     await expect(
