@@ -626,9 +626,67 @@ function splitByMarker(
 }
 
 /** 벡터 도형을 뭉치로 묶는다 — 밑줄·괄호 같은 장식은 걸러 낸다 */
-function figureClusters(page: PageDump, area: Rect, profile: ExtractionProfile): Rect[] {
+/**
+ * 「▪보기▪」·「▪조건▪」 상자의 테두리를 찾는다 — **도형 뭉치에서 빼기 위해서다.**
+ *
+ * 상자는 테두리 하나와 머리 장식 셋, 넷뿐이라 혼자서는 도형 문턱(12개)을
+ * 못 넘는다. 그런데 옆에 진짜 도형이 있으면 clusterGap 안에 들어와 **함께
+ * 뭉쳐** 문턱을 넘고, 그 순간 상자 안의 글자가 전부 그림 라벨로 빠지면서
+ * 상자가 통째로 사라진다. 여섯 권에서 157개 중 38개가 이렇게 없어져 있었다.
+ * 오류는 나지 않는다 — 문항이 「다음 보기 중 옳은 것을 고르시오」로 끝나고
+ * 고를 것이 하나도 없는 채로 학생에게 나갈 뿐이다.
+ *
+ * 뭉친 뒤에 걸러 내면 **옆의 진짜 도형까지 함께 잃는다.** 그래서 뭉치기
+ * 전에 상자 몫의 선을 빼낸다. 가름선은 라벨이다 — 글꼴·문구·크기가 셋 다
+ * 맞는 라벨을 위 테두리에 얹은 사각형만 상자로 본다.
+ */
+function conditionBoxRects(page: PageDump, profile: ExtractionProfile): Rect[] {
+  const labels = page.spans.filter(
+    (s) =>
+      profile.fonts.conditionLabel.test(s.font) &&
+      profile.patterns.conditionLabel.test(s.text.trim()) &&
+      s.size < 8.5,
+  );
+  if (labels.length === 0) return [];
+  const rects: Rect[] = [];
+  for (const label of labels) {
+    /* 라벨을 가로로 품고, 위 테두리가 라벨 높이 언저리에 있는 사각형.
+     * 여럿이면 가장 작은 것 — 큰 것은 바깥 단 테두리일 수 있다. */
+    const candidates = page.drawings.filter(
+      (d) =>
+        !d.fill &&
+        d.x1 - d.x0 >= 60 &&
+        d.y1 - d.y0 >= 12 &&
+        d.x0 <= label.x0 + 2 &&
+        d.x1 >= label.x1 - 2 &&
+        Math.abs(d.y0 - (label.y0 + label.y1) / 2) <= 14,
+    );
+    let best: Rect | undefined;
+    for (const c of candidates) {
+      const area = (c.x1 - c.x0) * (c.y1 - c.y0);
+      if (!best || area < (best.x1 - best.x0) * (best.y1 - best.y0)) best = { ...c };
+    }
+    if (best) rects.push(best);
+  }
+  return rects;
+}
+
+function figureClusters(
+  page: PageDump,
+  area: Rect,
+  profile: ExtractionProfile,
+  boxes: readonly Rect[] = [],
+): Rect[] {
   const inside = page.drawings.filter(
-    (d) => d.x0 >= area.x0 - 4 && d.x1 <= area.x1 + 4 && d.y0 >= area.y0 && d.y1 <= area.y1,
+    (d) =>
+      d.x0 >= area.x0 - 4 &&
+      d.x1 <= area.x1 + 4 &&
+      d.y0 >= area.y0 &&
+      d.y1 <= area.y1 &&
+      /* 상자 몫의 선은 도형이 아니다 — 테두리와 머리 장식 */
+      !boxes.some(
+        (b) => d.x0 >= b.x0 - 4 && d.x1 <= b.x1 + 4 && d.y0 >= b.y0 - 12 && d.y1 <= b.y1 + 4,
+      ),
   );
   const clusters: { rect: Rect; count: number }[] = [];
   for (const d of inside) {
@@ -729,6 +787,7 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     page,
     { x0: 0, y0: topLimit, x1: page.width, y1: bottomLimit },
     profile,
+    conditionBoxRects(page, profile),
   );
 
   /* 연립을 먼저 합친다 — 그 안에 2행 분수가 들어 있으면 분수 쪽이 먼저
