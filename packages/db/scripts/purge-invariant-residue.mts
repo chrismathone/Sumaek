@@ -146,7 +146,7 @@ const steps: Step[] = [
     id: "I-11",
     what: "증거는 있는데 숙련도 행이 없는 (학습자·개념) — 파생을 다시 만든다",
     /* 파생이 지워진 것이므로 다시 만든다. 정확한 재계산은
-     * `pnpm rebuild:read-models`가 하고, 여기서는 **행이 없는 것**만 센다.
+     * `pnpm rebuild:readmodels`가 하고, 여기서는 **행이 없는 것**만 센다.
      * 지우는 것이 아니라 보고만 한다 — 잘못된 값을 넣느니 비어 있는 편이 낫다. */
     count: async () =>
       (
@@ -227,7 +227,7 @@ try {
     }
   }
   console.log("");
-  console.log("숙련도 파생(I-11)이 남아 있으면: pnpm rebuild:read-models");
+  console.log("숙련도 파생(I-11)이 남아 있으면: pnpm rebuild:readmodels");
   console.log("정리 후 확인: pnpm verify:recovery");
 } finally {
   await sql.end();

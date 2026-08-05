@@ -1,7 +1,7 @@
 # 수맥(Su-Maek) — 인수 시나리오 62개 현재 상태
 
 > 골프롬프트 31장 「최종 인수 시나리오」 62개에 대한 **정직한 회계**.
-> 기준 시각: 2026-08-01 16:30 (커밋 `65eb5c2` 이후 작업분 반영)
+> 기준 시각: 2026-08-05 (Phase 6 M1~M6 반영. 이전 기준은 2026-08-01 16:30 커밋 `65eb5c2`)
 > 완료 기준: `docs/phase0/decisions.md` — "코드 완결 + 로컬 검증", 실환경 전용 항목은 스크립트·런북으로 갈음
 >
 > **이 문서의 존재 이유는 정직한 회계다.** 근거 없는 ✅는 없다. 확실하지 않은 것은 낮은 등급으로 적었다.
@@ -30,7 +30,9 @@
 
 ## 총평
 
-**이번 구간(2026-08-01)에 닫힌 것.** 독립 검증이 세 종류의 결손을 드러냈고 모두 수리했다 — (1) **권한**: 읽기 게이트가 내비 링크 숨김뿐이어서 URL 직접 입력으로 학습자 개인정보에 도달할 수 있었다(인수 13). (2) **도달 불가 분기**: `ai_budgets`에 쓰는 경로가 없어 100% 차단이 죽은 코드였다(인수 37). (3) **배포 결손**: `katex.min.css`가 일부 라우트에만 로드돼 학생 응시 화면에서 수식이 두 번 보였다(인수 51) — 문자열만 보던 기존 검사는 전부 통과했기에, 렌더된 DOM의 박스 크기로 판정하는 하네스를 새로 세웠다. 검증 인프라도 결손을 메웠다: **ESLint·CI 신설**(인수 17), E2E 날짜 하드코딩 제거, DB 없이도 전체 스위트가 깨끗하게 skip되도록 수리.
+**이번 구간(2026-08-05 · Phase 6 M1~M6)에 닫힌 것.** 제품이 「자율」이라고 말하려면 사람 손이 필요한 곳이 하나도 없어야 하는데, 그 앞의 절반(빈 학원이 스스로 여기까지 오는 것)은 한 번도 자동으로 확인된 적이 없었다. T6.2가 그것을 끝에서 끝까지 돌리자 제품 결함 넷이 드러났다 — **온보딩이 막다른 길**(루트 게시는 자료를 요구하는데 순서표는 자료를 뒤에 두고 링크를 막았다), **「하러 가기」가 폼 없는 목록으로 보냄**, **생성된 평가가 자기를 부른 노드를 모름**(운영 DB 1884건 중 route_node_id 0건 — 필수 항목이 영영 막혀 하루가 완료될 수 없었다), **하루 첫 투영이 겹치면 500**. T6.3은 겹쳐 들어온 평가 생성이 예외로 죽는 것을 찾아 고쳤고, T6.4는 `verify:recovery`가 늘 빨간불이던 원인(테스트가 남긴 위반 107건)을 치웠다. 자세한 회계는 `docs/planning/06-tasks.md`의 각 태스크 「드러나 고친 제품 결함」 절.
+
+**이전 구간(2026-08-01)에 닫힌 것.** 독립 검증이 세 종류의 결손을 드러냈고 모두 수리했다 — (1) **권한**: 읽기 게이트가 내비 링크 숨김뿐이어서 URL 직접 입력으로 학습자 개인정보에 도달할 수 있었다(인수 13). (2) **도달 불가 분기**: `ai_budgets`에 쓰는 경로가 없어 100% 차단이 죽은 코드였다(인수 37). (3) **배포 결손**: `katex.min.css`가 일부 라우트에만 로드돼 학생 응시 화면에서 수식이 두 번 보였다(인수 51) — 문자열만 보던 기존 검사는 전부 통과했기에, 렌더된 DOM의 박스 크기로 판정하는 하네스를 새로 세웠다. 검증 인프라도 결손을 메웠다: **ESLint·CI 신설**(인수 17), E2E 날짜 하드코딩 제거, DB 없이도 전체 스위트가 깨끗하게 skip되도록 수리.
 
 **목록 UI 규약**(ADR-0016)으로 14개 화면을 정렬·필터·페이지네이션·행 링크가 있는 표로 통일했다. 이 과정에서 E2E 스펙 11개가 깨졌고 고치면서 **기존 거짓 통과 2건**을 발견했다(1쪽만 보고 통과하던 "목록에 없다" 단언, 엉뚱한 칸을 읽던 "추출 문항 ≥1"). 테스트 잔재가 데모 워크스페이스를 뒤덮던 문제는 `purgeTestData` + Playwright 티어다운으로 재발을 막았다 — 불변 증거를 가진 행은 삭제하지 않고 보관 처리한다.
 
@@ -52,12 +54,12 @@
 |---|---|---|---|
 | 1 | 랜딩 ERP 오인 없음 | ✅ | `e2e/tests/marketing.spec.ts:5,22` 「히어로 카피와 CTA」·「학원 ERP 오인 문구가 없다」 + `e2e/tests/smoke.spec.ts` + `scripts/boundary-check.mjs` 금지 카피 7종 |
 | 2 | 데모 불참·점수 반영 | 🟡 | 마케팅 데모(`OrbitBoard.tsx`)는 여전히 미리 그린 SVG 토글. 다만 **실동작은 앱에서 검증됨** — 인수 5의 휴강 왕복 E2E가 같은 시나리오를 실DB로 완주한다. 데모를 실엔진에 연결하는 일만 남음 |
-| 3 | 온보딩·첫 루트 게시 | ✅ | **문구 정정(2026-08-01)** — 검증 게이트→게시→일정 실체화는 `route-builder.spec.ts:20-119`가 강하게 단언한다(빈 루트 거부, 검증 전 게시 버튼 부재, 실체화 건수). 다만 이전 서술의 "시드 없이 완주"는 사실이 아니었다 — 두 스펙 모두 **시드된 조직·교사 계정·과정 기간** 위에서 돈다(과정 기간이 없으면 반 만들기 폼 자체가 렌더되지 않는다: `settings/page.tsx:114`). 자립 생성 범위는 반·학습자·루트다. `createCoursePeriod`는 UI 폼에만 있고 테스트 호출 0건. 마법사형 안내 UI는 없다 |
+| 3 | 온보딩·첫 루트 게시 | ✅ | **갱신(2026-08-05)** — 2026-08-01의 한계("시드된 조직·과정 기간 위에서만 돈다", "`createCoursePeriod` 테스트 호출 0건", "마법사형 안내 UI 없음")는 **전부 해소됐다.** `e2e/tests/autonomous-day.spec.ts`가 **빈 조직에서 출발해** 설정 화면(`/app/setup`, T5.1의 단계형 온보딩)이 시키는 대로만 따라가며 과정 기간·반·학생·계정·자료·루트·일정을 전부 화면에서 만들고 학생의 하루 완료까지 간다. desktop·tablet·mobile 세 폭에서 통과. 픽스처가 놓는 것은 제품에 만들 화면이 없는 셋뿐(조직·원장 계정·문제은행) |
 | 4 | 반 공통·학생 독립 루트 | ✅ | **도달 가능해졌다(2026-08-01 배선).** 강등 사유였던 "제품 안에서 도달할 수 없다"가 해소됐다. ① **쓰기**: `students/[id]/actions.ts`의 `materializeLearnerScheduleAction` — `canWrite(…, "learners")` 게이트, `todayInTimeZone(user.timezone)` 주입, 감사 actor는 실행한 사람(`actor_type='user'`). ② **읽기**: 학생 상세의 「개별 일정」 표(ADR-0016, 파라미터 접두사 `ls_`로 페이지 전역과 분리) — `matches_group`→「다름」, `is_rejoin`→「재합류 차시」가 칸으로 보이고, 계산 전에는 「아직 계산하지 않았습니다」 빈 상태. 결과는 `ActionToast`. ③ **자동 재계산**: `createOverride`·`cancelOverride`가 같은 트랜잭션에서 `LearnerRouteOverrideChanged`를 발행하고, `EVENT_CONSUMERS`→`schedule.materialize-learner`→`main.ts`의 `register`가 **짝으로** 배선됨. 핸들러는 Inbox 멱등 + `auto_reschedule` kill switch 연기. ④ **재합류를 화면에서 만들 수 있게** 했다 — `createOverride`가 `rejoin_node_id`를 저장하지 않아 `is_rejoin`이 제품에서는 영원히 false였다(오버라이드 폼에 재합류 지점 선택 추가). 검증: 액션 경로 통합 12건(`web/test/integration/learner-schedule-action.test.ts`), 워커 핸들러 10건(`worker/test/handlers/learner-schedule.test.ts`), E2E 2건(`route-builder.spec.ts` — 계산→다름·재합류 표시→취소 후 재합류 소멸, 빈 상태). 기존 라이브 DB 통합 21건·엔진 재합류 6건은 그대로. **변이 검증 10종**: outbox 발행 제거→2건 실패, `canWrite` 제거→2건, 감사 actor 제거→1건, `register` 제거→2건, `EVENT_CONSUMERS` 제거→web·worker 각 1건, kill switch 확인 제거→1건, Inbox 멱등 제거→1건, 스위치 토픽 매핑 제거→3건, 표 접두사 제거/공백화→각 1건. 원복 후 전량 통과(프로덕션 diff 0줄). **남은 한계**: (a) `dispatchOutbox` 실행을 테스트가 부르지 않는다 — 전역으로 pending 이벤트를 소비하는 함수라 공유 DB에서 남의 이벤트까지 delivered로 바꾼다. 발행·라우팅 표·핸들러 등록을 각각 단언해 사슬을 덮되, **한 프로세스에서 outbox→job→워커까지 도는 왕복은 미검증**이다. (b) 워커를 실제로 띄운 상태의 E2E는 없다 — 화면 E2E는 사람이 누르는 경로만 확인한다. (c) 오버라이드 목록은 최근 10건만 보여 준다 |
 | 5 | 불참 시 과거 보존 | ✅ | **복구(2026-08-01)** — 강등 사유였던 "가드를 지워도 깨지는 테스트가 없다"가 해소됐다. `packages/db/test/schedule-history-preservation.test.ts` 7건이 DELETE 가드(`domain/schedule.ts:313-321`)의 조건을 하나씩 겨눈다 — 과거 planned·완료·잠긴 미래·취소·다른 반은 재실체화 후에도 남고, 미래의 잠기지 않은 planned만 교체된다. 실체화를 두 번 돌려 반복 검증한다. **변이 검증으로 실효성을 입증**: `status='planned'` 제거 → 3건 실패, `locked_at is null` 제거 → 2건, `session_date >= today` 제거 → 2건, `learning_group_id` 제거 → 1건. 원복 후 7/7 통과(프로덕션 코드 diff 0줄). `organization_id` 조건만 변이 불가 — group id가 전역 유일이라 그 조건을 지워도 삭제 범위가 넓어지지 않는다. 휴강 재계산 왕복은 `availability.spec.ts`가 그대로 덮는다 |
 | 6 | 오늘 수업 화면 | 🟡 | `app/today/page.tsx` 실 DB 조회, `auth.spec.ts:31`은 **빈 상태만** 검증. 교재 범위·학생별 차이·숙제·예외 표시는 미검증이며 숙제 도메인 자체가 없음 |
 | 7 | 검수·권한 통과 문항만 | 🟡 | `lib/domain/assessment.ts`가 `review_status='published' AND is_auto_assignable AND content_rights.status='usable'`로 풀을 좁힘 + `assessment/select.test.ts` 8건(선정 엔진). **제외되어야 할 문항이 실제로 제외되는 부정 케이스 테스트 없음** |
-| 8 | 자동 채점·예외함 분기 | ✅ | `grading/grade.test.ts` 13건(동치·단위 불일치·모호·서술형 분기) + `e2e/tests/full-loop.spec.ts` + `runner.spec.ts` 3건 + `apps/web/test/integration/grading-exception.test.ts` |
+| 8 | 자동 채점·예외함 분기 | ✅ | **보강(2026-08-05)** — `apps/web/test/integration/concurrent-submit.test.ts`가 학생 30명 동시 제출에서 유실 0·예외 0·채점 결정 응시당 1건을 확인한다 (p50 590ms·p95 623ms, 도메인 경로 한정). 아래는 기존 근거: | `grading/grade.test.ts` 13건(동치·단위 불일치·모호·서술형 분기) + `e2e/tests/full-loop.spec.ts` + `runner.spec.ts` 3건 + `apps/web/test/integration/grading-exception.test.ts` |
 | 9 | 예외 판정 후 일관 갱신 | 🟡 | `apps/web/test/integration/grading-exception.test.ts:103`이 점수·숙련도 갱신까지 검증. **복습·재시험·미래 일정 갱신은 미검증** |
 | 10 | 확인테스트 분기·재합류 | 🟡 | `lib/domain/attempt.ts`에 확인테스트 재시험 계획 코드 존재. 전용 테스트 없고 보충 경로 분기·재합류 지점 지정은 미검증 |
 | 11 | mathg-gen PDF 반입 | 🟡 | 반입 파이프라인 커밋·E2E 1건 + 회로 차단기·비용 한도 연결. 실 PDF 파싱이 아닌 결정론적 목이며 **도형(SVG) 보존 경로 없음** |
