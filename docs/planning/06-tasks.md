@@ -204,7 +204,7 @@
 
 ## M1: 날짜별 학습 계획을 단일 진실로 확립
 
-### [] Phase 1, T1.1: 하루 계획 상태 머신·완료 판정 RED→GREEN
+### [x] Phase 1, T1.1: 하루 계획 상태 머신·완료 판정 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -244,7 +244,7 @@ Set-Location ..\Su-Maek-t1-1-day-state
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t1-1-day-state`
 
-### [] Phase 1, T1.2: 하루 계획 DB·저장소 RED→GREEN
+### [x] Phase 1, T1.2: 하루 계획 DB·저장소 RED→GREEN
 
 **담당**: database-specialist
 
@@ -291,7 +291,7 @@ Set-Location ..\Su-Maek-t1-2-day-db
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t1-2-day-db`
 
-### [] Phase 1, T1.3: 오늘 계획 투영기·날짜 오류 수정 RED→GREEN
+### [x] Phase 1, T1.3: 오늘 계획 투영기·날짜 오류 수정 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -341,7 +341,7 @@ Set-Location ..\Su-Maek-t1-3-day-projection
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t1-3-day-projection`
 
-### [] Phase 1, T1.4: 학생 오늘 화면·항목 완료 동기화 RED→GREEN
+### [x] Phase 1, T1.4: 학생 오늘 화면·항목 완료 동기화 RED→GREEN
 
 **담당**: frontend-specialist + backend-specialist
 
@@ -389,7 +389,7 @@ Set-Location ..\Su-Maek-t1-4-today-ui
 
 ## M2: 루트 노드를 실제 학생 행동으로 연결
 
-### [] Phase 2, T2.1: 노드 종류별 편집 payload·검증 RED→GREEN
+### [x] Phase 2, T2.1: 노드 종류별 편집 payload·검증 RED→GREEN
 
 **담당**: frontend-specialist + backend-specialist
 
@@ -433,7 +433,7 @@ Set-Location ..\Su-Maek-t2-1-node-editor
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t2-1-node-editor`
 
-### [] Phase 2, T2.2: 루트 노드 실행기·계획 항목 변환 RED→GREEN
+### [x] Phase 2, T2.2: 루트 노드 실행기·계획 항목 변환 RED→GREEN
 
 **담당**: backend-specialist
 
@@ -472,7 +472,7 @@ Set-Location ..\Su-Maek-t2-2-node-executor
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t2-2-node-executor`
 
-### [] Phase 2, T2.3: 교재 범위·숙제 학생 실행 화면 RED→GREEN
+### [x] Phase 2, T2.3: 교재 범위·숙제 학생 실행 화면 RED→GREEN
 
 **담당**: frontend-specialist + backend-specialist
 
@@ -514,7 +514,7 @@ Set-Location ..\Su-Maek-t2-3-homework
 - [x] 사용자 승인 후 main 병합
 - [x] `git worktree remove ..\Su-Maek-t2-3-homework`
 
-### [] Phase 2, T2.4: 자료·루트 게시 준비도 게이트 RED→GREEN
+### [x] Phase 2, T2.4: 자료·루트 게시 준비도 게이트 RED→GREEN
 
 **담당**: backend-specialist + test-specialist
 
