@@ -392,8 +392,11 @@ function takeContiguous(
 /** 「[0104~0105]」 — 조각의 **머리**가 표식인지 본다 */
 const MARKER_HEAD = /^\[\s*\d{4}\s*~\s*\d{4}\s*\]/;
 
+/** 아래끝이 이만큼 안이면 **같은 기준선**으로 본다(pt) */
+const SAME_BASELINE = 2.5;
+
 function baselineKin(line: Line, anchor: IndexedSpan): IndexedSpan[] {
-  const SAME = 2.5;
+  const SAME = SAME_BASELINE;
   const kin = line.spans.filter((s) => Math.abs(s.y1 - anchor.y1) <= SAME);
   const top = Math.min(...kin.map((s) => s.y0));
   const bottom = Math.max(...kin.map((s) => s.y1));
@@ -448,7 +451,13 @@ function toLines(
        * 걸린 분수를 끌어들이면 줄의 바닥이 본문까지 내려가고, 그 다음엔
        * 위첨자 규칙이 본문 전체를 빨아들인다. 그러면 줄의 첫 덩어리가
        * 번호가 아니라 「0가은이는…」이 되어 **문항 하나가 통째로 앞 문항의
-       * 발문이 된다**(중2-1 p.110 0752). 번호는 혼자 서야 한다. */
+       * 발문이 된다**(중2-1 p.110 0752). 번호는 혼자 서야 한다.
+       *
+       * 크기까지 보게 고쳐 봤다 — 표식 「[0523~0526]」도 같은 DINPro-Bold라
+       * 여기서 번호로 취급되고, 그래서 표식만 있는 줄이 제 본문을 안 받는다.
+       * 그런데 그렇게 고쳐도 전수 6151문항에 **한 글자도 안 달라졌다.**
+       * 줄이 갈리는 까닭이 그것만이 아니라서, 지시문 쪽에서 갈라진 조각을
+       * 도로 붙이는 편이 25건을 더 건진다. 여기는 건드리지 않는다. */
       if (l.spans.every((s) => profile.fonts.questionNumber.font.test(s.font))) {
         return false;
       }
@@ -885,11 +894,23 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
      * 걸쳐 있어 우연히 글자를 받지만 0157·0158·0159는 발문이 빈 채로 나간다.
      * 그러니 「[」마다 잘라 각각을 따로 본다.
      *
-     * 잘라서 보면 얻는 것이 하나 더 있다 — 지면에는 지시문이 아닌 대괄호도
-     * 있다(`y=3xÛ[5]`의 답 자리). 예전에는 줄에서 **첫 「[」**를 지시문의
-     * 시작으로 삼았기 때문에 그런 대괄호가 앞에 있으면 엉뚱한 자리부터
-     * 지시문으로 읽었다. 이제는 조각마다 표식이 맞는지 확인한다. */
-    const starts = line.spans.flatMap((s, idx) => (s.text.includes("[") ? [idx] : []));
+     * 자르는 자리는 **표식이 시작하는 「[」뿐이다.** 지면에는 지시문이 아닌
+     * 대괄호도 있고(`y=3xÛ[5]`의 답 자리), 지시문 **안에도** 있다 —
+     * 「다음 수를 [ ] 안의 수의 거듭제곱으로 나타내시오.」. 「[」마다 잘랐더니
+     * 그 지시문이 표식만 남고 본문이 통째로 떨어져 나갔다(중1-1 0019~0022). */
+    const starts = line.spans.flatMap((s, idx) =>
+      s.text.includes("[") &&
+      MARKER_HEAD.test(
+        cleanBodyText(
+          line.spans
+            .slice(idx)
+            .map((t) => t.text)
+            .join(""),
+        ).trim(),
+      )
+        ? [idx]
+        : [],
+    );
     /* 1차 — span 차례로 자른다. 이것이 지금까지 하던 방식이고, 대부분은
      * 여기서 맞는다. `nextX`는 옆 지시문이 시작하는 자리다 — 이어지는 줄을
      * 받을 때 옆 단까지 넘어가지 않게 막는다. */
@@ -928,7 +949,35 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
 
     for (const cand of [...byOrder, ...byBaseline]) {
       const { nextX, anchorY1, sameLineFirst } = cand;
-      const own = takeContiguous(cand.spans, profile);
+      /* **표식과 본문이 다른 줄로 갈릴 수 있다.**
+       *
+       * 옆 단의 14pt 문항 번호가 표식과 같은 높이에 걸리면 줄 세우기가 큰
+       * 글자를 앞세우면서 그렇게 가른다 — 중2-2 p.93의 [0523~0526]은 표식만
+       * 남고 「다음 그림에서 …」가 다음 줄로 떨어졌다. 기준선이 같고 표식
+       * 바로 뒤에서 시작하는 조각은 **한 줄의 나머지**이므로 도로 붙인다. */
+      let own = takeContiguous(cand.spans, profile);
+      /* 갈라진 조각은 앞 줄에 설 수도, 뒤 줄에 설 수도 있다 — 줄 순서는
+       * 글자 크기부터 보므로 옆 단 14pt 번호가 낀 줄이 앞으로 온다. */
+      const kinLines = [-3, -2, -1, 1, 2, 3]
+        .flatMap((d) => fullWidthLines[i + d]?.spans ?? [])
+        .filter((s) => Math.abs(s.y1 - anchorY1) <= SAME_BASELINE)
+        .sort((a, b) => a.x0 - b.x0);
+      for (let round = 0; round < 4 && own.length > 0 && kinLines.length > 0; round += 1) {
+        const right = Math.max(...own.map((s) => s.x1));
+        /* 단 사이 홈은 25pt 남짓이다. 글자 사이 틈으로는 넉넉하고 홈은 못
+         * 넘는 15pt에서 끊는다 — 넘기면 옆 단 글이 지시문에 들어온다. */
+        const run: IndexedSpan[] = [];
+        let edge = right;
+        for (const s of kinLines) {
+          if (s.x0 < right - 2) continue;
+          if (s.x0 - edge > 15) break;
+          run.push(s);
+          edge = Math.max(edge, s.x1);
+        }
+        const tail = takeContiguous(run, profile);
+        if (tail.length === 0 || Math.max(...tail.map((s) => s.x1)) <= right) break;
+        own = [...own, ...tail];
+      }
       const ownText = cleanBodyText(own.map((s) => s.text).join("")).trim();
       const range = profile.patterns.sharedInstruction.exec(ownText);
       if (!range) continue;
@@ -958,52 +1007,83 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
        * 글자가 만든 띠에 두 줄이 함께 걸린 경우다. 그럴 때는 그 아랫줄이
        * 이어지는 줄이고, 없을 때만 다음 줄을 본다. 어느 쪽이든 지시문이 선
        * x 구간에서만 읽는다. */
+      /* 이어지는 줄은 지시문이 선 **가로 구간 안에** 머문다.
+       *
+       * 위 경계를 nextX 하나로만 두면 옆 단의 글이 그대로 들어온다 —
+       * 중3-2 p.47에서 [0257~0258]이 오른쪽 단 지시문의 첫 줄을 이어받아
+       * 「…접선이고 두 O는 직각삼각형 ABC의 내접원이」가 됐다. 지시문 블록은
+       * 좌우 끝을 맞춰 조판하므로 **첫 줄의 오른끝이 그 블록의 오른끝**이다. */
+      const ownRight = Math.max(...own.map((s) => s.x1));
+      const rightLimit = Math.min(nextX, ownRight + 20);
+      /* 이미 지시문이 가져간 글자는 다시 안 본다. 갈라진 조각을 도로 붙이고
+       * 나면 그 조각이 아랫줄 후보로 또 잡혀 지시문이 두 번 적힌다. */
       const inWindow = (s: IndexedSpan): boolean =>
-        s.x0 >= instructionX - 12 && s.x0 < nextX;
+        !instructionSpans.has(s.index) && s.x0 >= instructionX - 12 && s.x0 < rightLimit;
       const below = line.spans
         .filter((s) => s.y1 > anchorY1 + 2.5 && inWindow(s))
         .sort((a, b) => a.y1 - b.y1);
       /* 2차로 찾은 지시문은 이어지는 줄도 **같은 줄 안에** 들어와 있다 —
        * 애초에 두 줄이 한 줄로 붙어서 못 찾았던 것이니까. 같은 줄 아래를
-       * 먼저 보고, 안 되면 다음 줄을 본다. 하나만 보고 끝내면 같은 줄에
-       * 엉뚱한 조각이 있을 때 진짜 이어지는 줄을 놓친다. */
-      const candidates = ended
+       * 먼저 본다.
+       *
+       * 아래 줄은 **바로 다음 한 줄로 끝나지 않는다.** 단을 무시하고 세운
+       * 줄에서는 옆 단의 줄이 사이에 끼어든다 — 중3-2 p.47에서 [0257~0258]의
+       * 이어지는 줄은 다음다음 줄이었다. 가로 구간 밖이면 그 줄은 비므로
+       * 그냥 지나가고, 문항 번호를 만나면 거기서 멈춘다. */
+      const candidates: { spans: IndexedSpan[]; offset: number }[] = ended
         ? []
         : [
             ...(sameLineFirst && below.length > 0
-              ? [baselineKin(line, below[0]!).filter(inWindow)]
+              ? [{ spans: baselineKin(line, below[0]!).filter(inWindow), offset: 0 }]
               : []),
-            fullWidthLines[i + 1]?.spans.filter(inWindow) ?? [],
+            ...[1, 2, 3].map((d) => ({
+              spans: fullWidthLines[i + d]?.spans.filter(inWindow) ?? [],
+              offset: d,
+            })),
           ];
       for (let c = 0; c < candidates.length; c += 1) {
-        const window = candidates[c]!;
+        const { spans: window, offset } = candidates[c]!;
+        const sameLineBelow = sameLineFirst && c === 0;
         if (window.length === 0) continue;
         const nextOwn = takeContiguous(window, profile);
         /* 문항 번호가 **줄 어디에라도** 있으면 그 줄은 이미 문항의 것이다.
-         * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다. */
+         * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다.
+         * 아래로 내려가다 만난 것이면 **더 내려가지 않는다** — 그 아래는
+         * 전부 문항의 것이다. 같은 줄 안이면 옆 단 조각일 수 있으니 다음을 본다. */
         const hasNumber = mergeAdjacent(window).some(
           (g) => questionNumberOf(g, profile) !== null,
         );
         const nextText = cleanBodyText(nextOwn.map((s) => s.text).join("")).trim();
-        if (hasNumber || profile.patterns.sharedInstruction.test(nextText)) continue;
+        if (hasNumber || profile.patterns.sharedInstruction.test(nextText)) {
+          if (sameLineBelow) continue;
+          break;
+        }
+        /* 이어지는 줄은 지시문과 **같은 왼끝**에서 시작한다. 훨씬 오른쪽에서
+         * 시작하면 그건 옆 단의 다른 문항이다(중3-1 0900이 0909의 식을
+         * 받아 갔다).
+         *
+         * 다만 **표식과 본문이 갈라져 줄이 둘로 선 자리**가 있다. 옆 단의
+         * 14pt 문항 번호가 표식과 같은 높이에 걸리면 줄 세우기가 큰 글자를
+         * 앞세우면서 그렇게 가른다 — 중2-2 p.93의 [0523~0526]이 표식만 남고
+         * 「다음 그림에서 …」가 다음 줄로 떨어졌다. 그 본문은 표식 **바로 뒤**
+         * 에서 시작하니 왼끝을 따지면 안 된다. 기준선이 같으면 봐준다. */
+        const sameBaseline =
+          Math.abs((nextOwn[0]?.y1 ?? 0) - anchorY1) <= SAME_BASELINE;
+        if (!sameBaseline && (nextOwn[0]?.x0 ?? 0) > instructionX + 20) continue;
         /* 2차로 찾은 지시문의 「같은 줄 아래」는 **한 줄이 아닐 수 있다** —
          * 애초에 여러 줄이 뭉쳐 있던 자리다. 뒤섞이면 앞줄의 토막이 그대로
          * 다시 나온다(「온도가 15」가 두 번). 그럴 때는 안 받는다. 번호 글꼴이
          * 섞여 있어도 안 받는다 — 그건 이미 다른 문항의 것이다. */
-        if (sameLineFirst && c === 0) {
+        if (sameLineBelow) {
           const repeats = Array.from({ length: Math.max(0, nextText.length - 5) }, (_, p) =>
             nextText.slice(p, p + 6),
           ).some((chunk) => ownText.includes(chunk));
           const numbered = window.some((s) => profile.fonts.questionNumber.font.test(s.font));
-          /* 이어지는 줄은 지시문과 **같은 왼끝**에서 시작한다. 훨씬 오른쪽에서
-           * 시작하면 그건 옆 단의 다른 문항이다(중3-1 0900이 0909의 식을
-           * 받아 갔다). */
-          const indented = (nextOwn[0]?.x0 ?? 0) > instructionX + 20;
-          if (repeats || numbered || indented) continue;
+          if (repeats || numbered) continue;
         }
         runs.push(...toRuns(nextOwn, profile));
         for (const s of nextOwn) instructionSpans.add(s.index);
-        if (c === candidates.length - 1) advance = 1;
+        advance = offset;
         break;
       }
       /* **공유 지시문에 딸린 보기 상자.**
@@ -1049,7 +1129,17 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
         ...(sharedBox && sharedBox.items.length > 0 ? { box: sharedBox } : {}),
       });
     }
-    i += advance;
+    /* **이어받은 줄을 건너뛰지 않는다.**
+     *
+     * 예전에는 `i += advance`로 넘겼다. 두 단이 한 줄로 붙은 자리에서는 그
+     * 한 줄에 지시문이 둘 있을 수 있는데, 앞엣것이 뒷줄에서 글자 하나를
+     * 이어받았다는 이유로 **그 줄 전체를 버렸다** — 중3-2 p.47에서
+     * [0262~0264]가 옆 단 라벨 「D」를 데려가는 바람에 같은 줄의 [0257~0258]이
+     * 통째로 사라졌고, 두 문항이 발문 없이 나갔다.
+     *
+     * 다시 읽어도 안전하다. 이어받은 조각에는 표식이 없음을 이미 확인했고
+     * (`sharedInstruction.test(nextText)`), 같은 번호 구간은 `registered`가
+     * 막는다. advance는 보기 상자를 어디서부터 훑을지에만 남는다. */
   }
 
   /** 이 쪽 러닝헤드에서 읽은 계층 */
