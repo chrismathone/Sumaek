@@ -93,8 +93,13 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     const questionRow = tableRow(page, "가감법").first();
     await expect(questionRow).toBeVisible();
     await expect(questionRow.getByText("게시", { exact: true })).toBeVisible();
+    /* 사용권 칸은 **비어 있지 않기만** 하면 된다. 값을 못 박았더니
+     * (「사용 가능」) 목록에 다른 사용권의 문항이 섞이는 순간 깨졌다 —
+     * 콘텐츠가 플랫폼으로 가면서 공용 문항과 학원 문항이 한 목록에
+     * 서고, 정렬이 최신순이라 어느 쪽이 첫 행일지는 그날 데이터가
+     * 정한다(ADR-0020). 재려는 것은 「검수·권한이 각각 칸으로 보이는가」다. */
     await expect(
-      questionRow.getByText("사용 가능", { exact: true }),
+      questionRow.getByText(/^(초안|확인 중|사용 가능|제한적 사용|만료|차단)$/),
     ).toBeVisible();
 
     // 커리큘럼 — 내부 개념과 공식 구분 고지.

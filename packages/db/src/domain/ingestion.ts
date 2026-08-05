@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import {
   createAiProvider,
@@ -48,6 +49,7 @@ export async function processSourceFile(options: {
   const sql = getSharedSql();
   const { organizationId, sourceFileId } = options;
 
+
   const [file] = await sql<
     {
       id: string;
@@ -56,15 +58,26 @@ export async function processSourceFile(options: {
       page_count: number | null;
       status: string;
       content_right_id: string | null;
+      organization_id: string;
     }[]
   >`
     select f.id, f.file_name, f.checksum, f.page_count, f.status,
+           f.organization_id::text as organization_id,
            (select id from content_rights r
              where r.organization_id = f.organization_id
                and r.evidence_ref = f.id::text limit 1) as content_right_id
     from source_files f
-    where f.id = ${sourceFileId} and f.organization_id = ${organizationId}
+    where f.id = ${sourceFileId}
+      and f.organization_id = any(${contentOrganizationIds(organizationId)}::uuid[])
   `;
+  /* 추출물은 **원본이 있는 곳**에 쓴다 (ADR-0020).
+   *
+   * 「늘 플랫폼에 쓴다」로 했더니 통합 테스트 10건이 깨졌다 — 테스트는
+   * 자기 조직에 원본 파일을 만들고 자기 조직에서 결과를 확인하는데,
+   * 문항만 플랫폼으로 가면 원본과 산출물이 갈라진다. 실제 반입에서는
+   * 마스터가 플랫폼에 올리므로 결과도 플랫폼이다 — 규칙 하나로 둘 다
+   * 맞는다. 예산·감사·AI 사용량은 **요청한 조직**에 그대로 남는다.
+   */
   if (!file) {
     return {
       ok: false,
@@ -99,6 +112,8 @@ export async function processSourceFile(options: {
 
   /* 비용 한도 (인수 37) — 월 예산 100% 도달 조직은 새 AI 작업 차단.
    * 예산 미설정이면 기록만 하고 막지 않는다. */
+  const contentOrg = file.organization_id;
+
   const budget = await checkAiBudget(organizationId);
   if (!budget.allowed) {
     await sql`
@@ -213,7 +228,7 @@ export async function processSourceFile(options: {
           id, organization_id, kind, review_status, source_file_id,
           printed_number, content_right_id, is_auto_assignable, current_version_id
         ) values (
-          ${questionId}, ${organizationId}, ${eq.kind}, ${reviewStatus},
+          ${questionId}, ${contentOrg}, ${eq.kind}, ${reviewStatus},
           ${sourceFileId}, ${eq.printedNumber}, ${file.content_right_id},
           false, ${versionId}
         )
@@ -223,7 +238,7 @@ export async function processSourceFile(options: {
           id, organization_id, question_id, version_number, body, choices,
           answer, points, content_checksum, extraction
         ) values (
-          ${versionId}, ${organizationId}, ${questionId}, 1,
+          ${versionId}, ${contentOrg}, ${questionId}, 1,
           ${tx.json([{ type: "text", text: normalized.normalized }] as never)},
           ${
             eq.choices
@@ -277,7 +292,7 @@ export async function processSourceFile(options: {
           insert into question_alignments (
             id, organization_id, question_id, concept_id, weight, provenance
           ) values (
-            ${uuidv7()}, ${organizationId}, ${questionId}, ${alias.concept_id},
+            ${uuidv7()}, ${contentOrg}, ${questionId}, ${alias.concept_id},
             '1', 'imported'
           )
           on conflict do nothing
@@ -289,7 +304,7 @@ export async function processSourceFile(options: {
         insert into content_reviews (
           id, organization_id, subject_type, subject_id, status, checklist
         ) values (
-          ${uuidv7()}, ${organizationId}, 'question', ${questionId}, 'open',
+          ${uuidv7()}, ${contentOrg}, 'question', ${questionId}, 'open',
           ${tx.json({
             formulaGate: !gateFailed,
             confidence: eq.confidence,
@@ -305,7 +320,7 @@ export async function processSourceFile(options: {
           insert into formula_reviews (
             id, organization_id, expression_id, question_id, diagnosis, status
           ) values (
-            ${uuidv7()}, ${organizationId}, ${versionId}, ${questionId},
+            ${uuidv7()}, ${contentOrg}, ${versionId}, ${questionId},
             ${tx.json({
               failures: gate.failures,
               reviewFlags: normalized.reviewFlags,
@@ -369,7 +384,7 @@ export async function approveQuestion(options: {
     select q.review_status, r.status as right_status
     from questions q
     left join content_rights r on r.id = q.content_right_id
-    where q.id = ${questionId} and q.organization_id = ${organizationId}
+    where q.id = ${questionId} and q.organization_id = any(${contentOrganizationIds(organizationId)}::uuid[])
   `;
   if (!question) return { ok: false, message: "문항을 찾을 수 없습니다." };
   if (question.review_status === "formula_review_required") {

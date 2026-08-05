@@ -1,3 +1,4 @@
+import { contentWriteOrganizationId } from "@su-maek/core/shared";
 import { createHash } from "node:crypto";
 import { v7 as uuidv7 } from "uuid";
 import type postgres from "postgres";
@@ -268,7 +269,9 @@ export async function loadQuestions(
   sql: postgres.Sql,
   input: LoadInput,
 ): Promise<LoadResult> {
-  const org = input.organizationId;
+  /* 교재 문항은 플랫폼 자산이다 (ADR-0020) — 반입은 늘 플랫폼에 쓴다.
+   * 이 한 줄이 아래 모든 조회·삽입의 조직을 정한다. */
+  const org = contentWriteOrganizationId(input.organizationId);
 
   /* ── 교재·판 (멱등) ─────────────────────────────────────── */
   const publisherId = uuidv7();

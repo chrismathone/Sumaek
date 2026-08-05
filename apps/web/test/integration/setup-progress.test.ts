@@ -40,9 +40,15 @@ afterAll(async () => {
 
 describe.skipIf(!hasDb)("빈 학원의 설정 진행", () => {
   it("아무것도 없는 조직은 첫 단계부터 시작한다", async () => {
-    /* 시드된 과정 기간 없이 시작한다 — 그것이 새 학원이 만나는 상태다. */
+    /* 시드된 과정 기간 없이 시작한다 — 그것이 새 학원이 만나는 상태다.
+     *
+     * **자료 단계는 이미 끝나 있다**(ADR-0020). 콘텐츠는 플랫폼이 주므로
+     * 새 학원은 첫날부터 학생에게 보여 줄 것을 갖고 시작한다 — 이 화면이
+     * 「자료를 만드세요」라고 시키면 거짓말이 된다. 나머지 일곱은 학원이
+     * 실제로 해야 하는 일이라 그대로 남는다. */
     const p = buildSetupProgress(await loadSetupFacts(ORG));
-    expect(p.doneCount).toBe(0);
+    expect(p.steps.find((s) => s.id === "materials")!.done).toBe(true);
+    expect(p.doneCount).toBe(1);
     expect(p.next?.id).toBe("course_period");
     expect(p.complete).toBe(false);
   });

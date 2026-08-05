@@ -154,12 +154,16 @@ export function buildSetupProgress(facts: SetupFacts): SetupProgress {
           : "무엇을 어떤 순서로 나갈지 정하고 게시해야 일정이 생깁니다.",
       href: "/app/routes",
     },
+    /* 자료는 **플랫폼이 준다**(ADR-0020). 그래서 이 단계는 새 학원이
+     * 첫날부터 끝나 있는 것이 정상이다 — 학원이 만들 것이 아니라 이미
+     * 있는 것을 확인하는 자리다. 학원이 자기 자료를 더할 수는 있고(갈래 C),
+     * 그때는 개념·종류가 겹치는 플랫폼 자료를 가린다. */
     materials: {
-      title: "학습 자료 등록",
+      title: "학습 자료 확인",
       done: facts.materials > 0,
       detail:
         facts.materials > 0
-          ? `자료 ${facts.materials}건`
+          ? `자료 ${facts.materials}건 (공용 포함)`
           : "자료가 없으면 학생 화면이 빈 채로 열립니다.",
       href: "/app/content/materials",
     },

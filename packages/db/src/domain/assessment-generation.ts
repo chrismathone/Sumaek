@@ -1,4 +1,4 @@
-import { contentOrganizationIds } from "../content-org";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "../client";
 import {

@@ -1,3 +1,4 @@
+import { contentWriteOrganizationId } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import type postgres from "postgres";
 import { processExpression } from "@su-maek/core/math";
@@ -73,7 +74,8 @@ export async function loadConceptMaterials(
   sql: postgres.Sql,
   input: LoadMaterialsInput,
 ): Promise<LoadMaterialsResult> {
-  const org = input.organizationId;
+  /* 개념서 자료도 플랫폼 자산이다 (ADR-0020) */
+  const org = contentWriteOrganizationId(input.organizationId);
 
   /* ── 교재·판·권한·원본 (load.ts와 같은 멱등 upsert) ────────
    * 문항 반입과 코드가 닮았지만 합치지 않았다 — 문항 쪽은 source_pages·

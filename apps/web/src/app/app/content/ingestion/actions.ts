@@ -1,4 +1,5 @@
 "use server";
+import { contentOrganizationIds } from "@su-maek/db";
 
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -63,7 +64,7 @@ export async function uploadSourceFile(
   /* 중복 원본 — 같은 해시는 재등록하지 않는다 */
   const [dup] = await sql<{ id: string }[]>`
     select id from source_files
-    where organization_id = ${user.organizationId} and checksum = ${checksum}
+    where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[]) and checksum = ${checksum}
   `;
   if (dup) {
     return {

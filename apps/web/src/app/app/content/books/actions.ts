@@ -46,7 +46,7 @@ export async function changeRightStatus(
   >`
     select id, status::text as status, book_edition_id, rights_holder
     from content_rights
-    where id = ${parsed.data.rightId} and organization_id = ${user.organizationId}
+    where id = ${parsed.data.rightId} and organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
   `;
   if (!right) return { ok: false, message: "사용 권한을 찾을 수 없습니다." };
 

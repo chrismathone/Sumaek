@@ -22,37 +22,36 @@
 export const PLATFORM_ORGANIZATION_ID = "00000000-0000-7000-8000-0000000000ff";
 
 /**
- * 콘텐츠 이전이 끝났는가 (ADR-0020 3단계).
+ * 콘텐츠를 읽을 때 볼 조직 목록 (ADR-0020 3단계 — 이전 완료).
  *
- * 3단계에서 콘텐츠 18표를 플랫폼 조직으로 옮기는 것과 **같은 배포로**
- * 켠다. 먼저 켜면 콘텐츠가 아직 데모 조직에 있어 달라지는 것이 없고,
- * 먼저 옮기면 질의가 아직 자기 조직만 보고 있어 화면이 그 순간 빈다.
- */
-export const PLATFORM_CONTENT_ENABLED =
-  process.env.PLATFORM_CONTENT === "1";
-
-/**
- * 콘텐츠를 읽을 때 볼 조직 목록.
+ * **자기 조직을 남겨 두는 이유**는 통합 테스트다. 테스트가 만드는 조직들은
+ * 자기 콘텐츠를 만들어 자기가 읽는다 — 플랫폼 하나만 보게 하면 그 테스트가
+ * 그 자리에서 깨진다. 실제 운영에서는 조직에 콘텐츠가 없으므로 결과가
+ * 플랫폼만 고르는 것과 같다.
  *
- * 목록인 이유: 깃발이 켜진 뒤에도 자기 조직을 남겨 둬야 한다. 통합
- * 테스트가 만드는 조직들은 자기 콘텐츠를 만들어 자기가 읽는데, 플랫폼
- * 하나만 보게 하면 그 테스트가 그 자리에서 깨진다. 실제 운영에서는
- * 조직에 콘텐츠가 없으므로 `any(...)`가 플랫폼만 고르는 것과 같다.
+ * 갈래 C(ADR-0020 ①)에서도 이 형태가 맞다 — 학원이 만든 자료는 자기
+ * 조직에 있고, 플랫폼 자료와 **함께** 보여야 한다. 가리는 규칙(개념·종류)은
+ * 자료 질의가 따로 쓴다.
  *
  *     where q.organization_id = any(${contentOrganizationIds(orgId)}::uuid[])
  */
 export function contentOrganizationIds(organizationId: string): string[] {
-  return PLATFORM_CONTENT_ENABLED
-    ? [organizationId, PLATFORM_ORGANIZATION_ID]
-    : [organizationId];
+  return [organizationId, PLATFORM_ORGANIZATION_ID];
 }
 
 /**
- * 콘텐츠를 **쓸** 때의 조직.
+ * 콘텐츠를 **쓸** 때의 조직 — 늘 플랫폼이다.
  *
- * 읽기와 달리 쓰기는 한 곳이어야 한다 — 어디에 쓸지가 두 곳이면 같은
- * 문항이 두 벌 생긴다. 마스터 권한 게이트는 5단계에서 붙는다.
+ * 읽기와 달리 쓰기는 한 곳이어야 한다. 두 곳이면 같은 교재가 학원 수만큼
+ * 늘고, 하나를 고치면 전부를 고쳐야 한다.
+ *
+ * **예외는 교사의 학습 자료다**(갈래 C). 그것은 학원이 만들어 학원이
+ * 소유하므로 `user.organizationId`를 그대로 쓴다 — 이 함수를 부르지 않는다.
+ * 반입(교재 문항·개념서)만 이 함수를 쓴다.
+ *
+ * 인자를 받는 이유는 호출부가 「어느 조직의 요청이었는지」를 잃지 않게
+ * 하기 위해서다. 마스터 권한 게이트가 붙는 자리이기도 하다(5단계).
  */
-export function contentWriteOrganizationId(organizationId: string): string {
-  return PLATFORM_CONTENT_ENABLED ? PLATFORM_ORGANIZATION_ID : organizationId;
+export function contentWriteOrganizationId(_organizationId: string): string {
+  return PLATFORM_ORGANIZATION_ID;
 }
