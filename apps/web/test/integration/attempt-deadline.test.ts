@@ -35,9 +35,20 @@ const LEARNER = "ffffffff-0000-7000-8000-000000061001";
 const TIMED = "ffffffff-0000-7000-8000-000000061002";
 const UNTIMED = "ffffffff-0000-7000-8000-000000061003";
 
-async function pickQuestionVersion(): Promise<{ qid: string; vid: string }> {
-  const [row] = await sql<{ qid: string; vid: string }[]>`
-    select q.id::text as qid, v.id::text as vid
+/* 체크섬까지 함께 가져온다.
+ *
+ * 픽스처가 **유효한 데이터**여야 한다는 것이 요지다. 예전에는 스냅샷
+ * 체크섬에 'itest-deadline' 같은 아무 문자열을 넣었는데, I-08은 스냅샷과
+ * 원본 버전의 체크섬이 같은지를 본다 — 그래서 이 테스트가 돌 때마다
+ * `pnpm verify:recovery`에 위반이 하나씩 쌓였다. 늘 빨간 게이트는 아무도
+ * 읽지 않으므로, 픽스처가 불변 조건을 어기지 않게 한다. */
+async function pickQuestionVersion(): Promise<{
+  qid: string;
+  vid: string;
+  checksum: string;
+}> {
+  const [row] = await sql<{ qid: string; vid: string; checksum: string }[]>`
+    select q.id::text as qid, v.id::text as vid, v.content_checksum as checksum
     from questions q join question_versions v on v.question_id = q.id
     where q.organization_id = ${ORG}
     order by q.id limit 1
@@ -49,14 +60,15 @@ async function makeAssessment(
   id: string,
   timeLimit: number | null,
 ): Promise<string> {
-  const { qid, vid } = await pickQuestionVersion();
+  const { qid, vid, checksum } = await pickQuestionVersion();
+  /* `published_at`을 채운다 — I-08은 「게시 상태인데 게시 기록 없음」도 본다. */
   await sql`
     insert into assessment_instances (
       id, organization_id, purpose, title, learner_id, scheduled_date, status,
-      time_limit_minutes)
+      time_limit_minutes, published_at)
     values (${id}, ${ORG}, 'formative', ${`ITEST 마감 ${id.slice(-6)}`},
-            ${LEARNER}, current_date, 'published', ${timeLimit})
-    on conflict (id) do nothing
+            ${LEARNER}, current_date, 'published', ${timeLimit}, now())
+    on conflict (id) do update set published_at = coalesce(assessment_instances.published_at, now())
   `;
   const [existing] = await sql<{ id: string }[]>`
     select id::text from assessment_questions where assessment_id = ${id} limit 1
@@ -68,7 +80,7 @@ async function makeAssessment(
       id, organization_id, assessment_id, question_id, question_version_id,
       content_checksum, sort_order, points, selection_reason,
       answer_snapshot, concept_weights)
-    values (${aq}, ${ORG}, ${id}, ${qid}, ${vid}, 'itest-deadline', 1, 10, 'itest',
+    values (${aq}, ${ORG}, ${id}, ${qid}, ${vid}, ${checksum}, 1, 10, 'itest',
             ${sql.json({
               kind: "short_answer",
               accepted: [{ value: "42", form: "number", allowEquivalence: true }],
@@ -120,6 +132,26 @@ beforeAll(async () => {
   `;
   TIMED_AQ = await makeAssessment(TIMED, 30);
   UNTIMED_AQ = await makeAssessment(UNTIMED, null);
+  /* 앞 실행이 남긴 미제출 응시를 치운다.
+   *
+   * 이 테스트는 `startAttempt`를 거치지 않고 응시 행을 직접 넣는다(마감을
+   * 재려면 시작 시각을 과거로 밀어야 해서다). 그래서 제품 코드의 「같은
+   * 평가에 진행 중 응시는 하나」 보장을 우회하고, 제출까지 가지 않은 응시가
+   * 실행마다 하나씩 남아 I-09를 어긴다 — 실측으로 22건과 11건이 쌓여 있었다.
+   * 지우지 않고 `invalidated`로 내린다 — 제품이 「시작했다가 만 응시」를
+   * 부르는 이름이 그것이고, 기록을 없애는 것보다 상태를 맞추는 편이 맞다.
+   * 채점 결정이 붙은 응시는 건드리지 않는다(그건 잔재가 아니라 기록이다). */
+  await sql`
+    update attempts a
+    set status = 'invalidated', updated_at = now()
+    where a.assessment_id in (${TIMED}, ${UNTIMED})
+      and a.status = 'in_progress'
+      and not exists (
+        select 1 from grade_decisions d
+        join responses r on r.id = d.response_id
+        where r.attempt_id = a.id
+      )
+  `;
   const [max] = await sql<{ n: number }[]>`
     select coalesce(max(attempt_no), 0)::int as n from attempts
     where learner_id = ${LEARNER}

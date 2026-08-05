@@ -614,6 +614,11 @@ describe.skipIf(!hasDb)("생성 실패는 성공으로 기록되지 않는다", 
 
   afterAll(async () => {
     await failSql`delete from jobs where organization_id = ${FAIL_ORG}`;
+    /* outbox도 함께 지운다. 작업만 지우면 「배달 완료인데 소비자 작업이
+     * 없는」 이벤트가 남아 R-04가 영구 위반이 된다 — 실측으로 46건이
+     * 쌓여 있었고, 그 때문에 `pnpm verify:recovery`가 늘 빨간불이었다.
+     * 늘 빨간 게이트는 아무도 읽지 않는다. */
+    await failSql`delete from outbox_events where organization_id = ${FAIL_ORG}`;
     await failSql.end({ timeout: 5 });
   });
 

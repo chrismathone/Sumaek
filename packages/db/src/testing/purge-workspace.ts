@@ -32,6 +32,11 @@ const UNDELETABLE = new Set([
   "grade_decisions",
   "learner_day_plans",
   "learner_day_plan_items",
+  /* 파생인데 **지우면 안 되는** 것. `mastery_evidences`가 지워지지 않으므로
+   * 여기만 비우면 「증거는 있는데 숙련도 행이 없다」가 되어 I-11이 영구 위반
+   * 상태가 된다 — 실측으로 자율 E2E 조직마다 6행씩 쌓여 107건 중 32건이
+   * 이것이었다. 원본을 못 지우면 파생도 남긴다. */
+  "concept_masteries",
   "organizations",
   "users",
 ]);

@@ -49,9 +49,16 @@ function learnerId(index: number): string {
   return `${LEARNER_PREFIX}${String(index).padStart(2, "0")}`;
 }
 
-async function pickQuestionVersion(): Promise<{ qid: string; vid: string }> {
-  const [row] = await sql<{ qid: string; vid: string }[]>`
-    select q.id::text as qid, v.id::text as vid
+/* 체크섬까지 가져온다 — 픽스처가 불변 조건을 어기지 않게 (I-08). 아무
+ * 문자열을 넣으면 스냅샷과 원본이 달라져 `pnpm verify:recovery`에 위반이
+ * 실행마다 쌓인다. */
+async function pickQuestionVersion(): Promise<{
+  qid: string;
+  vid: string;
+  checksum: string;
+}> {
+  const [row] = await sql<{ qid: string; vid: string; checksum: string }[]>`
+    select q.id::text as qid, v.id::text as vid, v.content_checksum as checksum
     from questions q join question_versions v on v.question_id = q.id
     where q.organization_id = ${ORG}
     order by q.id limit 1
@@ -73,13 +80,29 @@ beforeAll(async () => {
     `;
   }
 
-  const { qid, vid } = await pickQuestionVersion();
+  const { qid, vid, checksum } = await pickQuestionVersion();
   await sql`
     insert into assessment_instances (
-      id, organization_id, purpose, title, scheduled_date, status)
+      id, organization_id, purpose, title, scheduled_date, status, published_at)
     values (${ASSESSMENT}, ${ORG}, 'formative', 'ITEST 동시 제출',
-            current_date, 'published')
-    on conflict (id) do update set scheduled_date = current_date
+            current_date, 'published', now())
+    on conflict (id) do update set
+      scheduled_date = current_date,
+      published_at = coalesce(assessment_instances.published_at, now())
+  `;
+  /* 앞 실행이 중간에 죽어 남긴 미제출 응시를 치운다 — 같은 평가·학습자에
+   * 진행 중 응시가 둘이면 I-09 위반이다. 지우지 않고 `invalidated`로 내린다
+   * (제품이 「시작했다가 만 응시」를 부르는 이름). 채점 결정이 붙은 것은
+   * 건드리지 않는다. */
+  await sql`
+    update attempts a
+    set status = 'invalidated', updated_at = now()
+    where a.assessment_id = ${ASSESSMENT} and a.status = 'in_progress'
+      and not exists (
+        select 1 from grade_decisions d
+        join responses r on r.id = d.response_id
+        where r.attempt_id = a.id
+      )
   `;
   const [existingQuestion] = await sql<{ id: string }[]>`
     select id::text from assessment_questions where assessment_id = ${ASSESSMENT} limit 1
@@ -94,7 +117,7 @@ beforeAll(async () => {
         content_checksum, sort_order, points, selection_reason,
         answer_snapshot, concept_weights)
       values (${assessmentQuestionId}, ${ORG}, ${ASSESSMENT}, ${qid}, ${vid},
-              'itest-concurrent', 1, 10, 'itest',
+              ${checksum}, 1, 10, 'itest',
               ${sql.json({
                 kind: "short_answer",
                 accepted: [{ value: "42", form: "number", allowEquivalence: true }],
