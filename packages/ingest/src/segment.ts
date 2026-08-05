@@ -619,6 +619,12 @@ function toRuns(spans: IndexedSpan[], profile: ExtractionProfile): Run[] {
   return mergeUnbalancedMath(runs);
 }
 
+/** 보기·조건 항목의 마커 — ㄱ·ㄴ·ㄷ 또는 (가)·(나) */
+const conditionMarkerOf = (s: IndexedSpan): string | null => {
+  const m = /^([ㄱ-ㅎ]|\([가-힣]\))\.?\s*$/.exec(s.text.trim());
+  return m ? m[1]! : null;
+};
+
 /** 조각 배열을 마커 기준으로 쪼갠다 (①②③ 선택지, ㄱㄴㄷ 보기) */
 function splitByMarker(
   spans: IndexedSpan[],
@@ -824,7 +830,13 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
    * 그래서 단 구분 없이 한 번 더 줄을 세워 지시문만 먼저 건진다. */
   const fullWidthLines = toLines(prepared, profile, () => 0);
   const instructionSpans = new Set<number>();
-  const sharedInstructions: { from: number; to: number; runs: Run[] }[] = [];
+  const sharedInstructions: {
+    from: number;
+    to: number;
+    runs: Run[];
+    /** 지시문에 딸린 보기·조건 상자 — 그 구간의 문항 모두가 쓴다 */
+    box?: { label: string; items: ConditionItem[] };
+  }[] = [];
   for (let i = 0; i < fullWidthLines.length; i += 1) {
     const line = fullWidthLines[i]!;
     const text = cleanBodyText(line.spans.map((s) => s.text).join("")).trim();
@@ -880,10 +892,47 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
         i += 1;
       }
     }
+    /* **공유 지시문에 딸린 보기 상자.**
+     *
+     * 「[0026~0029] 다음 각을 보기에서 모두 고르시오.」 아래에 상자가 서고,
+     * 그 뒤에야 0026·0027이 온다. 상자는 어느 한 문항의 것이 아니라 넷
+     * 모두의 것인데, 문항 영역 밖에 있어 어디에도 안 붙었다 — 그러면 네
+     * 문항이 「보기에서 고르시오」로 끝나고 고를 것이 없다. 여섯 권에서
+     * 다섯 자리가 이렇다.
+     *
+     * 다음 문항 번호가 나오기 전까지의 줄에서 라벨과 항목을 걷는다. */
+    let sharedBox: { label: string; items: ConditionItem[] } | null = null;
+    for (let j = i + 1; j < fullWidthLines.length; j += 1) {
+      const l = fullWidthLines[j]!;
+      const hasNum = mergeAdjacent(l.spans).some(
+        (g) => questionNumberOf(g, profile) !== null,
+      );
+      if (hasNum) break;
+      const label = l.spans.find(
+        (s) =>
+          profile.fonts.conditionLabel.test(s.font) &&
+          profile.patterns.conditionLabel.test(s.text.trim()) &&
+          s.size < 8.5,
+      );
+      if (label) {
+        sharedBox = { label: label.text.trim(), items: [] };
+        for (const s of l.spans) instructionSpans.add(s.index);
+        continue;
+      }
+      if (!sharedBox) continue;
+      const parts = splitByMarker(l.spans, profile, conditionMarkerOf);
+      if (parts.length === 0) break;
+      for (const part of parts) {
+        sharedBox.items.push({ marker: part.marker, runs: toRuns(part.spans, profile) });
+      }
+      for (const s of l.spans) instructionSpans.add(s.index);
+    }
+
     sharedInstructions.push({
       from: Number(range[1]),
       to: Number(range[2]),
       runs,
+      ...(sharedBox && sharedBox.items.length > 0 ? { box: sharedBox } : {}),
     });
   }
 
@@ -967,6 +1016,10 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
           : r,
       );
       built.stem = [...head, ...built.stem];
+      /* 지시문에 딸린 상자는 그 구간의 문항 모두가 쓴다. 문항이 제 상자를
+       * 가지고 있으면 그쪽이 우선이다 — 지면에 둘 다 있으면 가까운 것이
+       * 그 문항의 것이다. */
+      if (built.conditionBox === null && shared.box) built.conditionBox = shared.box;
     }
     questions.push(built);
     current = null;
@@ -1146,10 +1199,6 @@ function buildQuestion(
     const t = s.text.trim();
     if (profile.patterns.choiceMarker.test(t)) return t;
     return null;
-  };
-  const conditionMarkerOf = (s: IndexedSpan): string | null => {
-    const m = /^([ㄱ-ㅎ]|\([가-힣]\))\.?\s*$/.exec(s.text.trim());
-    return m ? m[1]! : null;
   };
 
   /* 이 문항 영역에 걸친 도형. 그 안의 글자는 치수·꼭짓점 라벨이므로
