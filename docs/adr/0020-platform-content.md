@@ -270,3 +270,17 @@ E2E 「자료 왕복」이 오래 빨간불이었는데, 원인은 이 작업도
 | `source_files` | `(organization_id, checksum)` | 6 (**같은 PDF를 두 번 반입했다**) |
 
 플랫폼 쪽 교재 판(12건)에 딸린 문항은 **0건**이고, 지면은 779쪽 있다. 곧 앞 반입의 지면은 남았는데 그 문항은 조직 블라인드 삭제로 지워졌고 새 문항이 데모 조직에 다시 생긴 상태다. 어느 쪽 `source_file`을 정본으로 둘지는 사람이 정할 일이라 스크립트는 **멈추고 무엇이 부딪히는지 표로 낸다.** 이전 자체는 이제 한 트랜잭션이라 중간에 걸려도 절반만 옮겨진 상태가 남지 않는다(앞 사고의 모양이 그것이었다).
+
+### 병합할 때 함께 고칠 자리 — 조직 id로 콘텐츠를 찾는 도구 다섯
+
+지금은 **콘텐츠가 아직 데모 조직에 있어서** 이것들이 동작한다. 병합이 끝나는 순간 전부 조용히 0건이 된다(예외도 오류도 없이). `seed-unit1-demo`가 이미 그 상태였다 — 정제본 0건을 보고 아무것도 게시하지 않고 있었다.
+
+| 파일 | 무엇을 조직 id로 찾는가 |
+|---|---|
+| `packages/db/scripts/approve-ingested.mts` | 반입 문항 승인 대상·검수·사용권 (읽기와 **쓰기 둘 다**) |
+| `packages/ingest/src/cli/audit-katex.mts` | 수식 렌더 감사 대상 문항 |
+| `packages/ingest/src/cli/figure-census.mts` | 그림·표 조사 대상 문항 |
+| `packages/ingest/src/cli/variants.mts` | 변형 생성 대상 문항 |
+| `packages/ingest/src/cli/verify-templates.mts` | 템플릿 검증 대상 문항 |
+
+읽기는 `contentOrganizationIds(org)`로, 쓰기는 **행이 실제로 있는 조직**으로 바꾼다(`seed-unit1-demo`가 그렇게 한다 — 선택한 행의 `organization_id`를 그대로 쓴다). 감사·예산 기록은 그대로 조직이다.

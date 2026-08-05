@@ -84,7 +84,27 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
       select platform_org_id()::text as id
     `;
     platformOrg = platform?.id ?? null;
-    if (platformOrg) {
+    /* 조용히 넘어가지 않는다 — 플랫폼 조직이 없으면 V-3을 **잴 수 없는데**
+     * 그냥 통과하면 「학생 차단이 확인됐다」로 읽힌다. 0019b가 안 돌았다는
+     * 뜻이므로 그 사실을 말하고 죽는다. */
+    if (!platformOrg) {
+      throw new Error(
+        "플랫폼 조직이 없습니다 — 0019b 마이그레이션을 먼저 적용하세요 (V-3을 잴 수 없습니다).",
+      );
+    }
+    {
+      /* 죽은 실행이 남긴 것을 먼저 치운다. 이 픽스처는 **플랫폼 조직에**
+       * 쓰는데, 플랫폼은 purge 대상이 아니다(ADR-0020 6단계) — 중간에
+       * 프로세스가 죽으면 아무도 못 지우는 공용 콘텐츠가 된다. */
+      await sql`
+        delete from question_versions where question_id in (
+          select id from questions where content_right_id in (
+            select id from content_rights where rights_holder = 'RLS 공용 테스트'))`;
+      await sql`
+        delete from questions where content_right_id in (
+          select id from content_rights where rights_holder = 'RLS 공용 테스트')`;
+      await sql`delete from content_rights where rights_holder = 'RLS 공용 테스트'`;
+
       await sql`insert into content_rights (id, organization_id, rights_holder, status)
         values (${platformRight}, ${platformOrg}, 'RLS 공용 테스트', 'usable')`;
       await sql`insert into questions (id, organization_id, kind, review_status, content_right_id, is_auto_assignable)
@@ -160,7 +180,6 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
    * 조직의 멤버가 아니라 역할이 null이라 통과했다. `is_student_only()`가
    * 사람 기준으로 막는다. 그 함수를 되돌리면 이 테스트가 먼저 깨진다. */
   it("V-3 학생은 **플랫폼** 문항 원본·정답도 못 읽는다", async () => {
-    if (!platformOrg) return; // 플랫폼 조직이 없는 DB에서는 잴 것이 없다
     const rows = await asUser(
       studentUserA,
       (tx) => tx`select id from questions where id = ${platformQuestion}`,
@@ -182,7 +201,6 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
    * 것이 곧 「아무도 못 쓰는 콘텐츠」가 된다 — 막는 쪽만 재고 여는 쪽을
    * 안 재면 그 상태를 초록으로 보고하게 된다. */
   it("교사는 플랫폼 문항을 본다 — 공용 읽기는 열려 있다", async () => {
-    if (!platformOrg) return;
     const rows = await asUser(
       userA,
       (tx) => tx`select id from questions where id = ${platformQuestion}`,

@@ -50,7 +50,7 @@ export function CreateMaterialForm({
     if (typeof document === "undefined") return null;
     const read = (id: string) =>
       (document.getElementById(id) as HTMLSelectElement | null)?.value ?? "";
-    return { kind: read("createKind"), conceptId: read("conceptId") };
+    return { kind: read("createKind"), conceptId: read("createConceptId") };
   });
   useEffect(() => {
     if (!preHydration) return;
@@ -102,11 +102,17 @@ export function CreateMaterialForm({
       <form action={action} className="mt-4 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label htmlFor="conceptId" className="block text-sm">
+            {/* id는 이 폼에만 있는 이름이어야 한다 — 상세 화면의 고치기 폼도
+                개념 셀렉트를 갖고 있고, 그 화면에서 목록으로 **클라이언트
+                이동**하면 새 트리를 그리는 동안 옛 DOM이 아직 붙어 있다.
+                아래 preHydration이 id로 찾으므로, 이름이 같으면 남의 화면
+                값을 자기 초기값으로 삼는다(= 방금 보던 자료의 개념이 조용히
+                골라져 있다). name은 conceptId 그대로라 서버는 그대로 받는다. */}
+            <label htmlFor="createConceptId" className="block text-sm">
               개념
             </label>
             <select
-              id="conceptId"
+              id="createConceptId"
               name="conceptId"
               required
               value={conceptId}
