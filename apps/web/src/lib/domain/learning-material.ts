@@ -1,3 +1,4 @@
+import { hideOverriddenMaterials } from "@su-maek/core/learning";
 import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { v7 as uuidv7 } from "uuid";
@@ -62,6 +63,7 @@ export async function listMaterials(input: {
     {
       id: string;
       concept_id: string;
+      organization_id: string;
       concept_name: string;
       kind: string;
       title: string;
@@ -76,6 +78,7 @@ export async function listMaterials(input: {
     }[]
   >`
     select m.id::text, m.concept_id::text as concept_id, c.name as concept_name,
+           m.organization_id::text as organization_id,
            m.kind::text as kind, m.title, m.body, m.video_url,
            m.video_seconds, m.question_ids, m.disclosure,
            p.status::text as progress,
@@ -91,7 +94,12 @@ export async function listMaterials(input: {
       and m.kind::text = any(${kinds}::text[])
     order by c.name, m.sort_order, m.created_at
   `;
-  return rows.map((r) => ({
+  /* 학원이 덮어쓴 개념·종류는 공용 자료를 뺀다 (ADR-0020 갈래 C).
+   * 판정은 core가 한다 — 준비도 화면과 **같은 함수**여야 두 화면이 안 갈린다. */
+  return hideOverriddenMaterials(
+    rows.map((r) => ({ ...r, organizationId: r.organization_id, conceptId: r.concept_id })),
+    input.organizationId,
+  ).map((r) => ({
     id: r.id,
     conceptId: r.concept_id,
     conceptName: r.concept_name,

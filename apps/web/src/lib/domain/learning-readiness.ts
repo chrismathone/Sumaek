@@ -1,3 +1,4 @@
+import { hideOverriddenMaterials } from "@su-maek/core/learning";
 import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
@@ -180,6 +181,8 @@ export async function checkMaterialReadiness(input: {
 }
 
 interface MaterialRow {
+  /** 가리기 판정용 — 공용(플랫폼) 자료인지 우리 것인지 */
+  organization_id: string;
   id: string;
   concept_id: string;
   kind: string;
@@ -238,15 +241,24 @@ export async function checkRouteReadiness(input: {
     conceptIds.length === 0
       ? []
       : await sql<MaterialRow[]>`
-          select id::text, concept_id::text, kind::text as kind, title, question_ids
+          select id::text, concept_id::text, organization_id::text,
+                 kind::text as kind, title, question_ids
           from learning_materials
           where organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
             and status = 'published'
             and concept_id = any(${conceptIds}::uuid[])
         `;
 
+  /* 학원이 덮어쓴 개념·종류는 공용 자료를 뺀다 — **학생 화면과 같은 함수**다
+   * (ADR-0020 갈래 C). 여기서 따로 세면 교사가 미리 본 필수 분모와 학생이
+   * 만나는 필수 분모가 갈린다. */
+  const visible = hideOverriddenMaterials(
+    materials.map((m) => ({ ...m, organizationId: m.organization_id, conceptId: m.concept_id })),
+    input.organizationId,
+  );
+
   const byConcept = new Map<string, MaterialRow[]>();
-  for (const m of materials) {
+  for (const m of visible) {
     const list = byConcept.get(m.concept_id) ?? [];
     list.push(m);
     byConcept.set(m.concept_id, list);

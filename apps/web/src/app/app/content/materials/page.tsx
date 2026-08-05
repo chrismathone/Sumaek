@@ -34,6 +34,8 @@ const SORT_COLUMN: Record<string, string> = {
 
 interface MaterialRow {
   id: string;
+  /** 공용(플랫폼) 자료인가 — 우리 것이 아니면 읽기 전용이다 */
+  is_shared: boolean;
   concept_name: string;
   kind: string;
   title: string;
@@ -90,14 +92,19 @@ export default async function MaterialsPage({
   const [rows, concepts] = await Promise.all([
     sql<MaterialRow[]>`
       with base as (
-        select m.id::text, c.name as concept_name, m.kind::text as kind,
+        select m.id::text,
+               (m.organization_id <> ${user.organizationId}) as is_shared,
+               c.name as concept_name, m.kind::text as kind,
                m.title, m.status::text as status, m.sort_order,
                m.video_seconds,
                jsonb_array_length(m.question_ids) as curated_count,
                m.updated_at
         from learning_materials m
         join canonical_concepts c on c.id = m.concept_id
-        where m.organization_id = ${user.organizationId}
+        /* 공용 자료도 함께 본다 (ADR-0020). 이전에는 자기 조직만 봤는데,
+         * 콘텐츠가 플랫폼으로 간 뒤에는 그러면 목록이 통째로 빈다.
+         * 우리 것인지 공용인지는 is_shared가 말한다. */
+        where m.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           -- enum은 양쪽 ::text로 — 빈 문자열이 enum 캐스팅을 만나면 500이 난다
           and (${kindFilter}::text = '' or m.kind::text = ${kindFilter})
           and (${statusFilter}::text = '' or m.status::text = ${statusFilter})
@@ -153,7 +160,24 @@ export default async function MaterialsPage({
         <Badge tone="border-rule bg-paper">{KIND_LABEL[r.kind] ?? r.kind}</Badge>
       ),
     },
-    { key: "title", label: "제목", sortable: true, render: (r) => r.title },
+    {
+      key: "title",
+      label: "제목",
+      sortable: true,
+      /* 공용 자료는 **고칠 수 없다**(ADR-0020 갈래 C — 플랫폼이 쓰고 학원은
+       * 읽는다). 표시가 없으면 교사가 눌러 들어가 고치려다 「찾을 수
+       * 없습니다」를 만난다 — 제품이 고장 난 것처럼 보이는 자리다.
+       * 같은 개념·같은 종류로 우리 자료를 만들면 이 줄이 가려진다. */
+      render: (r) =>
+        r.is_shared ? (
+          <span className="inline-flex items-center gap-1.5">
+            {r.title}
+            <Badge tone="border-rule bg-paper text-ink-soft">공용</Badge>
+          </span>
+        ) : (
+          r.title
+        ),
+    },
     {
       key: "length",
       label: "길이",

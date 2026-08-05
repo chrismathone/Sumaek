@@ -63,6 +63,18 @@ export async function purgeOrganizationRows(
   sql: Sql,
   organizationId: string,
 ): Promise<PurgeOrganizationResult> {
+  /* 플랫폼 조직은 지우지 않는다 (ADR-0020). 여기 사는 것은 한 학원의
+   * 데이터가 아니라 **모든 학원이 함께 보는 콘텐츠**다 — 문항 7천 건과
+   * 자료 전부가 한 번의 오타로 사라질 수 있는 자리라 코드로 막는다.
+   * 정리 스크립트가 조직을 훑다가 실수로 여기에 닿는 일이 진짜 위험이다. */
+  const [platform] = await sql<{ id: string | null }[]>`
+    select platform_org_id()::text as id
+  `;
+  if (platform?.id && platform.id === organizationId) {
+    throw new Error(
+      "플랫폼 조직은 purge 대상이 아닙니다 — 모든 학원이 함께 보는 콘텐츠입니다 (ADR-0020).",
+    );
+  }
   const scoped = await sql<{ table_name: string }[]>`
     select table_name from information_schema.columns
     where table_schema = 'public' and column_name = 'organization_id'
