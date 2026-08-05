@@ -400,6 +400,15 @@ function takeContiguous(
  *
  * 위첨자는 데려간다. `y=a(x-p)Û의 그래프` 에서 `Û`를 떼면 없는 식이 된다.
  */
+/**
+ * 선택지 기호가 앞엣것과 이만큼은 떨어져 있어야 기호로 본다(pt).
+ *
+ * 실측 — 진짜 기호 앞의 틈은 26~35pt(줄 맨 앞이면 아예 없다), 문장 안에 낀
+ * 「① ~ ⑤」의 틈은 0.8pt와 -2.5pt다. 5로 잡으나 12로 잡으나 여섯 권에서
+ * 결과가 같다.
+ */
+const CHOICE_GAP = 12;
+
 /** 「[0104~0105]」 — 조각의 **머리**가 표식인지 본다 */
 const MARKER_HEAD = /^\[\s*\d{4}\s*~\s*\d{4}\s*\]/;
 
@@ -1490,7 +1499,28 @@ function buildQuestion(
     line = { ...line, spans: line.spans.filter((s) => !insideFigure(s)) };
     if (line.spans.length === 0) continue;
 
-    const hasChoiceMarker = line.spans.some((s) => markerOf(s) !== null);
+    /* **문장 안에 낀 ①은 선택지 기호가 아니다.**
+     *
+     * 「다음 그림에서 ① ~ ⑤의 그래프가 나타내는 식으로…」처럼 그림 위의
+     * 표시를 가리키는 말이 있다. 그것을 기호로 읽으면 그 줄부터 선택지가
+     * 되어 **발문이 통째로 사라진다** — 중1-1 1084·중1-2 0763이 그랬다.
+     *
+     * 지면은 둘을 자리로 가른다. 진짜 기호는 줄 맨 앞에 서거나 앞엣것과
+     * 26pt 넘게 떨어져 있고, 문장 안에 낀 것은 1pt도 안 떨어져 있다. */
+    const inline = new Set<number>();
+    {
+      const ordered = [...line.spans].sort((a, b) => a.x0 - b.x0);
+      for (let k = 0; k < ordered.length; k += 1) {
+        const s = ordered[k]!;
+        const prev = ordered[k - 1];
+        if (markerOf(s) !== null && prev !== undefined && s.x0 - prev.x1 < CHOICE_GAP) {
+          inline.add(s.index);
+        }
+      }
+    }
+    const markerHere = (s: IndexedSpan): string | null =>
+      inline.has(s.index) ? null : markerOf(s);
+    const hasChoiceMarker = line.spans.some((s) => markerHere(s) !== null);
     const labelSpan = line.spans.find(
       (s) =>
         profile.fonts.conditionLabel.test(s.font) &&
@@ -1506,7 +1536,7 @@ function buildQuestion(
     if (hasChoiceMarker) mode = "choices";
 
     if (mode === "choices" && hasChoiceMarker) {
-      for (const part of splitByMarker(line.spans, profile, markerOf)) {
+      for (const part of splitByMarker(line.spans, profile, markerHere)) {
         choices.push({
           marker: part.marker,
           order: choices.length + 1,
