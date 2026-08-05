@@ -62,6 +62,14 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
   const absent = { name: "", email: "", password: "" };
   let groupName = "";
   let materialTitle = "";
+  /**
+   * 키보드 학생이 실제로 완주했는가.
+   *
+   * ⑥의 기대 완료 수를 **여기서 가져온다.** 숫자를 박아 두면 ⑤-2가
+   * 건너뛰어지는 엔진(WebKit)에서 ⑥이 엉뚱하게 깨진다 — 실측으로 그랬다.
+   * 앞 단계가 한 일을 뒤 단계가 세는 편이 어느 쪽이 건너뛰든 맞는다.
+   */
+  let keyboardFinished = false;
 
   test.beforeAll(async ({ browser }) => {
     ws = await createAutonomousWorkspace();
@@ -505,6 +513,7 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       /* 6) 하루가 닫혔다 — 마우스 없이 온 학생도 같은 자리에 도착한다 */
       await page.goto("/learn/today");
       await expect(page.getByText("오늘 할 일을 모두 마쳤습니다.")).toBeVisible();
+      keyboardFinished = true;
     } finally {
       await ctx.close();
     }
@@ -523,8 +532,12 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
      * 카드 안에 두 번 나온다 — 세는 줄과, 그 학생의 이름 옆 상태 배지.
      * 아무 쪽이나 잡으면 strict mode로 죽거나(실측) 엉뚱한 쪽을 잰다. */
     const counts = groupCard.locator("div").filter({ hasText: "기록 없음" }).last();
-    await expect(counts).toContainText("완료 2");
-    await expect(counts).toContainText("기록 없음 1");
+    /* 마우스로 완주한 한 명 + 키보드로 완주한 한 명. 뒤엣것이 건너뛰어진
+     * 엔진에서는 그 학생이 로그인조차 안 한 것이 되므로 완료가 하나 줄고
+     * 기록 없음이 하나 는다 — 두 칸이 함께 움직인다. 앞 단계가 실제로 한
+     * 일을 세면 어느 쪽이 건너뛰든 맞는다. */
+    await expect(counts).toContainText(`완료 ${keyboardFinished ? 2 : 1}`);
+    await expect(counts).toContainText(`기록 없음 ${keyboardFinished ? 1 : 2}`);
     /* 막힘이 0이다 — 평가↔노드 연결이 끊기면 여기가 2가 된다 */
     await expect(counts).toContainText("막힘 0");
     /* 반 수업은 아직 마감 전이다 — 학생이 다 했다고 반이 끝나지 않는다 (I-21) */
