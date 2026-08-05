@@ -23,6 +23,10 @@ import {
   KWR_M11_CH2_TARGETS,
   KWR_M11_CH3_TARGETS,
   KWR_M11_CH4_TARGETS,
+  KWR_M12_CH1_TARGETS,
+  KWR_M12_CH2_TARGETS,
+  KWR_M12_CH3_TARGETS,
+  KWR_M12_CH4_TARGETS,
   KWR_M21_CH1_TARGETS,
   KWR_M21_CH2_TARGETS,
   KWR_M21_CH3_TARGETS,
@@ -47,6 +51,12 @@ import {
   RPM_M1_CH4_CONCEPTS,
   type ConceptDefinition,
 } from "../profiles/rpm-2022-concepts";
+import {
+  RPM_M12_CH1_CONCEPTS,
+  RPM_M12_CH2_CONCEPTS,
+  RPM_M12_CH3_CONCEPTS,
+  RPM_M12_CH4_CONCEPTS,
+} from "../profiles/rpm-2022-concepts-m12";
 import {
   RPM_M21_CH1_CONCEPTS,
   RPM_M21_CH2_CONCEPTS,
@@ -125,6 +135,42 @@ const M1_1: Record<string, ConceptChapter> = {
     pages: [176, 177, 184, 198, 208],
     concepts: RPM_M1_CH4_CONCEPTS,
     targets: KWR_M11_CH4_TARGETS,
+  },
+};
+
+/** 개념원리 중1-2 (교사용 248쪽) — 쪽 목록은 concept-page-scan으로 뽑았다 */
+const M1_2: Record<string, ConceptChapter> = {
+  I: {
+    number: "I",
+    title: "기본 도형",
+    dumpRange: "1-248",
+    pages: [10, 11, 18, 19, 34, 35, 40, 46, 60, 61, 66, 67, 72, 73],
+    concepts: RPM_M12_CH1_CONCEPTS,
+    targets: KWR_M12_CH1_TARGETS,
+  },
+  II: {
+    number: "II",
+    title: "평면도형",
+    dumpRange: "1-248",
+    pages: [88, 89, 95, 102, 116, 122],
+    concepts: RPM_M12_CH2_CONCEPTS,
+    targets: KWR_M12_CH2_TARGETS,
+  },
+  III: {
+    number: "III",
+    title: "입체도형",
+    dumpRange: "1-248",
+    pages: [136, 144, 150, 151, 166, 167, 176, 177, 186],
+    concepts: RPM_M12_CH3_CONCEPTS,
+    targets: KWR_M12_CH3_TARGETS,
+  },
+  IV: {
+    number: "IV",
+    title: "통계",
+    dumpRange: "1-248",
+    pages: [200, 212, 213, 222, 223, 233],
+    concepts: RPM_M12_CH4_CONCEPTS,
+    targets: KWR_M12_CH4_TARGETS,
   },
 };
 
@@ -291,6 +337,11 @@ const BOOKS: Record<string, ConceptBook> = {
     title: "개념원리 중학 수학 1-1 (2022 개정)",
     gradeBand: "middle-1",
     chapters: M1_1,
+  },
+  "m1-2": {
+    title: "개념원리 중학 수학 1-2 (2022 개정)",
+    gradeBand: "middle-1",
+    chapters: M1_2,
   },
   "m2-1": {
     title: "개념원리 중학 수학 2-1 (2022 개정)",

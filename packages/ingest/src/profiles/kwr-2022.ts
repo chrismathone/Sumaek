@@ -594,3 +594,98 @@ export const KWR_M32_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
   ["132|산점도와 상관관계|1", "m3-scatter-correlation"],
   ["132|산점도와 상관관계|2", "m3-scatter-correlation"],
 ]);
+
+/* ── 개념원리 중1-2 ────────────────────────────────────────────
+ *
+ * 쪽 목록은 `concept-page-scan`이 낸 35쪽 그대로다(미분류 0). 개념 제목은
+ * 지면에서 뽑힌 **그대로** 쓴다 — 고쳐 쓰면 열쇠가 안 맞아 자료가 통째로
+ * 안 들어가고, 그것이 오류 없이 그렇게 된다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** I. 기본 도형 — 개념서 p.10·11·18·19·34·35·40·46·60·61·66·67·72·73 */
+export const KWR_M12_CH1_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["10|점 선 면|1", "m1-basic-figures"],
+  ["10|점 선 면|2", "m1-basic-figures"],
+  ["11|점 선 면|3", "m1-basic-figures"],
+  ["11|점 선 면|4", "m1-basic-figures"],
+  ["18|각|1", "m1-basic-figures"],
+  ["18|각|2", "m1-basic-figures"],
+  ["19|각|3", "m1-basic-figures"],
+  ["19|각|4", "m1-basic-figures"],
+  ["34|두 직선의 위치 관계|1", "m1-basic-figures"],
+  ["34|두 직선의 위치 관계|2", "m1-basic-figures"],
+  ["34|두 직선의 위치 관계|3", "m1-basic-figures"],
+  ["35|두 직선의 위치 관계|4", "m1-basic-figures"],
+  ["40|직선과 평면의 위치 관계|1", "m1-basic-figures"],
+  ["40|직선과 평면의 위치 관계|2", "m1-basic-figures"],
+  ["46|평행선의 성질|1", "m1-parallel-angles"],
+  ["46|평행선의 성질|2", "m1-parallel-angles"],
+  ["46|평행선의 성질|3", "m1-parallel-angles"],
+  ["60|기본 도형의 작도|1", "m1-construction"],
+  ["60|기본 도형의 작도|2", "m1-construction"],
+  ["61|기본 도형의 작도|3", "m1-construction"],
+  ["61|기본 도형의 작도|4", "m1-construction"],
+  ["66|삼각형의 작도|1", "m1-construction"],
+  ["66|삼각형의 작도|2", "m1-construction"],
+  ["66|삼각형의 작도|3", "m1-construction"],
+  ["67|삼각형의 작도|4", "m1-construction"],
+  ["72|삼각형의 합동|1", "m1-triangle-congruence"],
+  ["72|삼각형의 합동|2", "m1-triangle-congruence"],
+  ["73|삼각형의 합동|3", "m1-triangle-congruence"],
+]);
+
+/** II. 평면도형 — 개념서 p.88·89·95·102·116·122 */
+export const KWR_M12_CH2_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["88|다각형|1", "m1-polygon-properties"],
+  ["88|다각형|2", "m1-polygon-properties"],
+  ["89|다각형|3", "m1-polygon-properties"],
+  ["95|삼각형의 내각과 외각|1", "m1-polygon-properties"],
+  ["102|다각형의 내각과 외각|1", "m1-polygon-properties"],
+  ["102|다각형의 내각과 외각|2", "m1-polygon-properties"],
+  ["102|다각형의 내각과 외각|3", "m1-polygon-properties"],
+  ["116|원과 부채꼴|1", "m1-circle-sector"],
+  ["116|원과 부채꼴|2", "m1-circle-sector"],
+  ["116|원과 부채꼴|3", "m1-circle-sector"],
+  ["122|부채꼴의 호의 길이와 넓이|1", "m1-circle-sector"],
+  ["122|부채꼴의 호의 길이와 넓이|2", "m1-circle-sector"],
+  ["122|부채꼴의 호의 길이와 넓이|3", "m1-circle-sector"],
+  ["122|부채꼴의 호의 길이와 넓이|4", "m1-circle-sector"],
+]);
+
+/** III. 입체도형 — 개념서 p.136·144·150·151·166·167·176·177·186 */
+export const KWR_M12_CH3_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["136|다면체|1", "m1-solids"],
+  ["136|다면체|2", "m1-solids"],
+  ["144|정다면체|1", "m1-solids"],
+  ["144|정다면체|2", "m1-solids"],
+  ["150|회전체|1", "m1-solids"],
+  ["150|회전체|2", "m1-solids"],
+  ["151|회전체|3", "m1-solids"],
+  ["151|회전체|4", "m1-solids"],
+  ["166|기둥의 겉넓이와 부피|1", "m1-solid-measure"],
+  ["167|기둥의 겉넓이와 부피|2", "m1-solid-measure"],
+  ["176|뿔의 겉넓이와 부피|1", "m1-solid-measure"],
+  ["176|뿔의 겉넓이와 부피|2", "m1-solid-measure"],
+  ["177|뿔의 겉넓이와 부피|3", "m1-solid-measure"],
+  ["177|뿔의 겉넓이와 부피|4", "m1-solid-measure"],
+  ["186|구의 겉넓이와 부피|1", "m1-solid-measure"],
+  ["186|구의 겉넓이와 부피|2", "m1-solid-measure"],
+]);
+
+/** IV. 통계 — 개념서 p.200·212·213·222·223·233 */
+export const KWR_M12_CH4_TARGETS: ReadonlyMap<string, string> = new Map([
+  ["200|대푯값|1", "m1-representative-values"],
+  ["200|대푯값|2", "m1-representative-values"],
+  ["212|줄기와 잎 그림, 도수분포표|1", "m1-frequency-distribution"],
+  ["213|줄기와 잎 그림, 도수분포표|2", "m1-frequency-distribution"],
+  /* 「히스그램」은 오타가 아니라 **지면에서 뽑힌 그대로**다. 제목 글자가
+   * 부분집합 글꼴로 와서 「토」 한 글자가 빠진다. 고쳐 쓰면 열쇠가 안 맞는다
+   * — 표시 제목은 반입 뒤 정제 단계에서 고칠 일이지 여기서 할 일이 아니다. */
+  ["222|히스그램과 도수분포다각형|1", "m1-frequency-distribution"],
+  ["222|히스그램과 도수분포다각형|2", "m1-frequency-distribution"],
+  ["223|히스그램과 도수분포다각형|3", "m1-frequency-distribution"],
+  ["223|히스그램과 도수분포다각형|4", "m1-frequency-distribution"],
+  ["233|상대도수와 그 그래프|1", "m1-relative-frequency"],
+  ["233|상대도수와 그 그래프|2", "m1-relative-frequency"],
+  ["233|상대도수와 그 그래프|3", "m1-relative-frequency"],
+]);
