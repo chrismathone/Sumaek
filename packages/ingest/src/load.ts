@@ -7,6 +7,7 @@ import { renderRuns } from "./answers";
 import type { ExtractionProfile } from "./profiles/types";
 import type { ConceptDefinition, ConceptWeight } from "./profiles/rpm-2022-concepts";
 import { normalizeConceptKey } from "./profiles/rpm-2022-concepts";
+import { repairLatex } from "./repair";
 import type { ExtractedQuestion, Run } from "./types";
 
 /* ─────────────────────────────────────────────────────────────
@@ -104,8 +105,13 @@ function toContractRuns(
   return runs.map((run) => {
     if (run.kind === "text") return { kind: "text", text: run.text };
     const id = uuidv7();
-    expressions.push({ id, raw: run.raw, latex: run.latex });
-    return { kind: "math", math: { expressionId: id, latex: run.latex } };
+    /* 형식이 깨진 식을 여기서 고친다 — **원문(raw)은 그대로 싣는다.**
+     * 조각이 span 경계에서 잘려 지수가 두 번 서거나 괄호 짝이 안 맞는
+     * 식이 154개 있었고, 그 문항들은 학생 화면에 빨간 오류로 나갔다.
+     * 뜻은 건드리지 않으므로 검수 게이트는 그대로 유지된다. */
+    const latex = repairLatex(run.latex).latex;
+    expressions.push({ id, raw: run.raw, latex });
+    return { kind: "math", math: { expressionId: id, latex } };
   });
 }
 
@@ -205,8 +211,14 @@ function buildAnswerKey(
     key: {
       kind: "short_answer",
       accepted: [
+        /* 정답 칸도 후보정한다 — 이 칸은 화면에서 renderMixedText를 거치지
+         * 않고 그대로 나가므로, 깨진 식이면 학생이 답을 못 읽는다. */
         mathOnly !== null
-          ? { value: mathOnly, form: "expression", allowEquivalence: false }
+          ? {
+              value: repairLatex(mathOnly).latex,
+              form: "expression",
+              allowEquivalence: false,
+            }
           : { value: text, form: "text", allowEquivalence: false },
       ],
     },

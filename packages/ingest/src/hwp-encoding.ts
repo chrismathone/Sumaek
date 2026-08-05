@@ -115,6 +115,15 @@ const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
 /** 이 글꼴에서 온 `¹²³`는 지수가 아니라 세로셈·표 조각이다 */
 const FRACTION_FONT = /EHboNA/;
 
+/**
+ * LaTeX가 뜻을 가지는 글자 — 못 읽은 글리프가 이것이면 날것으로 못 내보낸다.
+ *
+ * 백슬래시·중괄호는 여기 없다. 해독기가 만들어 낸 명령이 그 글자를 쓰므로
+ * 걸러 내면 멀쩡한 식이 부서진다. 여기 담는 것은 **미해독 글리프로 온**
+ * 글자뿐이고, 그 판정은 부르는 자리에서 이미 끝나 있다.
+ */
+const LATEX_SPECIAL = /[$^_&#%~]/;
+
 /** 도형 안의 글자를 담는 글꼴 — 코드가 실제 글자보다 0x1F 작다 */
 const FIGURE_LABEL_FONT = /KSC(ms-UHC|pc-EUC)/;
 
@@ -785,7 +794,16 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
       continue;
     }
     unknown.push(ch);
-    out += ch; // 지우지 않는다 — 검수자가 원문을 볼 수 있어야 한다
+    /* 못 읽은 글자를 지우지 않는다 — 검수자가 빠진 자리를 볼 수 있어야 한다.
+     *
+     * 다만 **LaTeX가 뜻을 가지는 글자는 날것으로 내보내지 않는다.** 중3-1의
+     * 근호 글꼴(EHRoot)은 `^`가 177회, `$`·`#`·`!`·`%`가 뒤를 잇는다. 그대로
+     * 나가면 KaTeX가 `^`를 위첨자 연산자로 읽어 식 전체가 렌더에 실패한다 —
+     * 못 읽은 글자 하나 때문에 멀쩡한 나머지까지 화면에서 사라진다.
+     *
+     * □로 바꾸면 셋이 동시에 지켜진다: 화면은 그려지고, 검수자는 빈자리를
+     * 보고, unknown에 남았으니 문항은 검수 게이트에 그대로 걸린다. */
+    out += LATEX_SPECIAL.test(ch) ? "\\square " : ch;
   }
 
   // 4) 자리표시자 되돌리기
