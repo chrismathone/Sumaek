@@ -3,6 +3,10 @@ import {
   decodeHwpMath,
   joinKorean,
   joinLatex,
+  attachOverline,
+  isOverlineOnly,
+  mergeRaised,
+  radicalPiece,
   markSuperscripts,
   mergeUnbalancedMath,
   tidyBodyText,
@@ -10,11 +14,13 @@ import {
 import { visibleSpans } from "./ink";
 import type { PageDump, Run, SourceDump } from "./types";
 
-/** 2행 분수·세로셈 표로 합쳐진 span — 구조를 구조로 들고 간다 */
+/** 2행 분수·세로셈 표·연립방정식으로 합쳐진 span — 구조를 구조로 들고 간다 */
 export type MaybeStacked = PageDump["spans"][number] & {
   stacked?: { numerator: string; denominator: string };
   /** 세로셈 나눗셈 표를 옮긴 LaTeX 배열 */
   tableLatex?: string;
+  /** 연립방정식 — 큰 중괄호 오른쪽의 각 줄 */
+  systemRows?: PageDump["spans"][];
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -140,6 +146,95 @@ export interface TableMergeProfile {
 }
 
 /**
+ * 연립방정식을 한 조각으로 합친다 — 본책 파서(segment.ts)와 같은 근거.
+ *
+ * 별책 해설에도 연립이 그대로 실린다. 합치지 않으면 큰 중괄호 오른쪽의 두
+ * 식이 **한 줄로 이어 붙는다** — `y=x-5`와 `4x-y=-4`가 `y=x-54x-y=-4`가
+ * 되어, 5와 4가 붙어 54가 된다. 렌더가 실패해 검수함으로 가긴 하지만
+ * (중2-1 IV단원 해설 163건), 통과했다면 없는 식이 채점에 쓰였을 것이다.
+ *
+ * 가르는 근거는 괄호의 생김새다 — 폭은 글자 크기의 절반, 높이는 두 배가
+ * 넘는다. 분수를 감싼 키 큰 소괄호와 갈라야 하므로 **여는 중괄호로 읽히는
+ * 글리프**만 받는다.
+ */
+export function mergeEquationSystems(
+  spans: PageDump["spans"],
+  profile: TableMergeProfile,
+): PageDump["spans"] {
+  const math = spans.filter((s) => profile.mathFont.test(s.font));
+  const inkX1 = (s: PageDump["spans"][number]): number => {
+    const glyphs = [...s.text];
+    if (!s.chars || s.chars.length !== glyphs.length) return s.x1;
+    const boxes = s.chars.filter((_, i) => glyphs[i]!.trim() !== "");
+    return boxes.length === 0 ? s.x1 : Math.max(...boxes.map((b) => b[2]));
+  };
+  const isBracePiece = (s: PageDump["spans"][number]): boolean => {
+    if (s.text.trim().length > 2) return false;
+    if (inkX1(s) - s.x0 >= s.size * 0.9) return false;
+    if (s.y1 - s.y0 <= s.size * 1.6) return false;
+    if (/^EHSunm/.test(s.font)) return true;
+    return decodeHwpMath(s.text, s.font).latex.trim() === "\\left\\{";
+  };
+
+  /* EHSunm은 큰 중괄호를 세로로 서너 조각 내어 보낸다 — 하나로 잇는다 */
+  const braces: { pieces: PageDump["spans"]; x1: number; y0: number; y1: number }[] = [];
+  for (const s of math.filter(isBracePiece).sort((a, b) => a.x0 - b.x0 || a.y0 - b.y0)) {
+    const last = braces[braces.length - 1];
+    if (last && Math.abs(last.pieces[0]!.x0 - s.x0) <= 1 && s.y0 <= last.y1 + 2) {
+      last.pieces.push(s);
+      last.x1 = Math.max(last.x1, inkX1(s));
+      last.y1 = Math.max(last.y1, s.y1);
+      continue;
+    }
+    braces.push({ pieces: [s], x1: inkX1(s), y0: s.y0, y1: s.y1 });
+  }
+
+  const used = new Set<PageDump["spans"][number]>();
+  const merged: PageDump["spans"] = [];
+  for (const brace of braces) {
+    if (brace.pieces.some((p) => used.has(p))) continue;
+    const inside = math.filter((s) => {
+      if (used.has(s) || brace.pieces.includes(s)) return false;
+      const center = (s.y0 + s.y1) / 2;
+      return (
+        s.x0 >= brace.x1 - 2 &&
+        s.x0 <= brace.x1 + 14 &&
+        center > brace.y0 - 4 &&
+        center < brace.y1 + 4
+      );
+    });
+    if (inside.length < 2) continue;
+
+    const rows: PageDump["spans"][] = [];
+    for (const s of [...inside].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+      const center = (s.y0 + s.y1) / 2;
+      const row = rows[rows.length - 1];
+      const rowCenter = row ? (row[0]!.y0 + row[0]!.y1) / 2 : Number.NaN;
+      if (row && Math.abs(center - rowCenter) <= s.size * 0.6) row.push(s);
+      else rows.push([s]);
+    }
+    if (rows.length < 2) continue;
+
+    for (const row of rows) for (const s of row) used.add(s);
+    for (const p of brace.pieces) used.add(p);
+    const all = rows.flat();
+    merged.push({
+      ...brace.pieces[0]!,
+      text: rows.map((r) => r.map((s) => s.text).join("")).join(" | "),
+      x0: brace.pieces[0]!.x0,
+      x1: Math.max(...all.map((s) => s.x1)),
+      y0: rows[0]![0]!.y0,
+      y1:
+        rows.reduce((sum, r) => sum + Math.max(...r.map((s) => s.y1)), 0) / rows.length,
+      systemRows: rows.map((r) => [...r].sort((a, b) => a.x0 - b.x0)),
+    } as PageDump["spans"][number]);
+  }
+
+  if (merged.length === 0) return spans;
+  return [...spans.filter((s) => !used.has(s)), ...merged];
+}
+
+/**
  * 2행 분수를 한 조각으로 합친다 — 본책 파서와 같은 이유, 같은 근거.
  *
  * 별책에도 `-7/2` 같은 분수가 분자·분모 두 span으로 나뉘어 있고 사이의
@@ -160,21 +255,31 @@ export function mergeStackedFractions(
   const merged: PageDump["spans"] = [];
 
   for (const bar of bars) {
+    /* 좌우로 넓히지 않는다. handoff 7.6a는 「부호가 분수 밖에 찍혀
+     * 분자 span이 막대보다 왼쪽에서 시작한다」를 원인으로 적어 두었는데,
+     * 실제로 왼쪽을 7pt 넓혀 보니 **더 나빠졌다**(중1-1 49→52 · 중2-2
+     * 13→16). 옆 수식을 물고 오면서 다른 분수의 짝을 빼앗는다.
+     * 진짜 원인은 세로 판정이었다 — 아래 near() 주석 참고. */
     const within = (s: PageDump["spans"][number]): boolean =>
       s.x0 >= bar.x0 - 2 && s.x1 <= bar.x1 + 2;
+    /* 가까운지는 **가운데**로 잰다. 끝점으로 재면 지수가 든 분모가
+     * 탈락한다 — `10/(3×5²)`의 분모 상자는 위첨자 때문에 위로 7pt 더
+     * 올라와 있어 `y0 >= bar.y1 - 4`를 못 넘겼고, 그 결과 분자 `10`이
+     * 혼자 한 줄에 남았다(중2-1 별책 99건 · 중2-2 22건). 본책 파서는
+     * 이미 가운데로 재고 있었다 — 두 파서가 어긋나 있었던 것이다. */
+    const near = (center: number, edge: number): boolean =>
+      Math.abs(center - edge) <= 16;
     const above = math
-      .filter(
-        (s) =>
-          !used.has(s) && within(s) &&
-          (s.y0 + s.y1) / 2 < bar.y0 && s.y1 <= bar.y0 + 4 && s.y1 >= bar.y0 - 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s) && within(s) && center < bar.y0 && near(center, bar.y0);
+      })
       .sort((a, b) => b.y1 - a.y1);
     const below = math
-      .filter(
-        (s) =>
-          !used.has(s) && within(s) &&
-          (s.y0 + s.y1) / 2 > bar.y1 && s.y0 >= bar.y1 - 4 && s.y0 <= bar.y1 + 14,
-      )
+      .filter((s) => {
+        const center = (s.y0 + s.y1) / 2;
+        return !used.has(s) && within(s) && center > bar.y1 && near(center, bar.y1);
+      })
       .sort((a, b) => a.y0 - b.y0);
 
     const numerator = above[0];
@@ -574,7 +679,13 @@ export function parseAnswerPage(
    * 작은 위첨자가 먼저 들어와 자기만의 줄을 만들면 흡수할 대상이 없다. */
   const prepared = mergeGridTables(
     mergeDivisionTables(
-      mergeStackedFractions(visibleSpans(page), page, profile),
+      mergeStackedFractions(
+        /* 연립을 먼저 합친다 — 그 안에 2행 분수가 들어 있으면 분수 쪽이
+         * 먼저 가져가 연립의 한 줄이 빈다 */
+        mergeEquationSystems(visibleSpans(page), profile),
+        page,
+        profile,
+      ),
       profile,
     ),
     page,
@@ -747,20 +858,98 @@ export function parseAnswerPage(
     size: number,
     stacked?: { numerator: string; denominator: string },
     table?: string,
+    /** 연립방정식 — 큰 중괄호 오른쪽의 각 줄 */
+    systemRows?: PageDump["spans"][],
   ): void => {
     const adjacent = x0 - lastX1 < 1.5;
     lastX1 = x1;
     /* 위첨자는 **바로 앞 조각과 견줘서** 작은 것이다. 줄의 최대 크기와
      * 견주면 12pt 문항 번호가 기준이 되어 같은 줄의 9.3pt 본문 수가 몽땅
      * 위첨자가 된다 — 0048의 「27은 일의 자리」가 「^{27}은」이 됐다. */
-    const raised = adjacent && size < lastSize * 0.8;
-    if (!raised) lastSize = size;
+    /* **근호 조각은 기준 크기를 바꾸지 않는다.** 근호는 안의 내용 높이에
+     * 맞춰 글리프를 늘여 그리므로 size가 본문보다 크고, 그것을 기준으로
+     * 삼으면 뒤따르는 내용이 통째로 위첨자가 된다. 가구는 글자가 아니다. */
+    const isRadical =
+      radicalPiece(raw, font, chars?.[0] ? chars[0][2] - chars[0][0] : undefined) !==
+      null;
+    const raised = adjacent && !isRadical && size < lastSize * 0.8;
+    if (!raised && !isRadical) lastSize = size;
     /* 표는 앞 조각에 붙이지 않는다 — 한 덩어리로 서야 모양이 산다 */
     if (table) {
       runs.push({ kind: "math", raw, latex: table, unknown: [] });
       return;
     }
+    /* 연립도 마찬가지다 — `\begin{cases}`가 왼쪽에 큰 중괄호를 세운다 */
+    if (systemRows) {
+      const unknown: string[] = [];
+      const body = systemRows
+        .map((row) =>
+          row
+            .map((s) => {
+              const d = decodeHwpMath(markSuperscripts(s.text, s.chars), s.font);
+              unknown.push(...d.unknown);
+              return d.latex;
+            })
+            .reduce((acc, part) => joinLatex(acc, part), ""),
+        )
+        .join(" \\\\ ");
+      runs.push({
+        kind: "math",
+        raw,
+        latex: `\\begin{cases}${body}\\end{cases}`,
+        unknown,
+      });
+      return;
+    }
     if (isMath) {
+      /* 근호는 글자가 아니라 가구다 — 첫 글자의 폭으로 여닫이를 가린다.
+       * 여는 조각과 닫는 조각이 서로 다른 span이라 이어 붙여야 √가 된다. */
+      const radical = radicalPiece(
+        raw,
+        font,
+        chars?.[0] ? chars[0][2] - chars[0][0] : undefined,
+      );
+      /* **별책에서는 확실한 근호만 옮긴다.**
+       *
+       * 끝을 모르는 EHboNA 근호까지 `\surd`로 바꿔 봤더니 해설이 통째로
+       * 뒤엉켰다 — `=\surd x=¹^{3^{2}}^{+…}`처럼 뒤따르는 조각이 위첨자로
+       * 말려 들어간다. 본책은 한 줄에 수식 하나꼴이라 괜찮았지만 해설은
+       * 조각이 훨씬 잘게 나뉜다. 확실하지 않은 것은 손대지 않고 미해독으로
+       * 두어 검수함으로 보낸다 — 어설프게 옮기면 사람도 못 고친다. */
+      if (radical !== null && radical.certain) {
+        const flag: string[] = [];
+        const last = runs[runs.length - 1];
+        if (last?.kind === "math") {
+          last.raw += raw;
+          last.latex =
+            radical.latex === "}"
+              ? last.latex + radical.latex
+              : joinLatex(last.latex, radical.latex);
+          last.unknown.push(...flag);
+        } else {
+          runs.push({ kind: "math", raw, latex: radical.latex, unknown: flag });
+        }
+        return;
+      }
+      /* 윗줄 글리프는 혼자서는 아무 뜻이 없다 — 씌울 글자를 찾아 준다.
+       *
+       * 맞닿았는지는 보지 않는다. 폭이 0이라 뒤따르는 글자와 x가 같고,
+       * 정렬에서 한참 밀려 「OC‾=OD‾, ∠CPO」가 `OC‾=OD` · `, ∠` · `Ó` ·
+       * `CPO`로 오기도 한다(별책 도형 해설). 사이에 한글이 끼어도 **읽는
+       * 순서상 바로 앞의 수식**이 임자다. 그냥 두면 화면에 낯선 글자가
+       * 나가고 선분 표시는 사라진다.
+       *
+       * previous가 text일 수 있으므로 뒤에서부터 수식을 찾는다. */
+      if (isOverlineOnly(raw)) {
+        const owner = [...runs].reverse().find((r) => r.kind === "math");
+        if (owner?.kind === "math") {
+          const rewritten = decodeHwpMath(attachOverline(owner.raw, raw), font);
+          owner.raw += raw;
+          owner.latex = rewritten.latex;
+          owner.unknown.push(...rewritten.unknown);
+          return;
+        }
+      }
       const decoded = stacked
         ? (() => {
             const top = decodeHwpMath(stacked.numerator, font);
@@ -781,7 +970,11 @@ export function parseAnswerPage(
       const last = runs[runs.length - 1];
       if (last?.kind === "math" && adjacent) {
         last.raw += raw;
-        last.latex = joinLatex(last.latex, latex);
+        /* 위첨자 조각은 앞의 지수 **안으로** 들어간다 — 따로 씌우면
+         * `^{2}^{+}^{3}`이 되어 KaTeX가 파싱에 실패한다 */
+        last.latex = raised
+          ? mergeRaised(last.latex, decoded.latex)
+          : joinLatex(last.latex, latex);
         last.unknown.push(...decoded.unknown);
         return;
       }
@@ -930,6 +1123,7 @@ export function parseAnswerPage(
         span.size,
         (span as MaybeStacked).stacked,
         (span as MaybeStacked).tableLatex,
+        (span as MaybeStacked).systemRows,
       );
     }
     /* 이 줄이 오른쪽 끝을 못 채웠다면 여기서 끊긴 것이다 */

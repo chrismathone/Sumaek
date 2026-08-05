@@ -205,10 +205,19 @@ export async function loadConceptMaterials(
     }
 
     const title = block.title;
+    /* **같은 자료인지는 지면 자리로 가른다.**
+     *
+     * 제목만으로 보면 한 소단원의 개념 여럿이 같은 자료가 된다. 이 교재는
+     * 제목에 수식을 넣기 때문이다 — 개념원리 중2-1 p.36의 「aᵐ×aⁿ은 어떻게
+     * 간단히 하는가?」와 「aᵐ÷aⁿ은…」과 「(aᵐ)ⁿ은…」이 추출되면 셋 다
+     * 「은 어떻게 간단히 하는가?」다. 제목으로 멱등을 걸었더니 지수법칙
+     * ⑵⑶⑷ 중 둘이 **조용히 안 들어갔다.** 쪽과 개념 번호까지 봐야 한다. */
     const [duplicate] = await sql<{ id: string }[]>`
       select id::text as id from learning_materials
       where organization_id = ${org} and concept_id = ${conceptId}
         and kind = 'reading' and title = ${title}
+        and (source_ref->>'printedPage')::int = ${block.page}
+        and coalesce(source_ref->>'conceptNo', '') = ${block.no ?? ""}
     `;
     if (duplicate) {
       result.skipped += 1;

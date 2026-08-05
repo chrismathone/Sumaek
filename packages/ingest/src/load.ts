@@ -237,6 +237,18 @@ function lookupConcept(
   return normalized.get(normalizeConceptKey(title));
 }
 
+/**
+ * PostgreSQL의 text가 담을 수 없는 글자만 뺀다.
+ *
+ * 원문은 그대로 싣는 것이 원칙이지만(2O), **U+0000은 담을 자리가 없다** —
+ * text 타입이 그 코드포인트를 받지 못해 적재가 통째로 실패한다(중2-2
+ * III단원, 도형 치수 「4 cm」의 조판 부호가 그렇게 왔다). 뜻이 없는
+ * 조판 부호이고 해독 결과에는 이미 없다. 다른 글자는 손대지 않는다.
+ */
+function storable(raw: string): string {
+  return raw.replace(/\u0000/g, "");
+}
+
 export async function loadQuestions(
   sql: postgres.Sql,
   input: LoadInput,
@@ -544,7 +556,7 @@ export async function loadQuestions(
             display_mode, semantic_fingerprint, parse_status, render_hash,
             normalizer_version, katex_version, macro_policy_version
           ) values (
-            ${expression.id}, ${org}, ${versionId}, ${expression.raw},
+            ${expression.id}, ${org}, ${versionId}, ${storable(expression.raw)},
             ${expression.result.normalizedLatex}, 'inline',
             ${expression.result.semanticFingerprint},
             ${expression.result.status === "render_validated" ? "render_validated" : "review_required"},

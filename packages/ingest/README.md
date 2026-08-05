@@ -26,9 +26,22 @@ python packages/ingest/python/extract.py "교재.pdf" -o dump.json --from 34 --t
 pnpm --filter @su-maek/ingest extract dump.json --expect=214-523 --verbose
 ```
 
-**대단원마다 따로 뽑는다.** 단원마다 개념 표가 다르고, 적재 CLI가
-`--chapter=<I|II|III|IV>`로 그것을 고른다 — 기본값은 없다. 틀린 표를 쓰면
-문항은 들어가고 개념만 전부 안 걸리는데 **오류가 나지 않는다.**
+**권과 대단원을 둘 다 준다.** 적재 CLI는 `--textbook=<m1-1|m2-1|m2-2|m3-1|m3-2>`와
+`--chapter=<I|II|…>`를 받고 **둘 다 기본값이 없다.** 권을 빠뜨리면 인쇄 번호가
+권마다 1부터 다시 시작하는 탓에 다른 권이 함께 지워지거나 자료가 엉뚱한 책에
+매달린다. 대단원을 틀리면 문항은 들어가고 개념만 전부 안 걸리는데 **오류가
+나지 않는다.** 등록부는 `src/profiles/rpm-books.ts`에 있다.
+
+새 권을 열 때는 **먼저 두 가지를 돌린다.**
+
+```bash
+# 아직 못 읽는 글리프 — render-page.py의 --clip 좌표를 그대로 준다
+pnpm --filter @su-maek/ingest glyph-census u1.json u2.json …
+# 개념 표가 이 대단원을 다 거는가 (DB를 건드리지 않는다)
+pnpm --filter @su-maek/ingest concept-coverage --textbook=m2-1 --chapter=II --dump=u2.json
+# 개념서의 개념 쪽 목록 (이어지는 쪽까지 찾아 준다)
+pnpm --filter @su-maek/ingest concept-page-scan kwr1.json …
+```
 
 `--expect`는 **인쇄된 문항 번호 구간**이다. 이게 없으면 채점은 뽑힌 것만 본다
 — 통째로 빠진 문항은 채점표 어디에도 나타나지 않는다. 실제로 8문항짜리 한 쪽으로
@@ -177,6 +190,19 @@ pnpm --filter @su-maek/ingest refine-concepts --org=<uuid> --actor=<uuid> \
 `128=2à``에서 2⁷=128. 확인하지 않은 글리프는 표에 **넣지 않는다.** 모르는
 글리프는 버리지 않고 `unknown`에 담아 올린다. 조용히 지우면 `2×3`이 `23`이
 되어 문항이 멀쩡해 보인다.
+
+배치로 짐작하지 않는 것이 실제로 옳았다. `á`·`â`는 8·9 자리로 보였지만
+비워 두었고, 중2-1 지수법칙 단원에서 지면을 여니 **9와 0**이었다.
+
+**글자가 아닌 것도 표가 다룬다.** 조판기는 수식의 구조물을 글리프로 앉힌다:
+선분 위의 줄(`Ó`), 호(`µ`), 근호의 갈고리와 윗줄(EHRoot·EHboNA), 연립의 큰
+중괄호, 도형 안의 라벨(코드가 0x1F 밀려 있다). 이것들은 **글자 하나로 끝나지
+않고 앞뒤 조각과 짝을 이룬다.** 그래서 해독표만으로는 부족하고 `segment.ts`·
+`answers.ts`가 좌표를 보고 짝을 찾아 준다.
+
+짝을 찾을 수 없는 것은 **지어내지 않는다.** EHboNA 근호는 끝나는 자리가
+텍스트 층에 없어서 `\surd`(기호만)로 두고 검수함에 보낸다 — `\sqrt{…}`로
+묶으면 범위를 파서가 꾸며 내는 것이고, 화면은 멀쩡해 보인다.
 
 ## 자가채점
 

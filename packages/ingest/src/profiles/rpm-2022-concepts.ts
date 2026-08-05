@@ -34,7 +34,7 @@ export interface ConceptDefinition {
   name: string;
   description: string;
   schoolLevel: "middle";
-  gradeBand: "middle-1";
+  gradeBand: "middle-1" | "middle-2" | "middle-3";
   domainName: string;
 }
 
@@ -98,7 +98,7 @@ export interface ConceptWeight {
  * 표를 다시 짜면서 2단원에 「절댓값」을 또 두 번 넣었다. 사람이 조심해서
  * 될 일이 아니라 도구가 막아야 하는 일이다. 불러들이는 순간 터진다.
  */
-function conceptTable(
+export function conceptTable(
   entries: readonly (readonly [string, ConceptWeight[]])[],
 ): ReadonlyMap<string, ConceptWeight[]> {
   const table = new Map<string, ConceptWeight[]>();

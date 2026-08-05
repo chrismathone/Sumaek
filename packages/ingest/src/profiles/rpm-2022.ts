@@ -38,7 +38,11 @@ export const RPM_2022: ExtractionProfile = {
   },
 
   fonts: {
-    math: /^EH/,
+    /* NPSUSP은 도형 기호 전용 글꼴이다 — `s`가 △, `f`가 □ (본책 p.40
+     * 「□ABCD와 같이 나타낸다」). 본문 글꼴로 두면 발문이 「s ABC」가 된다. */
+    math: /^(EH|NPSUSP)/,
+    /* 도형 안의 글자는 이 글꼴로 온다 — 코드가 0x1F 밀려 있는 그 글꼴이다 */
+    figureLabel: /KSCms-UHC/,
     questionNumber: { font: /DINPro-Bold/, minSize: 12 },
     choiceMarker: /SMSSMyungJo/,
     typeLabel: /SDGogoRound/,

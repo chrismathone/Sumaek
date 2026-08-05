@@ -27,9 +27,9 @@ export interface DecodeResult {
 
 /**
  * 지수 글리프. `2Û`` = 2² (p.20 문항 0135 「세 수 2Û`_3Ü`_5」 대조).
- * 이 교재(RPM 중1-1)에는 ¹~⁵만 나타난다. 나머지도 같은 연속 배치일
- * 것으로 보이나 **대조하지 않았으므로 넣지 않는다** — 넣으면 검증되지
- * 않은 값이 검증된 값인 척한다.
+ *
+ * 8만 오래 비어 있었다 — 중1-1에 나오지 않아서다. 중2-1 II단원(지수법칙)이
+ * 나머지를 채웠고, 전부 지면에서 확인했다.
  */
 const SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
   ["Ú", "1"], // Ú — Û~à가 2~7이므로 그 앞자리
@@ -43,16 +43,40 @@ const SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
    * 이로써 Û(2)~à(7)가 연속 배치임이 확인됐다. */
   ["ß", "6"],
   ["à", "7"],
+  /* 8은 EHsang 글꼴표에 `¡`로 따로 있었는데(별책 0090 「256=2⁸」), 지수를
+   * 여러 글자로 묶으려면 같은 표에 있어야 한다 — 아래 SUPERSCRIPT_PART 참고. */
+  ["á", "9"], // 중2-1 p.33 문항 0205 「(-3x³y^a)^b=-27x^c y⁹」
+  ["â", "0"], // 중2-1 p.29 「x^10÷x⁵÷x」 — Ú`â`가 10이다
 ]);
 
 /**
  * 위첨자로 올라간 **문자**(변수). 숫자 지수와는 다른 글리프 묶음이다.
  * p.24 「2Þ`_3º`_c」 = 2⁵×3ᵇ×c · p.29 「3º`_5_7¶`」 = 3ᵇ×5×7ᵈ (지면 대조).
- * a·c에 해당하는 글리프는 1단원에 나오지 않아 넣지 않았다.
+ *
+ * 중2-1 II단원(지수법칙)에서 여섯 자를 더 채웠다 — 전부 지면 대조:
+ *   Å p.32 「a=3^x」 「27^{2x-1}=3^{11-x}」 · ´ p.32 「b=3^y」 p.41 「2³×2³×2³=2^y」
+ *   ½ p.41 「{(5²)³}⁴=5^z」 · û p.35 「a×10^k」
+ *   õ p.36 「x⁵y^B=Cx⁷y⁹」 · ë p.33 「(Ax⁴y^B z³)⁵=-32x^C y^10 z^D」
  */
 const SUPERSCRIPT_LETTER: ReadonlyMap<string, string> = new Map([
   ["º", "b"],
   ["¶", "d"],
+  ["Å", "x"],
+  ["´", "y"],
+  ["½", "z"],
+  ["û", "k"],
+  ["õ", "B"],
+  ["ë", "D"],
+]);
+
+/**
+ * 위첨자 자리의 **부호**. 지수법칙 단원의 절반이 이것 없이는 읽히지 않는다.
+ *   ± p.28 「a^m × a^n = a^{m+n}」 · Ñ p.33 「x⁶÷x²=x^{6-2}=x⁴」 「a^{m-n}」
+ * 둘 다 지면 대조했고, 서로 짝을 이루는 자리(덧셈/뺄셈 법칙)에서 나온다.
+ */
+const SUPERSCRIPT_SIGN: ReadonlyMap<string, string> = new Map([
+  ["±", "+"],
+  ["Ñ", "-"],
 ]);
 
 /**
@@ -91,6 +115,84 @@ const UNICODE_SUPERSCRIPT: ReadonlyMap<string, string> = new Map([
 /** 이 글꼴에서 온 `¹²³`는 지수가 아니라 세로셈·표 조각이다 */
 const FRACTION_FONT = /EHboNA/;
 
+/** 도형 안의 글자를 담는 글꼴 — 코드가 실제 글자보다 0x1F 작다 */
+const FIGURE_LABEL_FONT = /KSCms-UHC/;
+
+/**
+ * **근호(√)는 글자가 아니라 가구다.**
+ *
+ * 조판기는 `√289`를 세 조각으로 앉힌다 — 갈고리+윗줄 시작(EHRoot `14`),
+ * 근호 안의 수(EHsang `289`), 윗줄 끝(EHRoot `6`). 여는 조각은 폭이
+ * 5~6pt이고 닫는 조각은 **폭이 0이다**(윗줄은 그림이라 글자 폭이 없다).
+ * 그 폭이 여는 쪽과 닫는 쪽을 가르는 유일한 근거다.
+ *
+ * 두 글꼴이 쓰인다. EHRoot는 근호 전용이라 그 글꼴의 조각은 전부 근호다.
+ * EHboNA는 분수·큰 괄호도 함께 나르므로 **관찰한 코드만** 받는다 — 그
+ * 글꼴의 세로셈 조각(¹²³)까지 폭 0이라, 생김새만으로 가르면 그것들이
+ * 닫는 근호가 되어 없는 √가 생긴다.
+ *
+ * 지면 대조: 중3-1 p.9 「√289」·「√0.7²」 · p.10 「√((-a)²)=a」 ·
+ * p.11 「√((-14)²)」.
+ */
+const RADICAL_FONT = /^EHRoot/;
+const RADICAL_BONA_OPEN = new Set(["'", '"', "®", "¾", "¿"]);
+const RADICAL_BONA_CLOSE = new Set([
+  "`", "Ã", "Â", "¨", "Ä", "§", "É", "Å", "a", "¶", "Ð", "·",
+]);
+
+/**
+ * 이 조각이 근호의 어느 쪽인가 — 아니면 null.
+ *
+ * `firstWidth`는 **첫 글자의 폭**이다. span 폭이 아니라 첫 글자로 재는
+ * 이유: 여는 조각은 `!%`·`14`처럼 갈고리(폭 6)와 폭 0인 윗줄 시작이 한
+ * span에 함께 온다. span 폭으로 재면 둘을 못 가른다.
+ *
+ * ## 두 글꼴이 다르게 온다 — **한쪽은 끝을 알 수 없다**
+ *
+ * EHRoot는 근호가 끝나는 자리에 폭 0(또는 1.2pt)짜리 마감 조각을 둔다.
+ * 중3-1 p.9 「√289」가 `14`(갈고리) · `289` · `6`(마감)으로 온다. 그래서
+ * 여닫이를 정확히 옮길 수 있다 — `\sqrt{289}`.
+ *
+ * EHboNA는 **마감 조각이 없다.** 갈고리 뒤 11.3pt 자리에 폭 0인 조각이
+ * 하나 더 오는데, 그것은 윗줄의 **시작점**이지 끝이 아니다(갈고리와의
+ * 간격이 근호 안 내용의 길이와 무관하게 늘 같다 — p.11에서 416.7→428.0,
+ * 469.5→480.8로 둘 다 11.3). 윗줄은 글리프를 가로로 늘여 그리므로 그
+ * 길이가 텍스트 층에 남지 않고, 벡터 도형으로도 오지 않는다.
+ *
+ * 그래서 EHboNA 근호는 **끝을 지어내지 않는다.** `\surd`(√ 기호만)로
+ * 옮기고 미해독으로 올려 검수함에 보낸다. `\sqrt{…}`로 묶으면 어디까지가
+ * 근호 안인지를 파서가 **꾸며 내는** 것이고, 지면의 `√((-6a)²)+√((-a)²)`이
+ * `√((-6a)²+√((-a)²))`이 되어도 화면은 멀쩡해 보인다.
+ */
+export function radicalPiece(
+  text: string,
+  font: string,
+  firstWidth: number | undefined,
+): { latex: string; certain: boolean } | null {
+  if (firstWidth === undefined) return null;
+  const first = [...text][0];
+  if (first === undefined) return null;
+  /* **어느 글꼴이든 `\sqrt{…}`로 묶지 않는다.**
+   *
+   * EHRoot에는 마감 조각이 있어 한동안 `\sqrt{289}`로 옮겼는데, 여는 조각과
+   * 닫는 조각이 **한 span에 함께 오는 자리**(`!%`·`14`)가 있어서 짝이
+   * 어긋났다 — `\sqrt{}(-9a)^{2}}`처럼 빈 근호와 떠도는 중괄호가 생기고
+   * 렌더가 깨진다(다섯 권 합쳐 358건). 중괄호를 쓰는 한 조각이 흩어질 때마다
+   * 균형이 무너지고, 그 균형을 파서가 추측으로 맞추면 **근호 안의 범위를
+   * 지어내는 것**이다.
+   *
+   * 그래서 √ 기호만 남기고(`\surd`) 범위는 비워 둔 채 미해독으로 올린다.
+   * 화면에는 지면과 비슷하게 나가고, 문항은 검수함으로 가고, 무엇을 못
+   * 읽었는지가 밖으로 드러난다. */
+  if (RADICAL_FONT.test(font)) {
+    return { latex: firstWidth > 2 ? "\\surd " : "", certain: false };
+  }
+  if (!/^EHboNA/.test(font)) return null;
+  if (RADICAL_BONA_OPEN.has(first)) return { latex: "\\surd ", certain: false };
+  if (RADICAL_BONA_CLOSE.has(first)) return { latex: "", certain: false };
+  return null;
+}
+
 /**
  * 분수 안의 **분자** 글리프 — 숫자 자판의 shift 행이다.
  * `;2!;` = 1/2 · `;6&;` = 7/6 · `;1#2%;` = 35/12 (모두 지면 대조).
@@ -109,7 +211,13 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * 분수 안의 분자 글리프 — **자릿수가 다를 때 쓰는 두 번째 벌.**
+ * **작은 숫자 한 벌.** 조판기가 본문 크기보다 작게 찍는 숫자는 전부 이 벌이다.
+ * 처음에는 분수의 분자에서만 만나 FRACTION_NUMERATOR라 불렀는데, 중2-1
+ * p.25 「x₁+x₂+x₃+…+x₉₉」에서 **아래첨자로도 같은 코드**가 왔다
+ * (`xÁ`=x₁ · `xª`=x₂ · `x£`=x₃ · `x»»`=x₉₉). 자리를 정하는 것은 글자가
+ * 아니라 글꼴과 좌표이고, 이 표는 「그 자리에 있는 숫자가 몇이냐」만 안다.
+ *
+ * 아래는 분자 자리에서 확인한 기록이다 — 자릿수가 다를 때 쓰는 두 번째 벌.
  *
  * 조판기는 분자와 분모의 자릿수가 같으면 shift 행(`;1#2%;` = 35/12)을 쓰고,
  * 다르면 이쪽 벌을 쓴다. 가운데 맞춤을 위해 좌우 여백이 다른 글자가 필요해서다.
@@ -126,7 +234,7 @@ const SHIFT_ROW: ReadonlyMap<string, string> = new Map([
  * p.89 「-8/15」에서 확인해 채웠다(`;1¥5;`). 코드가 연속 배치가 아니라
  * (¼=BC·Á=C1·ª=AA·¥=A5) 빈자리를 추론으로 메울 수는 없었다.
  */
-const FRACTION_NUMERATOR: ReadonlyMap<string, string> = new Map([
+const SMALL_DIGIT: ReadonlyMap<string, string> = new Map([
   ["¼", "0"],
   ["Á", "1"],
   ["ª", "2"],
@@ -153,6 +261,9 @@ const FRACTION_NUMERATOR: ReadonlyMap<string, string> = new Map([
 const FRACTION_NUMERATOR_LETTER: ReadonlyMap<string, string> = new Map([
   ["A", "a"],
   ["B", "b"],
+  /* c는 중2-1에서 나왔다 — p.18 「0.ȧbċ=abc/999」=`;9A9B9C;`(분모 999,
+   * 분자 abc가 한 자씩 번갈아 온다) · p.148 「c/b」=`;bC;`·「c/a」=`;aC;` */
+  ["C", "c"],
   ["{", "x"],
   ["}", "y"],
 ]);
@@ -194,6 +305,46 @@ const OPERATOR: ReadonlyMap<string, string> = new Map([
  * 그래서 글꼴별 표를 먼저 보고, 없으면 공통 표로 간다. 여기 있는 값은
  * 전부 해당 쪽을 그려서 눈으로 대조한 것이다.
  */
+/**
+ * 위·아래첨자 조각 — **글꼴별**.
+ *
+ * 왜 글꼴을 봐야 하나: `Ç`는 EHsang(상, 윗자리 글꼴)에서 지수 n이지만
+ * EHhabu(하, 아랫자리 글꼴)에서는 아래첨자 n이다. 중2-1 p.25 한 줄이
+ * 둘을 나란히 보여 준다 — 「x_n/10ⁿ」에서 아래의 n은 EHhabu, 위의 n은
+ * EHsang이다. 글꼴을 뭉치면 x^n/10^n이 되어 문항이 뜻을 잃는다.
+ *
+ * 작은 숫자(SMALL_DIGIT)가 아래첨자로도 오는 것은 같은 쪽에서 확인했다:
+ * 「x₁+x₂+x₃+…+x₉₉」 = `xÁ`+`xª`+`x£`+…+`x»»`. 분수 안에서는 분자였던
+ * 바로 그 코드다 — 분수는 1)단계에서 이미 걷어 내므로 겹치지 않는다.
+ */
+const SUPERSCRIPT_BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
+  {
+    font: /^EHsang/,
+    map: new Map([
+      ["Ç", "n"], // 별책 0071 「2²×3×5ⁿ의 약수의 개수는」
+      ["¡", "8"], // 별책 0090 「256=2⁸이므로」
+      /* 개념원리 중1-1 p.17 「A=aµ`_bÇ`」 — 지면은 A=a^m×b^n
+       * (a, b는 서로 다른 소수, m, n은 자연수). Ç(^n)와 짝을 이룬다. */
+      ["µ", "m"],
+    ]),
+  },
+];
+
+const SUBSCRIPT_BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
+  {
+    /* 아랫자리 전용 글꼴. 중2-1 p.25 「x_n」·p.103 「(x₁, y₁), (x₂, y₂)」 */
+    font: /^EHhabu/,
+    map: new Map([...SMALL_DIGIT, ["Ç", "n"]]),
+  },
+  {
+    /* 윗자리 글꼴이 아래첨자 숫자까지 함께 나르는 자리가 있다 —
+     * 같은 p.25의 x₁·x₂가 `xÁ`·`xª`로 EHsang-Italic에 왔다.
+     * 지수 숫자는 Ú~â로 코드가 따로라 겹치지 않는다. */
+    font: /^EHsang/,
+    map: SMALL_DIGIT,
+  },
+];
+
 const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
   {
     font: /^EHyak/,
@@ -204,17 +355,30 @@ const BY_FONT: readonly { font: RegExp; map: ReadonlyMap<string, string> }[] = [
       /* 개념원리 중1-1 p.10 참고② 「a+0일 때, aÚ`=a로 정한다」 —
        * 지면은 a≠0이다. EHsang의 +는 진짜 덧셈이므로 EHyak에만 둔다. */
       ["+", "\\ne "],
+      /* 중2-2는 도형이라 합동·닮음 기호가 쏟아진다 — 둘 다 지면 대조:
+       * ª 본책 p.8 「△ABD≡△ACD」 · » 본책 p.74 「△ABC∽△DEF」 */
+      ["ª", "\\equiv "],
+      ["»", "\\backsim "],
+    ]),
+  },
+  {
+    /* 아랫자리 글꼴의 도(°) — 중2-2 본책 p.9 「58°」·「55°」.
+     * EHsang에서는 같은 자리를 `ù`가 맡는데 그쪽은 이미 표에 있다. */
+    font: /^EHhabu/,
+    map: new Map([["ù", "\\degree "]]),
+  },
+  {
+    /* 도형 기호 전용 글꼴 — 중2-2 본책 p.8 「△ABC」·p.40 「□ABCD」 */
+    font: /^NPSUSP/,
+    map: new Map([
+      ["s", "\\triangle "],
+      ["f", "\\square "],
     ]),
   },
   {
     font: /^EHsang/,
     map: new Map([
       ["¾", "\\degree\\mathrm{C}"], // 별책 0214 「+7 ℃, -10 ℃」
-      ["Ç", "^{n}"], // 별책 0071 「2²×3×5ⁿ의 약수의 개수는」
-      ["¡", "^{8}"], // 별책 0090 「256=2⁸이므로」
-      /* 개념원리 중1-1 p.17 「A=aµ`_bÇ`」 — 지면은 A=a^m×b^n
-       * (a, b는 서로 다른 소수, m, n은 자연수). Ç(^n)와 짝을 이룬다. */
-      ["µ", "^{m}"],
       /* 본책 p.81 「ùF」 — 지면은 °F(화씨)다. ¾(℃)와 짝을 이루는 글리프로,
        * 도 기호만 담당하고 단위 글자는 뒤에 따로 온다. */
       ["ù", "\\degree "],
@@ -352,7 +516,7 @@ export function markSuperscripts(
  * 분수 한 덩어리를 푼다.
  *
  * **가르는 것은 자리가 아니라 글자의 종류다.** 평문 숫자는 분모로, 분자
- * 전용 글리프(shift 행·FRACTION_NUMERATOR)는 분자로 간다. 각자 나온 순서를
+ * 전용 글리프(shift 행·SMALL_DIGIT)는 분자로 간다. 각자 나온 순서를
  * 지킨다. `;2!;`는 분모 2·분자 1 → 1/2, `;1#2%;`는 분모 "12"·분자 "35"
  * → 35/12, `;ª4¼;`는 분모 "4"·분자 "20" → 20/4.
  *
@@ -394,7 +558,7 @@ function decodeFraction(inner: string): string | null {
     }
     const n =
       SHIFT_ROW.get(ch) ??
-      FRACTION_NUMERATOR.get(ch) ??
+      SMALL_DIGIT.get(ch) ??
       FRACTION_NUMERATOR_LETTER.get(ch);
     if (n === undefined) return null;
     numerator += n;
@@ -411,7 +575,7 @@ function decodeFraction(inner: string): string | null {
  * (p.24 문항 0167 「2 : 5 : 6」). 분수 해독에 실패한 `;…;`는 이미
  * unknown에 기록됐으므로 여기를 지나가도 조용히 묻히지 않는다.
  */
-const PASSTHROUGH = /[0-9A-Za-z+\-=<>(),.:\s/|[\]{}]/;
+const PASSTHROUGH = /[0-9A-Za-z+\-=<>(),.:\s/|[\]{}']/;
 
 /**
  * 수식 폰트 문자열 한 조각을 LaTeX으로 옮긴다.
@@ -420,30 +584,93 @@ const PASSTHROUGH = /[0-9A-Za-z+\-=<>(),.:\s/|[\]{}]/;
  */
 export function decodeHwpMath(raw: string, font?: string): DecodeResult {
   const unknown: string[] = [];
-  const fractions: string[] = [];
+  /** 이미 LaTeX으로 확정한 조각 — 뒤 단계가 다시 건드리지 못하게 치워 둔다 */
+  const resolved: string[] = [];
+  const stash = (latex: string): string => {
+    resolved.push(latex);
+    return `${PH_OPEN}${resolved.length - 1}${PH_CLOSE}`;
+  };
   /* 글꼴을 모르면 글꼴별 표는 건너뛴다 — 짐작해서 고르면 반은 틀린다 */
   const byFont = font ? BY_FONT.find((f) => f.font.test(font))?.map : undefined;
+  const supFont = font
+    ? SUPERSCRIPT_BY_FONT.find((f) => f.font.test(font))?.map
+    : undefined;
+  const subFont = font
+    ? SUBSCRIPT_BY_FONT.find((f) => f.font.test(font))?.map
+    : undefined;
+
+  /* 0) 그림 라벨 글꼴은 **코드가 통째로 밀려 있다.**
+   *
+   * 도형 안의 「A」·「cm」·「40°」가 이 글꼴로 오는데, 코드가 실제 글자보다
+   * 0x1F 작다. 중2-2 본책에서 947번 나온다. 밀려 있다는 근거는 지면 대조다:
+   *   `DN` = cm · `\x15\x11±` = 40° · `\x12\x14\x11±` = 130°
+   * 숫자가 U+0011~U+001A로 오는 것이 특히 중요하다 — 그 구간은 아래에서
+   * **조판 부호로 지워지는 자리**라, 밀어 주지 않으면 도형의 치수가 통째로
+   * 사라진다. 그래서 어떤 단계보다 먼저 한다. */
+  let work = FIGURE_LABEL_FONT.test(font ?? "")
+    ? [...raw]
+        .map((ch) => {
+          const code = ch.codePointAt(0)!;
+          if (code >= 0x03 && code <= 0x5a) return String.fromCodePoint(code + 0x1f);
+          return ch === "±" ? "°" : ch;
+        })
+        .join("")
+    : raw;
 
   /* 1) 분수를 먼저 걷어내 자리표시자로 바꾼다. 분수 안에 지수·곱셈이
    *    섞이는 경우가 없음을 지면에서 확인했으므로 순서상 안전하다. */
-  let work = raw.replace(FRACTION, (whole: string, inner: string) => {
+  work = work.replace(FRACTION, (whole: string, inner: string) => {
     const latex = decodeFraction(inner);
     if (latex === null) {
       unknown.push(whole);
       return whole;
     }
-    fractions.push(latex);
-    return `${PH_OPEN}${fractions.length - 1}${PH_CLOSE}`;
+    return stash(latex);
   });
 
   // 2) 조판 부호 제거 · 특수 공백 정규화
   work = work.replace(DROPPABLE, "").replace(WIDE_SPACE, " ");
 
+  /* 2-1) 선분 기호. 지면의 AB 위 가로줄이 덤프에서는 **글자 뒤에 오는**
+   *      한 글리프(`Ó`)로 온다 — `PQÓ` = PQ‾ (중2-1 p.143 「PQ‾=6」,
+   *      p.130 「△ABC=1/2×BC‾×OA‾」). 앞의 대문자 1~3자를 데려간다.
+   *      LaTeX 명령을 만들어야 하므로 자리표시자로 치워 둔다 — 3)단계의
+   *      글자별 통과 검사는 역슬래시를 모른다. */
+  /* 윗줄 글리프가 제 자리를 벗어난 것을 먼저 되돌린다. 폭이 0이라
+   * 뒤따르는 글자와 x가 같고, 정렬에서 밀려 `PB=Ó`처럼 등호 뒤로 가는
+   * 일이 잦다(별책 해설). 윗줄은 선분 이름 위에 그어지므로 바로 앞의
+   * 대문자 묶음이 임자다. */
+  work = work.replace(/([A-Z]{1,3})([^A-ZÓÕ]*)([ÓÕ])/g, "$1$3$2");
+  work = work.replace(/([A-Z]{1,3})[ÓÕ]/g, (_m, letters: string) =>
+    stash(`\\overline{${letters}}`),
+  );
+  /* 호(弧) 기호는 **글자 앞**에 온다 — `µAB` = ⌒AB (중3-2 「원의 성질」).
+   * 선분의 윗줄과 달리 위치가 안정적이라 그대로 읽으면 된다. */
+  work = work.replace(/µ([A-Z]{1,3})/g, (_m, letters: string) =>
+    stash(`\\overparen{${letters}}`),
+  );
+  /* 도(°)는 LaTeX 명령이라 자리표시자로 치워 둔다 — 3)단계의 글자별
+   * 통과 검사는 역슬래시를 모른다 */
+  work = work.replace(/°/g, () => stash("\\degree "));
+
+  /** 이 글자가 위첨자 글리프면 그 내용, 아니면 undefined */
+  const superscriptOf = (ch: string): string | undefined =>
+    supFont?.get(ch) ??
+    SUPERSCRIPT.get(ch) ??
+    SUPERSCRIPT_LETTER.get(ch) ??
+    SUPERSCRIPT_SIGN.get(ch) ??
+    /* 분수 글꼴의 ¹²³는 세로셈·표 조각이다 — 지수로 옮기지 않는다 */
+    (font !== undefined && FRACTION_FONT.test(font)
+      ? undefined
+      : UNICODE_SUPERSCRIPT.get(ch));
+
   // 3) 남은 글자를 하나씩 옮긴다
   let out = "";
   let inPlaceholder = false;
   let inSuperscript = false;
-  for (const ch of work) {
+  const chars = [...work];
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i]!;
     if (ch === PH_OPEN) {
       inPlaceholder = true;
       out += ch;
@@ -469,13 +696,7 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
       out += "}";
       continue;
     }
-    const sup =
-      SUPERSCRIPT.get(ch) ??
-      SUPERSCRIPT_LETTER.get(ch) ??
-      /* 분수 글꼴의 ¹²³는 세로셈·표 조각이다 — 지수로 옮기지 않는다 */
-      (font !== undefined && FRACTION_FONT.test(font)
-        ? undefined
-        : UNICODE_SUPERSCRIPT.get(ch));
+    const sup = superscriptOf(ch);
     if (inSuperscript) {
       /* 이미 위첨자 안이다 — `^{}`를 또 씌우지 않는다 */
       out += sup ?? OVERSTRUCK_SUPERSCRIPT.get(ch) ?? ch;
@@ -488,7 +709,33 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
       continue;
     }
     if (sup !== undefined) {
-      out += `^{${sup}}`;
+      /* **잇달아 오는 위첨자 글리프는 한 지수다.**
+       *
+       * 한 글자씩 `^{}`를 씌우면 `xÚ`â``(x¹⁰)가 `x^{1}^{0}`이 된다. 이건
+       * KaTeX가 「double superscript」로 파싱에 실패하는 꼴이라 학생 화면에
+       * 빨간 글자가 나간다 — 중2-1 II단원 지수법칙에서만 37건이 그랬다.
+       * 부호(±·Ñ)까지 함께 묶어야 `27Û`Å`ÑÚ``가 27^{2x-1}이 된다. */
+      let group = sup;
+      while (i + 1 < chars.length) {
+        const next = superscriptOf(chars[i + 1]!);
+        if (next === undefined) break;
+        group += next;
+        i += 1;
+      }
+      out += `^{${group}}`;
+      continue;
+    }
+    /* 아래첨자도 같은 규칙으로 묶는다 — `x»»`가 x_{99}다 */
+    const sub = subFont?.get(ch);
+    if (sub !== undefined && subFont !== undefined) {
+      let group = sub;
+      while (i + 1 < chars.length) {
+        const next = subFont.get(chars[i + 1]!);
+        if (next === undefined) break;
+        group += next;
+        i += 1;
+      }
+      out += `_{${group}}`;
       continue;
     }
     const op = OPERATOR.get(ch);
@@ -506,7 +753,7 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
 
   // 4) 자리표시자 되돌리기
   const restore = new RegExp(`${PH_OPEN}(\\d+)${PH_CLOSE}`, "g");
-  out = out.replace(restore, (_m, i: string) => fractions[Number(i)] ?? "");
+  out = out.replace(restore, (_m, i: string) => resolved[Number(i)] ?? "");
 
   return { latex: out.trim(), unknown };
 }
@@ -553,8 +800,103 @@ export function tidyBodyText(text: string): string {
  */
 export function joinLatex(left: string, right: string): string {
   if (left === "") return right;
+  /* **잇달아 붙는 위·아래첨자는 한 덩어리다.**
+   *
+   * 별책은 `2¹¹`을 span 여럿으로 쪼개 보낸다 — `Ú`가 EHsang-Plain 혼자,
+   * 뒤이어 `` `ß` ``가 EHsang-Italic로 온다. 각 조각은 제대로 `^{1}`·`^{6}`이
+   * 되지만 그대로 이으면 `^{1}^{6}`이고, KaTeX는 이것을 「double superscript」로
+   * 보고 파싱에 실패한다. 화면에는 빨간 글자가, 채점에는 없는 수가 나간다
+   * (중2-1 별책 해설 259건이 이 꼴이었다). 한 글자 안에서 묶는 일은
+   * decodeHwpMath가 이미 하고, 조각을 넘나드는 자리는 여기가 마지막이다. */
+  for (const mark of ["^", "_"] as const) {
+    /* **간단한 조각일 때만 잇는다.** 숫자·글자·부호로만 된 것은 한 지수가
+     * 쪼개진 것이다 — `2^{2}` + `^{+}` + `^{3}` + `^{a}`가 2^{2+3+a}다
+     * (별책 p.13 문항 0193). 안에 중괄호나 LaTeX 명령이 든 것은 구조가
+     * 있다는 뜻이라 손대지 않는다. 이 함수는 **좌표가 맞닿은 조각**끼리만
+     * 부르므로, 여기서 만나는 두 지수는 원래 하나였다고 볼 근거가 있다. */
+    const tail = new RegExp(`\\${mark}\\{([0-9A-Za-z+\\-]+)\\}$`).exec(left);
+    const head = new RegExp(`^\\${mark}\\{([0-9A-Za-z+\\-]+)\\}`).exec(right);
+    if (tail && head) {
+      return (
+        left.slice(0, -tail[0].length) +
+        `${mark}{${tail[1]}${head[1]}}` +
+        right.slice(head[0].length)
+      );
+    }
+  }
   const needsSpace = /\\[a-zA-Z]+$/.test(left) && /^[a-zA-Z]/.test(right);
   return left + (needsSpace ? " " : "") + right;
+}
+
+/**
+ * **좌표가 「이것도 위첨자」라고 말해 준 조각**을 앞의 지수 안에 넣는다.
+ *
+ * 조판기는 지수 `2+3+a`를 네 조각으로 쪼개 보낸다(`2` · `+` · `3` · `+a`).
+ * 조각마다 따로 `^{}`를 씌우면 `2^{2}^{+}^{3}^{+}^{a}`가 되고, KaTeX는
+ * 이것을 「double superscript」로 보고 파싱에 실패한다(중2-1 별책 해설).
+ *
+ * joinLatex의 숫자 규칙과 나누어 둔 이유: 이쪽은 **글자 상자가 위첨자라고
+ * 말해 준** 조각들이라 한 지수임이 구조로 확실하다. 그쪽은 글리프표만 보고
+ * 판단하는 자리라 숫자일 때만 잇는다.
+ */
+/**
+ * 폭 0인 **윗줄 글리프만** 담은 조각인가 — 앞 글자에 씌우는 표시다.
+ *
+ * 선분 기호는 두 꼴로 온다. `PQÓ`처럼 글자 뒤에 붙어 오기도 하고
+ * (중2-1), `AB` + `Ó`처럼 **span이 따로 서기도** 한다(중2-2 본책 p.9,
+ * 도형 단원이라 526번). 따로 선 것은 앞 조각에 붙여 읽어야 한다 —
+ * 혼자서는 씌울 글자가 없어 미해독으로 나간다.
+ */
+export function isOverlineOnly(text: string): boolean {
+  return /^[ÓÕ]+$/.test(text);
+}
+
+/**
+ * 따로 선 윗줄 글리프를 앞 조각의 **마지막 대문자 뒤**에 끼워 넣는다.
+ *
+ * 그냥 뒤에 붙이면 안 된다 — 폭이 0이라 뒤따르는 글자와 x가 같고, 정렬에서
+ * 밀려 `PB=` 다음에 오는 일이 잦다(별책 해설 312건). 그대로 이으면
+ * `PB=Ó`가 되어 씌울 글자를 못 찾는다. 윗줄은 선분 이름 위에 그어지므로
+ * 마지막 대문자 묶음이 그 이름이다.
+ */
+export function attachOverline(text: string, mark: string): string {
+  const at = /([A-Z]{1,3})([^A-Z]*)$/.exec(text);
+  if (!at) return text + mark;
+  return `${text.slice(0, at.index)}${at[1]}${mark}${at[2]}`;
+}
+
+/**
+ * 이미 LaTeX이 된 조각의 **마지막 선분 이름**에 윗줄을 씌운다.
+ *
+ * 조각이 span 경계를 넘어 조립된 뒤에야 윗줄 글리프가 오는 자리가 있다
+ * (`CB=` · `Ó`). 그때는 원문으로 되돌아갈 수 없으므로 결과 쪽에서 씌운다.
+ * 이미 `\overline{AB}`인 자리는 건드리지 않는다 — 대문자 바로 뒤가 `}`면
+ * 그것이 이미 씌워졌다는 표시다.
+ */
+export function overlineLastName(latex: string): string {
+  return latex.replace(/([A-Z]{1,3})([^A-Z}]*)$/, "\\overline{$1}$2");
+}
+
+/** 호(弧) 기호만 담긴 조각인가 — 뒤따르는 두 글자 위에 씌운다 */
+export function isArcOnly(text: string): boolean {
+  return /^µ+$/.test(text);
+}
+
+/**
+ * 뒤따르는 조각의 **첫 선분 이름**에 호를 씌운다.
+ *
+ * 호 기호는 글자 앞에 오는데, 조판기가 그것만 따로 span으로 내보내는
+ * 자리가 있다(중3-2 「원의 성질」 68건). 한 span 안에 있으면 해독기가
+ * 바로 읽지만, 따로 서면 씌울 글자가 없어 미해독으로 나간다.
+ */
+export function arcFirstName(latex: string): string {
+  return latex.replace(/^([^A-Z]*)([A-Z]{1,3})/, "$1\\overparen{$2}");
+}
+
+export function mergeRaised(latex: string, inner: string): string {
+  const tail = /\^\{([^{}]*)\}$/.exec(latex);
+  if (tail) return `${latex.slice(0, -tail[0].length)}^{${tail[1]}${inner}}`;
+  return `${latex}^{${inner}}`;
 }
 
 /**
@@ -614,10 +956,21 @@ export function mergeUnbalancedMath(runs: readonly Run[]): Run[] {
   const out: Run[] = [];
   /** 수식 안에 들어가도 되는 텍스트 — 구두점과 공백뿐이다 */
   const isInnerPunctuation = (text: string): boolean => /^[\s,.]+$/.test(text);
+  /* **등호로 끝난 수식은 문장이 아니라 조각이다.**
+   *
+   * `f(x)=` 다음에 `x/3`이 따로 서는 일이 잦다 — 2행 분수라 앞뒤로 틈이
+   * 벌어져 파서가 잇지 못한다. 중괄호는 멀쩡히 닫혀 있으니 깊이 규칙에도
+   * 걸리지 않는다. 내용은 다 있고 화면에도 이어져 보이지만, 저장된 것은
+   * 두 수식이라 변형 출제·정답 대조가 `f(x)=`만 보게 된다.
+   * 연산자로 끝났으면 그 뒤는 반드시 같은 식이다. */
+  const endsOpen = (latex: string): boolean =>
+    /(?:[=+\-<>≤≥×÷]|\\times|\\div|\\pm|\\ge|\\le|\\ne)\s*$/.test(latex);
   for (let i = 0; i < runs.length; i += 1) {
     const run = runs[i]!;
     const last = out[out.length - 1];
-    const open = last?.kind === "math" && braceDepth(last.latex) !== 0;
+    const open =
+      last?.kind === "math" &&
+      (braceDepth(last.latex) !== 0 || endsOpen(last.latex));
     if (open && run.kind === "math") {
       last.raw += run.raw;
       last.latex = joinLatex(last.latex, run.latex);
@@ -662,11 +1015,14 @@ export function isKnownGlyph(ch: string): boolean {
   return (
     SUPERSCRIPT.has(ch) ||
     SUPERSCRIPT_LETTER.has(ch) ||
+    SUPERSCRIPT_SIGN.has(ch) ||
     UNICODE_SUPERSCRIPT.has(ch) ||
     OPERATOR.has(ch) ||
     BY_FONT.some((f) => f.map.has(ch)) ||
+    SUPERSCRIPT_BY_FONT.some((f) => f.map.has(ch)) ||
+    SUBSCRIPT_BY_FONT.some((f) => f.map.has(ch)) ||
     SHIFT_ROW.has(ch) ||
-    FRACTION_NUMERATOR.has(ch) ||
+    SMALL_DIGIT.has(ch) ||
     FRACTION_NUMERATOR_LETTER.has(ch) ||
     FRACTION_DENOMINATOR_LETTER.has(ch) ||
     PASSTHROUGH.test(ch) ||

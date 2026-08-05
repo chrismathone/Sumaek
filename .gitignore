@@ -63,3 +63,6 @@ Thumbs.db
 
 # 서브에이전트 워크트리 (저장소 사본)
 .claude/worktrees/
+
+# 반입 작업 중 만드는 임시 스크립트
+packages/ingest/tmp-*
