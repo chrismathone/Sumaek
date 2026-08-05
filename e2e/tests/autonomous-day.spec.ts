@@ -56,6 +56,8 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
   let teacher: Page;
   /** 화면이 한 번만 보여 주는 초기 비밀번호 — 학생 로그인에 그대로 쓴다 */
   const student = { name: "", email: "", password: "" };
+  /** 마우스를 한 번도 쓰지 않고 하루를 마치는 학생 (T6.3 인수 4) */
+  const keyboard = { name: "", email: "", password: "" };
   /** 로그인은 시키되 하루는 열지 않는 학생 — 교사 현황의 「기록 없음」 */
   const absent = { name: "", email: "", password: "" };
   let groupName = "";
@@ -65,6 +67,8 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
     ws = await createAutonomousWorkspace();
     student.name = `E2E학생-${ws.stamp}`;
     student.email = `e2e-auto-${ws.stamp}-a@su-maek.test`;
+    keyboard.name = `E2E키보드-${ws.stamp}`;
+    keyboard.email = `e2e-auto-${ws.stamp}-c@su-maek.test`;
     absent.name = `E2E무기록-${ws.stamp}`;
     absent.email = `e2e-auto-${ws.stamp}-b@su-maek.test`;
     groupName = `E2E자율반-${ws.stamp}`;
@@ -115,10 +119,10 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       groupSection.getByRole("status").filter({ hasText: "주 7회 수업" }),
     ).toBeVisible();
 
-    /* 3) 학생 둘 — 한 명은 완주하고 한 명은 로그인조차 하지 않는다.
-     *    교사 현황이 그 둘을 갈라 보여 주는지가 T4.4의 요지다. */
+    /* 3) 학생 셋 — 마우스로 완주 · 키보드만으로 완주 · 로그인조차 안 함.
+     *    교사 현황이 셋을 갈라 보여 주는지가 T4.4의 요지다. */
     await followSetupStep(teacher, "학생 등록");
-    for (const name of [student.name, absent.name]) {
+    for (const name of [student.name, keyboard.name, absent.name]) {
       const learnerSection = section(teacher, "학습자 등록");
       await learnerSection.getByLabel("이름 (표시명)").fill(name);
       await learnerSection.getByLabel("학년").fill("middle-2");
@@ -138,7 +142,7 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
      * 이 목록은 등록순이 아니고(실측: 「E2E무기록」이 「E2E학생」보다 먼저
      * 왔다), 그러면 A의 계정에 B의 이메일이 들어간다. 화면은 「발급 2건」이라
      * 말하고 스펙도 통과하는데, 그 비밀번호로는 아무도 로그인할 수 없다. */
-    for (const who of [student, absent]) {
+    for (const who of [student, keyboard, absent]) {
       await teacher
         .locator("li")
         .filter({ hasText: who.name })
@@ -147,19 +151,21 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
     }
     await teacher.getByRole("button", { name: "적은 학생에게 발급" }).click();
 
-    const issued = teacher.getByRole("status").filter({ hasText: "발급 2건" });
+    const issued = teacher.getByRole("status").filter({ hasText: "발급 3건" });
     await expect(issued).toBeVisible();
     const rows = issued.locator("li");
-    const mine = rows.filter({ hasText: student.name });
-    student.password = (await mine.locator("code").innerText()).trim();
-    expect(student.password.length).toBeGreaterThan(6);
+    for (const who of [student, keyboard]) {
+      const mine = rows.filter({ hasText: who.name });
+      who.password = (await mine.locator("code").innerText()).trim();
+      expect(who.password.length).toBeGreaterThan(6);
+    }
 
     /* 진행률을 숫자로 박지 않는다 — 반을 만들 때 평가 정책이 함께 생겨서
      * (T5.1) 여기서 끝난 단계는 넷이 아니라 다섯이고, 그런 부수 효과가
      * 하나 늘 때마다 숫자만 틀린다. 확인할 것은 **계정 단계가 끝났고 다음이
      * 자료**라는 사실이다. */
     await teacher.goto("/app/setup");
-    await expect(teacher.getByText("2명 전부 연결됨")).toBeVisible();
+    await expect(teacher.getByText("3명 전부 연결됨")).toBeVisible();
     await expect(
       teacher.locator("li").filter({ hasText: "지금 할 차례" }).first(),
     ).toContainText("학습 자료 등록");
@@ -275,7 +281,7 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
     await teacher.goto(`/app/readiness?date=${futureIso(2)}`);
     const groupCard = teacher.locator("li").filter({ hasText: groupName }).first();
     await expect(groupCard).toBeVisible();
-    await expect(groupCard.getByText("준비됨 0 / 2")).toBeVisible();
+    await expect(groupCard.getByText("준비됨 0 / 3")).toBeVisible();
     /* 교사에게는 **교사 문구**로 말한다. 학생 화면의 「오늘 시험이 아직
      * 만들어지지 않았습니다」와 같은 코드이되 다른 문장이다 — 학생에게는
      * 조치가 없고 교사에게는 그것이 곧 할 일이기 때문이다. 같은 사유가
@@ -311,12 +317,12 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
     expect(assignedIndex).toBeGreaterThan(-1);
     await expect(
       testRow.locator(`td:nth-child(${assignedIndex + 1})`),
-    ).toHaveText("2명");
+    ).toHaveText("3명");
 
     /* 준비도에서도 막힘이 사라진다 — 같은 사실을 두 화면이 같이 말한다 */
     await teacher.goto("/app/readiness");
     const groupCard = teacher.locator("li").filter({ hasText: groupName }).first();
-    await expect(groupCard.getByText("준비됨 2 / 2")).toBeVisible();
+    await expect(groupCard.getByText("준비됨 3 / 3")).toBeVisible();
     await expect(
       groupCard.getByText("이 반은 그날 학습을 시작할 수 있습니다."),
     ).toBeVisible();
@@ -324,7 +330,10 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
 
   /* ── ⑤ 학생의 하루 (T1.4의 밀린 E2E) ─────────────────────── */
 
-  test("⑤ 학생이 자료를 보고 시험을 치러 하루를 마친다", async ({ browser }) => {
+  test("⑤ 학생이 자료를 보고 시험을 치러 하루를 마친다", async ({
+    browser,
+    browserName,
+  }) => {
     const studentCtx = await browser.newContext();
     const page = await studentCtx.newPage();
     try {
@@ -394,8 +403,19 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       await expect(page.getByText("오늘 할 일을 모두 마쳤습니다.")).toBeVisible();
       await expectNoHorizontalScroll(page);
 
-      /* 5) 키보드만으로 다음 화면에 닿는다 — 학생 화면은 링크가 전부다 */
-      expect(await tabToLink(page, "지난 기록")).toBe(true);
+      /* 5) 키보드만으로 다음 화면에 닿는다 — 학생 화면은 링크가 전부다.
+       *
+       * WebKit에서는 재지 않는다. Safari는 **기본 설정에서 링크를 탭 순서에
+       * 넣지 않는다**(「Tab 키로 웹 페이지의 각 항목 강조」가 꺼져 있다).
+       * 실측한 탭 순서:
+       *   Chromium  A[href] > INPUT > INPUT > BUTTON > A[href] > …
+       *   WebKit    INPUT > INPUT > BUTTON > … (A[href]가 아예 없다)
+       * 페이지가 바꿀 수 있는 것이 아니라 브라우저 설정이므로, 여기서
+       * 실패하면 제품이 아니라 엔진을 재는 것이 된다. 폼 요소(입력·버튼)는
+       * WebKit에서도 탭으로 닿으므로 응시 경로 자체는 그쪽에서도 열려 있다. */
+      if (browserName !== "webkit") {
+        expect(await tabToLink(page, "지난 기록")).toBe(true);
+      }
 
       /* 6) axe — 색 하나로만 말하는 상태가 없는지까지 본다 */
       const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -404,6 +424,89 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
       ).toEqual([]);
     } finally {
       await studentCtx.close();
+    }
+  });
+
+  /* ── ⑤-2 마우스 없이 (T6.3 인수 4) ──────────────────────── */
+
+  test("⑤-2 마우스를 한 번도 쓰지 않고 하루를 마친다", async ({
+    browser,
+    browserName,
+  }) => {
+    /* 「키보드로도 쓸 수 있다」는 축약 없이 재야 뜻이 있다. 이 테스트는
+     * 클릭을 **한 번도** 하지 않는다 — 로그인 · 자료 완료 · 응시 · 제출까지
+     * Tab·Enter·타이핑만 쓴다. 중간에 하나라도 닿지 않으면 거기서 멈춘다.
+     *
+     * WebKit은 제외한다. Safari가 기본 설정에서 링크를 탭 순서에 넣지 않아
+     * (⑤의 실측 주석 참고) 페이지가 아니라 브라우저 설정을 재게 된다. */
+    test.skip(browserName === "webkit", "WebKit은 기본 설정에서 링크를 탭 순서에 넣지 않는다");
+
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    try {
+      /* 1) 로그인 — 폼 요소만으로 닿는다 */
+      await page.goto("/login");
+      expect(await focusByTab(page, (el) => el.tag === "INPUT")).toBe(true);
+      await page.keyboard.type(keyboard.email);
+      await page.keyboard.press("Tab");
+      await page.keyboard.type(keyboard.password);
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/\/learn\/today/, { timeout: 60_000 });
+
+      /* 2) 개념 학습으로 — 오늘 화면의 「할 차례」 링크를 눌러 간다 */
+      expect(
+        await focusByTab(page, (el) => el.tag === "A" && /개념 학습/.test(el.text)),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/\/learn\/study/, { timeout: 60_000 });
+
+      /* 3) 자료를 다 봤다고 표시 — 버튼도 탭으로 닿아야 한다 */
+      expect(
+        await focusByTab(page, (el) => el.tag === "BUTTON" && el.text.includes("다 봤어요")),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(page.getByText("완료", { exact: true }).first()).toBeVisible();
+
+      /* 4) 응시 — 오늘 화면으로 돌아가 시험 링크를 연다 */
+      await page.goto("/learn/today");
+      expect(
+        await focusByTab(page, (el) => el.tag === "A" && /응시하기|이어서 풀기/.test(el.text)),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(page.getByText(/1 \/ \d+/)).toBeVisible({ timeout: 60_000 });
+
+      /* 5) 문항을 풀고 제출 — 답 칸도 「다음」도 탭으로 닿는다 */
+      const counter = await page.getByText(/1 \/ \d+/).innerText();
+      const total = Number(counter.split("/")[1]?.trim() ?? 0);
+      expect(total).toBeGreaterThan(0);
+      for (let i = 0; i < total; i++) {
+        const body = await page.locator("main").innerText();
+        const answer = /답은 (\d+)입니다/.exec(body)?.[1];
+        expect(answer, "문항 본문에서 답을 읽지 못했습니다").toBeTruthy();
+        expect(
+          await focusByTab(page, (el) => el.tag === "INPUT" && el.type === "text"),
+        ).toBe(true);
+        await page.keyboard.type(answer!);
+        /* Tab이 곧 blur다 — 저장은 blur에서 일어난다 */
+        await page.keyboard.press("Tab");
+        await expect(page.getByText(/저장됨|저장 중/)).toBeVisible();
+        const nextLabel = i < total - 1 ? "다음" : "제출하기";
+        expect(
+          await focusByTab(page, (el) => el.tag === "BUTTON" && el.text.trim() === nextLabel),
+        ).toBe(true);
+        await page.keyboard.press("Enter");
+      }
+      expect(
+        await focusByTab(page, (el) => el.tag === "BUTTON" && el.text.includes("제출 확정")),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/\/learn\/results\//, { timeout: 60_000 });
+
+      /* 6) 하루가 닫혔다 — 마우스 없이 온 학생도 같은 자리에 도착한다 */
+      await page.goto("/learn/today");
+      await expect(page.getByText("오늘 할 일을 모두 마쳤습니다.")).toBeVisible();
+    } finally {
+      await ctx.close();
     }
   });
 
@@ -420,7 +523,7 @@ test.describe.serial("빈 워크스페이스가 스스로 학생의 하루에 �
      * 카드 안에 두 번 나온다 — 세는 줄과, 그 학생의 이름 옆 상태 배지.
      * 아무 쪽이나 잡으면 strict mode로 죽거나(실측) 엉뚱한 쪽을 잰다. */
     const counts = groupCard.locator("div").filter({ hasText: "기록 없음" }).last();
-    await expect(counts).toContainText("완료 1");
+    await expect(counts).toContainText("완료 2");
     await expect(counts).toContainText("기록 없음 1");
     /* 막힘이 0이다 — 평가↔노드 연결이 끊기면 여기가 2가 된다 */
     await expect(counts).toContainText("막힘 0");
@@ -515,6 +618,40 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
   });
   /* 1px은 반올림이다. 그보다 크면 손가락으로 밀어야 보이는 것이 있다. */
   expect(overflow).toBeLessThanOrEqual(1);
+}
+
+interface FocusedElement {
+  tag: string;
+  text: string;
+  type: string;
+}
+
+/**
+ * 조건에 맞는 요소에 **탭으로** 닿는다. 닿으면 그 요소가 포커스된 채로 true.
+ *
+ * 클릭으로 대신하지 않는 것이 요지다 — 「보인다」와 「키보드로 닿는다」는
+ * 다른 말이고, 후자가 깨지는 것은 대개 focus 순서나 `tabindex`가 아니라
+ * **버튼처럼 보이는 div**를 썼을 때다. 탭으로 훑으면 그것이 드러난다.
+ */
+async function focusByTab(
+  page: Page,
+  match: (el: FocusedElement) => boolean,
+  limit = 80,
+): Promise<boolean> {
+  await page.locator("body").press("Tab");
+  for (let i = 0; i < limit; i++) {
+    const el = await page.evaluate<FocusedElement>(() => {
+      const active = document.activeElement as HTMLElement | null;
+      return {
+        tag: active?.tagName ?? "",
+        text: (active?.textContent ?? "").replace(/\s+/g, " ").trim(),
+        type: active?.getAttribute("type") ?? "",
+      };
+    });
+    if (el.tag && el.tag !== "BODY" && match(el)) return true;
+    await page.keyboard.press("Tab");
+  }
+  return false;
 }
 
 /** Tab만 눌러 그 이름의 링크에 닿는가 */
