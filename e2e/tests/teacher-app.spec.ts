@@ -28,9 +28,14 @@ test.describe("교사 앱 전 화면 스모크 (인수 6·13·14 기초)", () =>
     ).first();
     await expect(classRow).toBeVisible();
     await classRow.getByRole("link", { name: /중2 심화 A/ }).click();
-    // 반 상세는 아직 표가 아니다 — 학생 명단 링크로 스코프해야 한다
-    // (불참 폼의 학생 선택 옵션에도 이름이 있다)
-    await expect(page.getByRole("link", { name: /박서윤/ })).toBeVisible();
+    /* 반 상세는 아직 표가 아니다 — **명단 구역**으로 스코프한다.
+     *
+     * 링크의 접근 이름으로 잡지 않는다: 명단의 링크는 이름·학년·최근 응시를
+     * 각각 <p>로 담은 블록이라 계산된 접근 이름이 비어 있고, 그래서
+     * `getByRole("link", { name: /박서윤/ })`은 아무것도 찾지 못한다(실측).
+     * 구역으로 좁히면 불참 폼의 <option>에 있는 같은 이름과도 섞이지 않는다. */
+    const roster = page.locator("section").filter({ hasText: /학생 \d+명/ });
+    await expect(roster.getByText("박서윤", { exact: true })).toBeVisible();
 
     // 학습자 목록 → 상세 (숙련도 근거 표시)
     const learnerRow = (

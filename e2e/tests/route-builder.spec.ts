@@ -2,6 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 import { gotoTableRow, tableRowIn } from "../lib/table";
 import { TEACHER } from "../lib/accounts";
 
+/**
+ * 게시 게이트를 통과하려면 개념 차시에 **게시된 자료가 있는 개념**이 붙어야
+ * 한다 (T2.4 `checkRouteReadiness`). 개념 없이 만든 개념 차시는 학생에게
+ * 아무것도 못 주므로 실행기가 `material_missing`으로 막고, 게시가 거부된다.
+ *
+ * 이 스펙들은 T2.4 이전에 쓰여 개념을 붙이지 않았고, 게이트가 생긴 뒤로
+ * 게시에서 계속 막혀 있었다(실측: main에서도 같은 자리에서 실패). 데모
+ * 워크스페이스에서 「게시된 자료가 있으면서 승인된 선수 개념이 없는」 개념은
+ * 이것 하나다 — 선수가 있으면 루트 검증이 PREREQUISITE_GAP으로 먼저 막는다.
+ */
+const PUBLISHABLE_CONCEPT = "일차방정식 복습";
+
 
 async function login(page: Page) {
   await page.goto("/login");
@@ -56,12 +68,20 @@ test("루트 빌더: 반 만들기 → 노드 작성 → 검증 → 게시 → �
   // 4. 노드 3개 추가 (개념 수업 2 + 확인테스트)
   const addForm = page.locator("form").filter({ hasText: "노드 추가" });
   await addForm.getByLabel("노드 제목").fill("일차함수의 뜻");
+  await addForm
+    .getByRole("group")
+    .getByText(PUBLISHABLE_CONCEPT, { exact: true })
+    .click();
   await addForm.getByRole("button", { name: "노드 추가" }).click();
   await expect(
     addForm.getByRole("status").filter({ hasText: "일차함수의 뜻" }),
   ).toBeVisible({ timeout: 30_000 });
 
   await addForm.getByLabel("노드 제목").fill("일차함수의 그래프");
+  await addForm
+    .getByRole("group")
+    .getByText(PUBLISHABLE_CONCEPT, { exact: true })
+    .click();
   await addForm.getByRole("button", { name: "노드 추가" }).click();
   await expect(
     addForm.getByRole("status").filter({ hasText: "일차함수의 그래프" }),
