@@ -680,7 +680,10 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
   );
   /* 호(弧) 기호는 **글자 앞**에 온다 — `µAB` = ⌒AB (중3-2 「원의 성질」).
    * 선분의 윗줄과 달리 위치가 안정적이라 그대로 읽으면 된다. */
-  work = work.replace(/µ([A-Z]{1,3})/g, (_m, letters: string) =>
+  /* 조판이 호 기호와 이름 사이에 공백을 흘리는 자리가 있다 —
+   * 중1-2 p.87 「µ BC=4µAC」. 공백을 건너뛰지 않으면 그 한 곳만 미해독이
+   * 되어 같은 문항 안에서 ⌒BC는 깨지고 ⌒AC는 멀쩡한 꼴이 된다. */
+  work = work.replace(/µ\s*([A-Z]{1,3})/g, (_m, letters: string) =>
     stash(`\\overparen{${letters}}`),
   );
   /* 도(°)는 LaTeX 명령이라 자리표시자로 치워 둔다 — 3)단계의 글자별

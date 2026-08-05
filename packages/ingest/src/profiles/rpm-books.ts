@@ -26,6 +26,20 @@ import {
   RPM_M1_CH4_UNIT_TO_CONCEPT,
 } from "./rpm-2022-concepts";
 import {
+  RPM_M12_CH1_CONCEPTS,
+  RPM_M12_CH1_TITLE_TO_CONCEPT,
+  RPM_M12_CH1_UNIT_TO_CONCEPT,
+  RPM_M12_CH2_CONCEPTS,
+  RPM_M12_CH2_TITLE_TO_CONCEPT,
+  RPM_M12_CH2_UNIT_TO_CONCEPT,
+  RPM_M12_CH3_CONCEPTS,
+  RPM_M12_CH3_TITLE_TO_CONCEPT,
+  RPM_M12_CH3_UNIT_TO_CONCEPT,
+  RPM_M12_CH4_CONCEPTS,
+  RPM_M12_CH4_TITLE_TO_CONCEPT,
+  RPM_M12_CH4_UNIT_TO_CONCEPT,
+} from "./rpm-2022-concepts-m12";
+import {
   RPM_M21_CH1_CONCEPTS,
   RPM_M21_CH1_TITLE_TO_CONCEPT,
   RPM_M21_CH1_UNIT_TO_CONCEPT,
@@ -142,6 +156,54 @@ export const RPM_BOOKS: Record<string, BookSpec> = {
         concepts: RPM_M1_CH4_CONCEPTS,
         titleToConcept: RPM_M1_CH4_TITLE_TO_CONCEPT,
         unitToConcept: RPM_M1_CH4_UNIT_TO_CONCEPT,
+      },
+    },
+  },
+
+  /* 대단원 경계는 유형 개요(`extract --outline`)의 인쇄 번호 구간에서 읽었고,
+   * 끝 번호 1116은 책 앞의 Check List 산술과 맞다 — 코너별 문항 수 합계
+   * 1277에서 부록 「대표문제 다시 풀기」 161을 빼면 1116이다. 부록은 새
+   * 번호를 매기지 않고 본문 번호를 다시 부르므로 덤프에서도 뺐다(1~169쪽). */
+  "m1-2": {
+    title: "RPM 중학 수학 1-2 (2022 개정)",
+    gradeBand: "middle-1",
+    companion: "개념원리 중학 수학 1-2",
+    chapters: {
+      I: {
+        number: "I",
+        title: "기본 도형",
+        range: [1, 378],
+        pages: [7, 61],
+        concepts: RPM_M12_CH1_CONCEPTS,
+        titleToConcept: RPM_M12_CH1_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M12_CH1_UNIT_TO_CONCEPT,
+      },
+      II: {
+        number: "II",
+        title: "평면도형",
+        range: [379, 655],
+        pages: [62, 99],
+        concepts: RPM_M12_CH2_CONCEPTS,
+        titleToConcept: RPM_M12_CH2_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M12_CH2_UNIT_TO_CONCEPT,
+      },
+      III: {
+        number: "III",
+        title: "입체도형",
+        range: [656, 942],
+        pages: [100, 141],
+        concepts: RPM_M12_CH3_CONCEPTS,
+        titleToConcept: RPM_M12_CH3_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M12_CH3_UNIT_TO_CONCEPT,
+      },
+      IV: {
+        number: "IV",
+        title: "통계",
+        range: [943, 1116],
+        pages: [142, 169],
+        concepts: RPM_M12_CH4_CONCEPTS,
+        titleToConcept: RPM_M12_CH4_TITLE_TO_CONCEPT,
+        unitToConcept: RPM_M12_CH4_UNIT_TO_CONCEPT,
       },
     },
   },
