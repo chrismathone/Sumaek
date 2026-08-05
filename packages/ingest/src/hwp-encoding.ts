@@ -716,16 +716,26 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    * 통과 검사는 역슬래시를 모른다 */
   work = work.replace(/°/g, () => stash("\\degree "));
 
-  /** 이 글자가 위첨자 글리프면 그 내용, 아니면 undefined */
+  /**
+   * 이 글자가 위첨자 글리프면 그 내용, 아니면 undefined.
+   *
+   * **근호·분수 글꼴에는 위첨자가 없다.** 그 글꼴의 글리프는 전부 가구이고,
+   * 같은 코드가 EHsang에서 가지는 뜻(`¶`=위첨자 d)을 그대로 얹으면 근호
+   * 조각이 `^{d}`가 되어 `'^{d}'^{d}` 꼴로 렌더에 실패한다 — 중3 별책
+   * 해설에서 20건이 이 꼴로 남아 있었다. 코드는 글꼴 안에서만 뜻이 있다.
+   */
+  const furnitureFont = font !== undefined && /^(EHRoot|EHboNA)/.test(font);
   const superscriptOf = (ch: string): string | undefined =>
-    supFont?.get(ch) ??
-    SUPERSCRIPT.get(ch) ??
-    SUPERSCRIPT_LETTER.get(ch) ??
-    SUPERSCRIPT_SIGN.get(ch) ??
-    /* 분수 글꼴의 ¹²³는 세로셈·표 조각이다 — 지수로 옮기지 않는다 */
-    (font !== undefined && FRACTION_FONT.test(font)
+    furnitureFont
       ? undefined
-      : UNICODE_SUPERSCRIPT.get(ch));
+      : (supFont?.get(ch) ??
+        SUPERSCRIPT.get(ch) ??
+        SUPERSCRIPT_LETTER.get(ch) ??
+        SUPERSCRIPT_SIGN.get(ch) ??
+        /* 분수 글꼴의 ¹²³는 세로셈·표 조각이다 — 지수로 옮기지 않는다 */
+        (font !== undefined && FRACTION_FONT.test(font)
+          ? undefined
+          : UNICODE_SUPERSCRIPT.get(ch)));
 
   // 3) 남은 글자를 하나씩 옮긴다
   let out = "";
@@ -806,7 +816,14 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
       out += op;
       continue;
     }
-    if (PASSTHROUGH.test(ch)) {
+    /* **근호 글꼴의 `'`는 따옴표가 아니다.** 통과 목록은 EHsang 같은 본문
+     * 수식 글꼴을 전제로 만든 것이라, 가구 글꼴에까지 적용하면 근호 조각이
+     * 따옴표·괄호로 새어 나간다(`'^{d}'^{d}`). 분수 글꼴은 숫자를 실어
+     * 나르므로 숫자·괄호는 통과시킨다. */
+    const passable = furnitureFont
+      ? /^(EHboNA)/.test(font ?? "") && /[0-9(),.\s]/.test(ch)
+      : PASSTHROUGH.test(ch);
+    if (passable) {
       out += ch;
       continue;
     }

@@ -112,6 +112,24 @@ function balanceBraces(latex: string): string {
   return depth > 0 ? out + "}".repeat(depth) : out;
 }
 
+/**
+ * 이름 있는 명령 뒤에 글자가 바로 붙은 것을 띄운다.
+ *
+ * `40\degree x`는 그려지는데 `40\degreex`는 실패한다 — KaTeX가 `\degreex`를
+ * 하나의 명령 이름으로 읽고 그런 명령이 없다고 한다. 해독기는 뒤에 공백을
+ * 붙여 내보내지만 조각을 이어 붙이는 과정에서 그 공백이 사라지는 자리가
+ * 있다(중1-2 0268의 표 안).
+ *
+ * **우리가 내보내는 명령만** 다룬다. 모든 `\명령`을 띄우면 `\frac{1}{2}`
+ * 같은 인자 있는 명령까지 건드려 식이 부서진다.
+ */
+const EMITTED_COMMAND =
+  /(\\(?:degree|square|times|div|surd|parallel|equiv|backsim|triangle|frown|cdotp))([a-zA-Z])/g;
+
+function spaceAfterCommand(latex: string): string {
+  return latex.replace(EMITTED_COMMAND, "$1 $2");
+}
+
 /** 빈 껍데기만 남은 식인가 — 고쳐 봐야 화면에 아무것도 없다 */
 const isHollow = (latex: string): boolean =>
   latex.replace(/[\s{}]|\\square|\\left\.|\\right\./g, "") === "";
@@ -134,6 +152,7 @@ export function repairLatex(latex: string): RepairResult {
     }
   };
 
+  step("명령-뒤-공백", spaceAfterCommand);
   step("홀로-선-지수", dropDanglingScript);
   step("이중-지수-합침", mergeDoubleSuperscript);
   step("중괄호-짝", balanceBraces);

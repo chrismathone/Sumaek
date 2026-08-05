@@ -92,6 +92,25 @@ describe("고쳐서 빈 껍데기가 되면 되돌린다", () => {
   });
 });
 
+describe("명령 뒤 공백 — 없으면 없는 명령이 된다", () => {
+  /* `40\degree x`는 그려지는데 `40\degreex`는 실패한다. KaTeX가
+   * `\degreex`를 하나의 명령 이름으로 읽는다 (중1-2 0268의 표 안). */
+  it("도(°) 뒤에 글자가 붙으면 띄운다", () => {
+    expect(repairLatex("40\\degreex").latex).toBe("40\\degree x");
+  });
+
+  it("자리표시자도 마찬가지다", () => {
+    expect(repairLatex("\\squarea").latex).toBe("\\square a");
+  });
+
+  /* 인자 있는 명령까지 건드리면 식이 부서진다 — 우리가 내보내는 것만 */
+  it("인자 있는 명령은 건드리지 않는다", () => {
+    const got = repairLatex("\\frac{1}{2}x");
+    expect(got.latex).toBe("\\frac{1}{2}x");
+    expect(got.applied).toEqual([]);
+  });
+});
+
 describe("뜻은 지어내지 않는다", () => {
   it("빈 분모를 채우지 않는다", () => {
     expect(repairLatex("\\frac{1}{}").latex).toBe("\\frac{1}{}");
