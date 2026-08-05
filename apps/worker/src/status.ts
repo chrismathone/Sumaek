@@ -8,6 +8,7 @@ import {
   type WorkerHeartbeatRow,
 } from "@su-maek/db";
 import { createHandlerRegistry, TOPICS_WITHOUT_HANDLER } from "./registry";
+import { collectAutonomousFlowStatus } from "./status/autonomous-flow";
 
 /**
  * 워커 생존 확인 — `pnpm --filter @su-maek/worker status`.
@@ -18,6 +19,12 @@ import { createHandlerRegistry, TOPICS_WITHOUT_HANDLER } from "./registry";
  *
  * 종료 코드: 살아 있는 워커가 하나라도 있으면 0, 없거나 박동이 끊긴 워커가
  * 있으면 1. 모니터링에서 그대로 쓸 수 있게 한다.
+ *
+ * ── `--flow` ────────────────────────────────────────────────
+ * 「워커가 살아 있는가」만으로는 부족하다. 워커가 멀쩡한데도 학생 화면에
+ * 시험이 안 뜨는 경우가 있고, 그때 이 화면은 전부 초록이다. `--flow`는
+ * 다른 질문에 답한다: **오늘 수업이 실제로 성립하는가** (RB-16).
+ * 그쪽에서 이상이 잡히면 종료 코드도 1이 된다.
  */
 
 function ageText(from: Date, now: Date): string {
@@ -32,6 +39,11 @@ function describe(row: WorkerHeartbeatRow, now: Date): string {
   if (row.stopped_at) return `내려감 (${row.stop_reason ?? "사유 없음"})`;
   return isHeartbeatLost(row, now) ? "박동 끊김" : "살아 있음";
 }
+
+/** `--org=<uuid>` — 한 학원으로 좁혀 본다. 없으면 전역(운영자 시점) */
+const orgArg = process.argv
+  .find((a) => a.startsWith("--org="))
+  ?.slice("--org=".length);
 
 async function main(): Promise<void> {
   const sql = createSql();
@@ -109,6 +121,50 @@ async function main(): Promise<void> {
       console.log("  핸들러가 없는 토픽 (이름만 있는 것 — 아무것도 처리되지 않는다):");
       for (const [topic, reason] of gaps) {
         console.log(`    ${topic.padEnd(16)} ${reason}`);
+      }
+    }
+
+    /* 흐름 진단 — 워커 생존과 **다른 질문**이라 따로 낸다 (RB-16).
+     * 기본으로 켜지 않는 이유: 이 명령은 모니터링이 1분마다 부르는 것이고,
+     * 흐름 진단은 조회가 무겁다(반·계획·큐를 훑는다). 사람이 볼 때만 켠다. */
+    if (process.argv.includes("--flow")) {
+      const flow = await collectAutonomousFlowStatus(sql, {
+        ...(orgArg ? { organizationId: orgArg } : {}),
+      });
+      console.log("");
+      console.log(
+        `자율 하루 흐름 (${flow.date}${flow.organizationId ? ` · 조직 ${flow.organizationId}` : " · 전체"})`,
+      );
+      console.log("");
+      console.log(
+        `  평가 누락 ${flow.missingAssessments.length}건 · ` +
+          `차단 학생 ${flow.blockedLearners}명 · ` +
+          `미배달 이벤트 ${flow.outbox.pending}건(최고령 ${flow.outbox.oldestPendingMinutes}분)`,
+      );
+      for (const m of flow.missingAssessments.slice(0, 10)) {
+        const when =
+          m.minutesUntilStart < 0
+            ? `이미 시작 (${-m.minutesUntilStart}분 전)`
+            : `${m.minutesUntilStart}분 뒤 시작`;
+        console.log(`    · ${m.learningGroupName} — ${m.routeNodeTitle} (${when})`);
+      }
+      if (flow.missingAssessments.length > 10) {
+        console.log(`    · 외 ${flow.missingAssessments.length - 10}건`);
+      }
+      for (const b of flow.blockedByReason) {
+        console.log(`    · 차단 ${b.learners}명 — ${b.code}`);
+      }
+      console.log("");
+      if (flow.findings.length === 0) {
+        console.log("  ✓ 오늘 수업은 성립합니다.");
+      } else {
+        for (const f of flow.findings) {
+          console.log(`  [${f.severity}] ${f.what}`);
+          console.log(`      → ${f.action}`);
+        }
+        console.log("");
+        console.log("  자세한 절차: docs/runbooks/16-autonomous-day-pipeline.md");
+        unhealthy = true;
       }
     }
 

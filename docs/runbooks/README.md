@@ -29,6 +29,7 @@
 | # | 절차 | 주 kill switch |
 |---|---|---|
 | RB-15 | [교육과정 릴리스 발행·원문 대조·차이 계산](./15-curriculum-release-publish.md) | `curriculum_release` |
+| RB-16 | [자율 하루 파이프라인 — 학생 화면에 오늘이 뜨지 않는다](./16-autonomous-day-pipeline.md) | `auto_assessment_generation`, `auto_reschedule` |
 
 ---
 
