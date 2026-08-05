@@ -105,6 +105,8 @@ interface MaterialDetail {
   id: string;
   concept_id: string;
   concept_name: string;
+  /** 공용(플랫폼) 자료인가 — 우리 것이 아니면 **읽기 전용**이다 (ADR-0020) */
+  is_shared: boolean;
   concept_status: string;
   kind: string;
   title: string;
@@ -156,6 +158,7 @@ export default async function MaterialDetailPage({
 
   const [material] = await sql<MaterialDetail[]>`
     select m.id::text, m.concept_id::text as concept_id, c.name as concept_name,
+           (m.organization_id <> ${user.organizationId}) as is_shared,
            c.status::text as concept_status, m.kind::text as kind, m.title, m.body,
            m.video_url, m.video_seconds, m.question_ids, m.sort_order,
            m.status::text as status, m.disclosure, m.source_job_id,
@@ -269,6 +272,11 @@ export default async function MaterialDetailPage({
   });
 
   const canAuthor = canWrite(DEFAULT_MATRIX, user.role, "materials");
+  /* 공용 자료는 권한이 있어도 못 고친다 — 쓰기는 플랫폼(마스터)의 일이다
+   * (ADR-0020 갈래 C). 버튼을 남겨 두면 눌러 보고 나서야 「찾을 수 없습니다」로
+   * 알게 된다. 우리 학원 것으로 만들고 싶으면 같은 개념·같은 종류로 우리
+   * 자료를 만들면 되고, 그러면 이 자료는 우리 학생에게 가려진다. */
+  const canEdit = canAuthor && !material.is_shared;
   const progressCount = progress[0]?.cnt ?? 0;
   const seconds = material.video_seconds ?? 0;
   /* 저장된 주소가 유튜브로 안 읽히면 학생 화면은 임베드 대신 새 탭 링크로
@@ -301,7 +309,10 @@ export default async function MaterialDetailPage({
           >
             {STATUS_LABEL[material.status] ?? material.status}
           </Badge>
-          {canAuthor && (
+          {material.is_shared && (
+            <Badge tone="border-rule bg-paper text-ink-soft">공용</Badge>
+          )}
+          {canEdit && (
             <span className="flex flex-wrap gap-1">
               {material.status !== "published" && (
                 <MaterialStatusButton
@@ -442,7 +453,7 @@ export default async function MaterialDetailPage({
           </section>
         ))}
 
-      {canAuthor ? (
+      {canEdit ? (
         <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
           <h2 className="font-semibold">자료 고치기</h2>
 
@@ -496,6 +507,21 @@ export default async function MaterialDetailPage({
                 hasStructuredBlocks(material.body))
             }
           />
+        </section>
+      ) : material.is_shared ? (
+        <section className="mt-4 rounded-lg border border-rule bg-surface p-5">
+          <h2 className="font-semibold">공용 자료입니다</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            모든 학원이 함께 보는 자료라 이곳에서는 고치거나 게시 상태를 바꿀 수
+            없습니다. 우리 학원에 맞는 설명이 필요하면{" "}
+            <Link
+              href={`/app/content/materials?cq=${encodeURIComponent(material.concept_name)}`}
+              className="text-pen underline"
+            >
+              같은 개념·같은 종류로 우리 자료를 만드세요
+            </Link>
+            . 그러면 이 개념의 이 종류는 우리 자료만 학생에게 보입니다.
+          </p>
         </section>
       ) : (
         <p className="mt-4 rounded-lg border border-rule bg-surface p-5 text-sm text-ink-soft">
