@@ -749,12 +749,18 @@ function figureClusters(
   }
 
   return clusters
-    .filter(
-      (c) =>
-        c.count >= profile.figures.minDrawings &&
-        c.rect.x1 - c.rect.x0 >= profile.figures.minWidth &&
-        c.rect.y1 - c.rect.y0 >= profile.figures.minHeight,
-    )
+    .filter((c) => {
+      const width = c.rect.x1 - c.rect.x0;
+      if (width < profile.figures.minWidth) return false;
+      if (c.rect.y1 - c.rect.y0 < profile.figures.minHeight) return false;
+      if (c.count >= profile.figures.minDrawings) return true;
+      /* 선이 성긴 도형 — 좁을 때만 도형으로 본다. 단을 가득 채우는 것은
+       * 본문 안의 계산 과정 블록이지 그림이 아니다. */
+      return (
+        c.count >= profile.figures.sparse.minDrawings &&
+        width <= profile.figures.sparse.maxWidth
+      );
+    })
     .map((c) => c.rect);
 }
 

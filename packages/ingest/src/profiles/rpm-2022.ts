@@ -85,5 +85,9 @@ export const RPM_2022: ExtractionProfile = {
     clusterGap: 14,
     minWidth: 28,
     minHeight: 28,
+    /* 좌표평면 그래프는 축 둘에 직선 하나라 벡터가 다섯도 안 된다.
+     * 폭 130pt는 실측으로 골랐다 — 새로 잡힌 그래프가 전부 70~80pt이고,
+     * 잘못 잡히던 계산 과정 블록은 단을 가득 채운다(240pt 안팎). */
+    sparse: { minDrawings: 5, maxWidth: 130 },
   },
 };

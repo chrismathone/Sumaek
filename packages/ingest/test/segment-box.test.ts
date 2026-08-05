@@ -123,3 +123,65 @@ describe("보기 상자 — 테두리를 도형으로 오인하지 않는다", (
     expect(q?.conditionBox).toBeNull();
   });
 });
+
+/* ─────────────────────────────────────────────────────────────
+ * 선이 성긴 도형 — 좌표평면 그래프.
+ *
+ * 축 둘에 직선 하나면 벡터가 다섯도 안 된다. minDrawings(12)로는 문턱을
+ * 못 넘어 도형으로 서지 않고, 도형이 안 서면 그 안의 라벨(`y=3x+6`·`O`·`x`)을
+ * 걸러 낼 근거가 없어 전부 발문으로 샌다. 여섯 권에서 1067문항(17.3%)이
+ * 그랬고, 렌더는 성공하므로 렌더 검사로는 하나도 안 잡혔다.
+ *
+ * 문턱만 낮추면 본문 안의 계산 과정 블록까지 도형이 된다. 가름선은 폭이다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 좌표평면 — 축 둘에 직선 하나, 벡터 여섯 (실제 지면이 이 정도다) */
+const graphDrawings = (x: number): Drawing[] => [
+  line(x, 560, x + 70, 561),
+  line(x + 35, 530, x + 36, 610),
+  line(x + 5, 535, x + 65, 605),
+  line(x + 10, 600, x + 60, 602),
+  line(x + 30, 545, x + 40, 546),
+  line(x + 30, 575, x + 40, 576),
+];
+
+/** 단을 가득 채우는 계산 과정 블록 — 밑줄 여섯 */
+const derivationDrawings = (): Drawing[] =>
+  Array.from({ length: 6 }, (_, i) => line(66, 545 + i * 12, 300, 546 + i * 12));
+
+const graphPage = (drawings: Drawing[], labelX: number): PageDump => ({
+  page: 130,
+  width: 612,
+  height: 792,
+  spans: [
+    ...number("882", 500),
+    span({ text: "오른쪽 그림에서 ", x0: 65, y0: 515, x1: 180, y1: 526, font: "YDVYMjOStd12", size: 9.75 }),
+    span({ text: "y=3x+6", x0: labelX, y0: 536, x1: labelX + 40, y1: 546, font: "EHsang-Italic" }),
+    span({ text: "O", x0: labelX + 30, y0: 562, x1: labelX + 37, y1: 572, font: "EHsang-Italic" }),
+  ],
+  drawings,
+  images: [],
+});
+
+describe("선이 성긴 도형 — 좌표평면 그래프", () => {
+  it("벡터 여섯짜리 그래프도 도형으로 본다", () => {
+    const [q] = extractPage(graphPage(graphDrawings(220), 225), RPM_2022).questions;
+    expect((q?.figureBoxes ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("그래프 라벨이 발문으로 새지 않는다", () => {
+    const [q] = extractPage(graphPage(graphDrawings(220), 225), RPM_2022).questions;
+    expect(q?.figureLabels.join(" ")).toContain("y=3x+6");
+    const stem = (q?.stem ?? [])
+      .map((r) => (r.kind === "text" ? r.text : r.latex))
+      .join("");
+    expect(stem).not.toContain("y=3x+6");
+  });
+
+  /* **단을 가득 채우는 것은 그림이 아니다.** 문턱만 낮추면 중1-1 0444
+   * 「다음 계산 과정에서 ㉠, ㉡에…」의 발문이 254자에서 37자로 줄었다. */
+  it("단 폭을 채우는 계산 과정 블록은 도형으로 보지 않는다", () => {
+    const [q] = extractPage(graphPage(derivationDrawings(), 100), RPM_2022).questions;
+    expect((q?.figureBoxes ?? []).length).toBe(0);
+  });
+});
