@@ -221,11 +221,21 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
   await teacher.getByRole("button", { name: "찾기", exact: true }).click();
   const videoForm = teacher.locator("form").filter({ hasText: "초안으로 만들기" });
   await videoForm.getByLabel("개념", { exact: true }).selectOption({ label: CONCEPT });
-  await videoForm.getByLabel("종류").selectOption("video");
+  /* 종류를 고르면 그 종류의 입력만 남는다 — 그런데 이 폼은 useState로
+   * 제어되고, 「찾기」가 부른 서버 갱신이 늦게 도착하면 select의 DOM 값은
+   * video인데 React 상태는 reading으로 남는다(실측: 종류가 「개념 인강」으로
+   * 보이는데 본문 칸이 그대로였다). 그 상태로 진행하면 유튜브 칸을 90초
+   * 기다리다 죽는다.
+   *
+   * 그래서 **입력 칸이 실제로 바뀌었는지**로 확인한다 — select의 값이 아니라.
+   * 눈에 보이는 것이 곧 React 상태다. */
+  const youtube = videoForm.getByLabel("유튜브 주소");
+  await expect(async () => {
+    await videoForm.getByLabel("종류").selectOption("video");
+    await expect(youtube).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await videoForm.getByLabel("제목").fill(videoTitle);
-  await videoForm
-    .getByLabel("유튜브 주소")
-    .fill("https://www.youtube.com/watch?v=E2EVIDEO001");
+  await youtube.fill("https://www.youtube.com/watch?v=E2EVIDEO001");
   await videoForm.getByRole("button", { name: "초안으로 만들기" }).click();
   await expect(toast("초안으로 만들었습니다")).toBeVisible({ timeout: 30_000 });
 
@@ -315,6 +325,27 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
 });
 
 /**
+ * 이 스펙은 **공용(플랫폼) 시드 자료**가 학생에게 닿는지를 잰다. 그런데 앞
+ * 테스트가 같은 개념(가감법)에 학원 자료를 만들고 가는데, 학원 자료가 있으면
+ * 그 개념·그 종류의 공용 자료는 **가려진다**(ADR-0020 갈래 C). 그래서 앞
+ * 테스트가 남긴 것을 여기서 치우고 시작한다 — 스펙은 자기 전제를 스스로 세운다.
+ *
+ * 순서를 바꾸거나 앞 테스트만 돌려도 같은 결과가 나와야 하기 때문이다.
+ */
+async function clearOrgMaterials(): Promise<void> {
+  const sql = createSql();
+  try {
+    await sql`
+      delete from learning_materials
+      where organization_id = ${DEMO_ORG}
+        and concept_id in (select id from canonical_concepts where name = ${CONCEPT})
+    `;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
  * 시드가 넣은 자료가 학생에게 그대로 도달하는지 — 오늘 하루가 **개념 학습
  * 한 단계**로 서는 것, 한 개념 쪽에 설명·인강·연습이 함께 있는 것, 인강의
  * AI 고지, 연습문제의 **지정 순서**가 요지다. 지정 순서는 자동 선정(생성순)과
@@ -323,6 +354,7 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
 test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 지정 순서가 지켜진다", async ({
   page,
 }) => {
+  await clearOrgMaterials();
   await ensureTodayScope();
   await login(page, STUDENT);
   await expect(page).toHaveURL(/\/learn\/today/, { timeout: 30_000 });
