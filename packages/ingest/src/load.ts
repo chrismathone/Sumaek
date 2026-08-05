@@ -397,19 +397,31 @@ export async function loadQuestions(
     withoutAnswer: [],
   };
 
+  /* 같은 판·같은 인쇄 번호는 다시 넣지 않는다.
+   *
+   * 예전에는 문항마다 한 번씩 물었다 — 6,800문항이면 6,800왕복이고, 그 답은
+   * 전부 같은 한 판(book_edition)의 번호 목록이었다. 한 번에 받아 둔다.
+   * (반입은 한 판을 통째로 넣는 단발 작업이라, 도는 도중에 같은 판에 다른
+   *  프로세스가 끼어들 일이 없다 — 그래도 아래 insert가 실패하면 그때
+   *  드러난다. 여기서 거르는 것은 「다시 돌렸을 때」를 위한 것이다.) */
+  const alreadyLoaded = new Set(
+    (
+      await sql<{ printed_number: string }[]>`
+        select printed_number from questions
+        where organization_id = ${org} and book_edition_id = ${bookEditionId}
+          and printed_number is not null
+      `
+    ).map((r) => r.printed_number),
+  );
+
   for (const question of input.questions) {
     const printedNumber = question.printedNumber;
 
-    /* 같은 판·같은 인쇄 번호는 다시 넣지 않는다 */
-    const [duplicate] = await sql<{ id: string }[]>`
-      select id::text as id from questions
-      where organization_id = ${org} and book_edition_id = ${bookEditionId}
-        and printed_number = ${printedNumber}
-    `;
-    if (duplicate) {
+    if (alreadyLoaded.has(printedNumber)) {
       result.skipped += 1;
       continue;
     }
+    alreadyLoaded.add(printedNumber);
 
     const expressions: { id: string; raw: string; latex: string }[] = [];
     const body = buildBody(question, expressions);
@@ -549,22 +561,43 @@ export async function loadQuestions(
         )
       `;
 
-      for (const expression of processed) {
+      /* 수식은 문항 하나에 평균 12개다(실측 84,911 / 6,854). 한 건씩 넣으면
+       * 그만큼 왕복하고, 그 왕복이 반입 시간의 대부분이었다 — 서버가 실제로
+       * 쓴 시간은 건당 0.1ms인데 왕복은 그 수십 배다. 한 문장으로 묶는다. */
+      if (processed.length > 0) {
+        const expressionRows = processed.map((expression) => ({
+          id: expression.id,
+          organization_id: org,
+          question_version_id: versionId,
+          raw_source: storable(expression.raw),
+          normalized_latex: expression.result.normalizedLatex,
+          display_mode: "inline",
+          semantic_fingerprint: expression.result.semanticFingerprint,
+          parse_status:
+            expression.result.status === "render_validated"
+              ? "render_validated"
+              : "review_required",
+          render_hash: expression.result.renderHash,
+          normalizer_version: expression.result.versions.normalizer,
+          katex_version: expression.result.versions.katex,
+          macro_policy_version: expression.result.versions.macroPolicy,
+        }));
         await tx`
-          insert into math_expressions (
-            id, organization_id, question_version_id, raw_source, normalized_latex,
-            display_mode, semantic_fingerprint, parse_status, render_hash,
-            normalizer_version, katex_version, macro_policy_version
-          ) values (
-            ${expression.id}, ${org}, ${versionId}, ${storable(expression.raw)},
-            ${expression.result.normalizedLatex}, 'inline',
-            ${expression.result.semanticFingerprint},
-            ${expression.result.status === "render_validated" ? "render_validated" : "review_required"},
-            ${expression.result.renderHash},
-            ${expression.result.versions.normalizer},
-            ${expression.result.versions.katex},
-            ${expression.result.versions.macroPolicy}
-          )
+          insert into math_expressions ${tx(
+            expressionRows,
+            "id",
+            "organization_id",
+            "question_version_id",
+            "raw_source",
+            "normalized_latex",
+            "display_mode",
+            "semantic_fingerprint",
+            "parse_status",
+            "render_hash",
+            "normalizer_version",
+            "katex_version",
+            "macro_policy_version",
+          )}
         `;
       }
 
@@ -575,17 +608,33 @@ export async function loadQuestions(
         lookupConcept(input.titleToConcept, question.typeContext?.title) ??
         lookupConcept(input.unitToConcept, question.unit?.title) ??
         [];
-      for (const weight of weights) {
+      const alignmentRows = weights.flatMap((weight) => {
         const conceptId = conceptIdBySlug.get(weight.slug);
-        if (!conceptId) continue;
+        return conceptId
+          ? [
+              {
+                id: uuidv7(),
+                organization_id: org,
+                question_id: questionId,
+                concept_id: conceptId,
+                weight: String(weight.weight),
+                /* 사람이 쓴 표로 이었다 — AI 추측이 아니다 */
+                provenance: "human",
+              },
+            ]
+          : [];
+      });
+      if (alignmentRows.length > 0) {
         await tx`
-          insert into question_alignments (
-            id, organization_id, question_id, concept_id, weight, provenance
-          ) values (
-            ${uuidv7()}, ${org}, ${questionId}, ${conceptId}, ${String(weight.weight)},
-            /* 사람이 쓴 표로 이었다 — AI 추측이 아니다 */
-            'human'
-          )
+          insert into question_alignments ${tx(
+            alignmentRows,
+            "id",
+            "organization_id",
+            "question_id",
+            "concept_id",
+            "weight",
+            "provenance",
+          )}
         `;
       }
       if (weights.length === 0) result.unaligned.push(printedNumber);

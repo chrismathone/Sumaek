@@ -22,6 +22,41 @@ export interface DayReadiness {
   summary: PreviewSummary;
 }
 
+/* 학생 투영을 몇 명씩 겹쳐 돌릴지.
+ *
+ * 투영 한 번은 DB 왕복 7~9회이고 그 대부분이 **직렬**이다 — 앞 질의의 결과가
+ * 다음 질의의 인자다. 그래서 이 화면의 시간은 「DB가 일한 시간」이 아니라
+ * 「왕복 횟수 × 지연」이다. 실측: 학생 5명 · 질의 47회 · DB 실행 합계 13ms에
+ * 페이지 11.3초(함수 iad1 · DB 서울). 학생을 한 명씩 줄 세우면 그 47회가
+ * 전부 한 줄이 된다.
+ *
+ * 상한을 두는 이유는 공유 풀이 max 10이기 때문이다(client.ts). 투영 하나가
+ * 한때 3건까지 동시에 물으므로 6명이면 최대 18건 — 풀을 넘는 만큼은
+ * postgres.js가 큐에 세우니 안전하지만, 더 올려도 이득이 없다.
+ * 무제한으로 풀면 반 하나(30명)가 풀을 통째로 점거해 같은 순간의 다른
+ * 요청을 굶긴다. */
+const PROJECTION_CONCURRENCY = 6;
+
+/** 순서를 지키면서 최대 `limit`명씩 겹쳐 돌린다. */
+async function mapWithLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = next;
+      next += 1;
+      if (i >= items.length) return;
+      out[i] = await run(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export async function loadDayReadiness(input: {
   organizationId: string;
   date: IsoDate;
@@ -54,15 +89,21 @@ export async function loadDayReadiness(input: {
     order by g.name, l.display_name, l.id
   `;
 
-  const byGroup = new Map<string, DayReadiness>();
-  for (const r of rows) {
-    /* 투영은 학생마다 한 번이다. 반이 크면 그만큼 돈다 — 그래서 이 화면은
-     * 날짜·반을 **골라서** 본다(전체를 한 번에 훑지 않는다). */
-    const view = await projectToday({
+  /* 투영은 학생마다 한 번이다. 반이 크면 그만큼 돈다 — 그래서 이 화면은
+   * 날짜·반을 **골라서** 본다(전체를 한 번에 훑지 않는다). 다만 골라 본
+   * 뒤에도 학생 사이에는 의존이 없다: A의 준비도는 B의 결과를 쓰지 않는다.
+   * 줄 세울 이유가 없어 겹쳐 돌린다. */
+  const views = await mapWithLimit(rows, PROJECTION_CONCURRENCY, (r) =>
+    projectToday({
       learner: { organizationId: input.organizationId, learnerId: r.learner_id },
       today: input.date,
       persist: false,
-    });
+    }),
+  );
+
+  const byGroup = new Map<string, DayReadiness>();
+  for (const [i, r] of rows.entries()) {
+    const view = views[i]!;
 
     let entry = byGroup.get(r.group_id);
     if (!entry) {

@@ -119,42 +119,49 @@ export async function getTodayScope(
 ): Promise<TodayScope> {
   const sql = getSharedSql();
 
-  const individual = await sql<
-    { id: string; planned_node_ids: unknown; learning_group_id: string | null }[]
+  /* ②가 있으면 ①은 아예 읽지 않는다 — 「없을 때만 물러선다」를 **한 왕복**
+   * 안에서 판정한다. 예전에는 개별 일정을 묻고, 비었으면 반 공통을 다시
+   * 물었다. 판정은 같지만 왕복이 둘이었고, 준비도 화면은 이 함수를 학생
+   * 수만큼 돌린다 — 학생 30명이면 헛왕복만 30번이다. 물러섬의 조건은
+   * SQL이 이미 알 수 있는 것이므로 SQL에 맡긴다. */
+  const rows = await sql<
+    {
+      id: string;
+      planned_node_ids: unknown;
+      learning_group_id: string | null;
+      source: "learner_schedule" | "group_session";
+    }[]
   >`
-    select li.id::text, li.planned_node_ids, li.learning_group_id::text
-    from learner_schedule_items li
-    where li.organization_id = ${learner.organizationId}
-      and li.learner_id = ${learner.learnerId}
-      and li.item_date = ${today}::date
-    order by li.starts_at
+    with individual as (
+      select li.id::text as id, li.planned_node_ids,
+             li.learning_group_id::text as learning_group_id,
+             li.starts_at, 'learner_schedule' as source
+      from learner_schedule_items li
+      where li.organization_id = ${learner.organizationId}
+        and li.learner_id = ${learner.learnerId}
+        and li.item_date = ${today}::date
+    ),
+    fallback as (
+      select s.id::text as id, s.planned_node_ids,
+             s.learning_group_id::text as learning_group_id,
+             s.starts_at, 'group_session' as source
+      from sessions s
+      join learning_group_memberships m
+        on m.learning_group_id = s.learning_group_id
+       and m.learner_id = ${learner.learnerId}
+       and m.status = 'active'
+      where s.organization_id = ${learner.organizationId}
+        and s.session_date = ${today}::date
+        and s.status <> 'cancelled'
+        and not exists (select 1 from individual)
+    )
+    select id, planned_node_ids, learning_group_id, source
+    from (select * from individual union all select * from fallback) t
+    order by starts_at
   `;
 
-  const group =
-    individual.length > 0
-      ? []
-      : await sql<
-          { id: string; planned_node_ids: unknown; learning_group_id: string | null }[]
-        >`
-          select s.id::text, s.planned_node_ids, s.learning_group_id::text
-          from sessions s
-          join learning_group_memberships m
-            on m.learning_group_id = s.learning_group_id
-           and m.learner_id = ${learner.learnerId}
-           and m.status = 'active'
-          where s.organization_id = ${learner.organizationId}
-            and s.session_date = ${today}::date
-            and s.status <> 'cancelled'
-          order by s.starts_at
-        `;
-
-  const rows = individual.length > 0 ? individual : group;
   const source: DayPlanSourceKind =
-    individual.length > 0
-      ? "learner_schedule"
-      : group.length > 0
-        ? "group_session"
-        : "review_only";
+    (rows[0]?.source as DayPlanSourceKind | undefined) ?? "review_only";
 
   const nodeIds = rows.flatMap((r) => nodeIdList(r.planned_node_ids));
 
@@ -241,9 +248,6 @@ interface TodayNode extends ExecutableNode {
   conceptIds: string[];
 }
 
-/** 노드 id → 그 노드가 다루는 개념 (자료를 노드별로 가르기 위해) */
-const nodeConcepts = new Map<string, string[]>();
-
 async function listTodayNodes(
   learner: LearnerRef,
   nodeIds: readonly string[],
@@ -251,7 +255,6 @@ async function listTodayNodes(
   /* `override:` 접두 id는 학생 오버라이드가 jsonb 안에 끼워 넣은 노드라
    * route_nodes에 행이 없다. 실행기에 넘길 payload도 없으므로 여기서 뺀다. */
   const real = nodeIds.filter((n) => !n.startsWith("override:"));
-  nodeConcepts.clear();
   if (real.length === 0) return [];
 
   const sql = getSharedSql();
@@ -279,7 +282,6 @@ async function listTodayNodes(
     const conceptIds = Array.isArray(r.concept_ids)
       ? (r.concept_ids as unknown[]).filter((v): v is string => typeof v === "string")
       : [];
-    nodeConcepts.set(r.id, conceptIds);
     return {
       id: r.id,
       kind: r.kind,
@@ -354,7 +356,15 @@ export async function projectToday(input: {
     to: addDays(today, UPCOMING_LOOKAHEAD_DAYS),
   };
 
-  const [materials, assignments, reviewCounts] = await Promise.all([
+  /* 오늘 노드를 실행기로 편다 (T2.2).
+   *
+   * 예전에는 이 파일이 자료·평가·복습을 직접 늘어놓았고, 그래서 교재
+   * 범위·숙제 노드는 아무 데도 나타나지 않았다. 어떤 노드가 무엇으로
+   * 펼쳐지는지는 core가 정한다 — 여기서 다시 정하면 규칙이 둘이 된다.
+   *
+   * 넷은 서로를 읽지 않는다 — 전부 `scope` 하나만 본다. 줄 세우면 왕복이
+   * 넷이고 겹치면 하나다. */
+  const [materials, assignments, reviewCounts, nodes] = await Promise.all([
     listMaterials({
       organizationId: learner.organizationId,
       learnerId: learner.learnerId,
@@ -371,14 +381,16 @@ export async function projectToday(input: {
       where organization_id = ${learner.organizationId}
         and learner_id = ${learner.learnerId}
     `,
+    listTodayNodes(learner, scope.nodeIds),
   ]);
 
-  /* 오늘 노드를 실행기로 편다 (T2.2).
-   *
-   * 예전에는 이 파일이 자료·평가·복습을 직접 늘어놓았고, 그래서 교재
-   * 범위·숙제 노드는 아무 데도 나타나지 않았다. 어떤 노드가 무엇으로
-   * 펼쳐지는지는 core가 정한다 — 여기서 다시 정하면 규칙이 둘이 된다. */
-  const nodes = await listTodayNodes(learner, scope.nodeIds);
+  /* 노드 id → 그 노드가 다루는 개념. 예전에는 이 표가 **모듈 전역**이었다 —
+   * listTodayNodes가 매번 clear()하고 다시 채웠다. 한 프로세스가 요청을
+   * 여럿 동시에 처리하므로(학생 둘이 같은 순간에 오늘 학습을 열면) 한쪽의
+   * clear가 다른 쪽이 읽기 직전에 끼어들어 개념이 빈 채로 나올 수 있었다.
+   * 노드가 이미 conceptIds를 들고 있으니 호출마다 새로 만든다. */
+  const nodeConcepts = new Map(nodes.map((n) => [n.id, n.conceptIds]));
+
   const bookTitles = await lookupBookTitles(
     learner,
     nodes.map((n) => n.bookEditionId).filter((v): v is string => Boolean(v)),
