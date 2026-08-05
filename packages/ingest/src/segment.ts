@@ -1208,18 +1208,33 @@ function buildQuestion(
       l.spans.some((s) => s.x0 >= f.x0 && s.x1 <= f.x1 && s.y0 >= f.y0 && s.y1 <= f.y1),
     ),
   );
-  /* 치수 라벨은 그림의 **가장자리에 걸쳐** 놓인다(「90 cm」가 변 바깥으로
-   * 반쯤 나온다). 완전 포함으로 보면 절반이 발문으로 새어 문항 0148처럼
-   * 「오른쪽 90cm그림과 같이」가 된다. 글자의 중심이 그림 안이면 그림의
-   * 것으로 본다. */
+  /* 뭉치의 바깥 사각형이 아니라 **그 안의 선**에 대고 잰다.
+   *
+   * 뭉치는 사각형이 아니다. 좌표평면 격자 옆에 답 쓰는 칸 선 하나가
+   * clusterGap 안으로 들어오면 한 뭉치가 되고, 바깥 사각형은 단을
+   * 가로지른다. 사각형으로 재면 그 띠에 걸친 발문이 통째로 라벨이 된다
+   * (중1-1 0918이 그렇게 빈 문항이 됐다).
+   *
+   * 치수 라벨은 그림의 **가장자리에 걸쳐** 놓이므로(「90 cm」가 변 바깥으로
+   * 반쯤 나온다) 선에서 labelMargin만큼은 떨어져도 그림의 것으로 본다.
+   * 완전 포함으로 보면 절반이 발문으로 새어 문항 0148처럼
+   * 「오른쪽 90cm그림과 같이」가 된다. */
+  const figureStrokes = figureBoxes.map((f) =>
+    page.drawings.filter(
+      (d) => d.x0 >= f.x0 - 4 && d.x1 <= f.x1 + 4 && d.y0 >= f.y0 - 4 && d.y1 <= f.y1 + 4,
+    ),
+  );
   const insideFigure = (s: IndexedSpan): boolean => {
     /* 도형 라벨 글꼴이면 기하를 볼 것도 없다 — 그 글꼴이 곧 「그림 안」이다.
      * 선이 성긴 도형은 벡터 뭉치로 안 잡혀 상자가 서지 않는다. */
     if (profile.fonts.figureLabel.test(s.font)) return true;
     const cx = (s.x0 + s.x1) / 2;
     const cy = (s.y0 + s.y1) / 2;
-    return figureBoxes.some(
-      (f) => cx >= f.x0 - 6 && cx <= f.x1 + 6 && cy >= f.y0 - 4 && cy <= f.y1 + 4,
+    const m = profile.figures.labelMargin;
+    return figureStrokes.some((strokes) =>
+      strokes.some(
+        (d) => cx >= d.x0 - m && cx <= d.x1 + m && cy >= d.y0 - m && cy <= d.y1 + m,
+      ),
     );
   };
   const figureLabels: string[] = [];
