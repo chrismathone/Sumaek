@@ -871,9 +871,16 @@ export function parseAnswerPage(
     /* **근호 조각은 기준 크기를 바꾸지 않는다.** 근호는 안의 내용 높이에
      * 맞춰 글리프를 늘여 그리므로 size가 본문보다 크고, 그것을 기준으로
      * 삼으면 뒤따르는 내용이 통째로 위첨자가 된다. 가구는 글자가 아니다. */
+    /* **근호·분수 글꼴에서 온 것은 전부 가구로 본다.** 예전에는 표에 든
+     * 글리프만 가구로 쳤는데, 표에 없는 것(`¿`·`Ä`·`¾`·`¨`)이 글자로
+     * 취급되면서 뒤따르는 조각을 위첨자로 말아 넣었다 — 중3 별책 해설이
+     * `'^{d}'^{d}`·`=¿^{1}^{(}'^{34)}^{d}` 꼴로 뭉개진 이유다. 못 읽는
+     * 글리프일수록 더 그렇다. 가구는 글자의 크기를 정하지 않는다. */
+    const isFurniture = /^EHRoot/.test(font) || (/^EHboNA/.test(font) && !/;.*;/.test(raw));
     const isRadical =
+      isFurniture ||
       radicalPiece(raw, font, chars?.[0] ? chars[0][2] - chars[0][0] : undefined) !==
-      null;
+        null;
     const raised = adjacent && !isRadical && size < lastSize * 0.8;
     if (!raised && !isRadical) lastSize = size;
     /* 표는 앞 조각에 붙이지 않는다 — 한 덩어리로 서야 모양이 산다 */

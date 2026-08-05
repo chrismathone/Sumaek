@@ -820,7 +820,11 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
      *
      * □로 바꾸면 셋이 동시에 지켜진다: 화면은 그려지고, 검수자는 빈자리를
      * 보고, unknown에 남았으니 문항은 검수 게이트에 그대로 걸린다. */
-    out += LATEX_SPECIAL.test(ch) ? "\\square " : ch;
+    /* 근호·분수 글꼴에서 온 못 읽는 글리프도 자리표시자로 낸다. 그 글꼴의
+     * 글리프는 **가구지 글자가 아니라서**, 날것으로 내보내면 `'`처럼 뜻이
+     * 있는 글자로 읽히거나 뒤따르는 조각을 위첨자로 말아 넣는다. */
+    const furniture = font !== undefined && /^(EHRoot|EHboNA)/.test(font);
+    out += LATEX_SPECIAL.test(ch) || furniture ? "\\square " : ch;
   }
 
   // 4) 자리표시자 되돌리기
