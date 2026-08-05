@@ -1396,8 +1396,8 @@ Set-Location ..\Su-Maek-t6-4-release
 **아는 한계**: `worker status --flow`는 오늘만 본다(내일 결손은 `/app/readiness?date=`). 「차단 학생 N명」은 아무에게도 자동으로 가지 않는다 — 지금은 사람이 명령을 돌려야 안다. 둘 다 RB-16 8장에 적었다.
 
 **완료 시**:
-- [ ] 사용자 승인 후 main 병합
-- [ ] `git worktree remove ..\Su-Maek-t6-4-release`
+- [x] 사용자 승인 후 main 병합
+- [x] `git worktree remove ..\Su-Maek-t6-4-release`
 
 ---
 
