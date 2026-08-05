@@ -931,7 +931,6 @@ export function parseAnswerPage(
         }
         return;
       }
-      const previous = runs[runs.length - 1];
       /* 윗줄 글리프는 혼자서는 아무 뜻이 없다 — 씌울 글자를 찾아 준다.
        *
        * 맞닿았는지는 보지 않는다. 폭이 0이라 뒤따르는 글자와 x가 같고,
