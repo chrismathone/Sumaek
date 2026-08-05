@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 import { createSql } from "../client";
 import * as schema from "../schema";
 import { ensureDefaultAssessmentPolicies } from "../domain/assessment-policy";
-import { KST } from "@su-maek/core/shared";
+import { KST, contentWriteOrganizationId } from "@su-maek/core/shared";
 
 /* ─────────────────────────────────────────────────────────────
  * 합성 시드 — 실제 학생 개인정보를 절대 사용하지 않는다 (3장).
@@ -14,6 +14,15 @@ import { KST } from "@su-maek/core/shared";
  * ───────────────────────────────────────────────────────────── */
 
 const ORG_ID = "00000000-0000-7000-8000-000000000001";
+/* 콘텐츠(사용권·문항·자료)는 학원이 아니라 **플랫폼**이 갖는다 (ADR-0020).
+ *
+ * 시드가 콘텐츠를 데모 조직에 넣으면, 빈 DB에 시드만 돌린 상태에서
+ * 플랫폼 조직이 비어 있게 된다 — 새로 만든 학원의 학생 화면이 그대로
+ * 빈다(V-1이 잡는 바로 그 상태다). E2E도 시드 자료를 「공용」으로 전제한다.
+ *
+ * 이미 데모 조직에 들어가 있는 행은 여기서 고치지 않는다(onConflictDoNothing
+ * 이라 org가 갱신되지 않는다) — 그건 `pnpm content:move-to-platform`의 일이다. */
+const CONTENT_ORG_ID = contentWriteOrganizationId(ORG_ID);
 const TEACHER_USER_ID = "00000000-0000-7000-8000-0000000000a1";
 const GROUP_ID = "00000000-0000-7000-8000-000000000010";
 const PERIOD_ID = "00000000-0000-7000-8000-000000000011";
@@ -253,7 +262,7 @@ async function main(): Promise<void> {
     .insert(schema.contentRights)
     .values({
       id: RIGHT_ID,
-      organizationId: ORG_ID,
+      organizationId: CONTENT_ORG_ID,
       rightsHolder: "수맥 합성 콘텐츠 (자체 제작)",
       allowedUses: { transform: true, ai: true, print: true, online: true },
       status: "usable",
@@ -335,7 +344,7 @@ async function main(): Promise<void> {
       .insert(schema.questions)
       .values({
         id: questionId,
-        organizationId: ORG_ID,
+        organizationId: CONTENT_ORG_ID,
         kind: isChoice ? "multiple_choice" : "short_answer",
         reviewStatus: "published",
         contentRightId: RIGHT_ID,
@@ -348,7 +357,7 @@ async function main(): Promise<void> {
       .insert(schema.questionVersions)
       .values({
         id: versionId,
-        organizationId: ORG_ID,
+        organizationId: CONTENT_ORG_ID,
         questionId,
         versionNumber: 1,
         body: [{ type: "text", text: seed.body }],
@@ -376,7 +385,7 @@ async function main(): Promise<void> {
         .insert(schema.questionAlignments)
         .values({
           id: uuidv7(),
-          organizationId: ORG_ID,
+          organizationId: CONTENT_ORG_ID,
           questionId,
           conceptId,
           weight: "1",
@@ -457,7 +466,7 @@ async function main(): Promise<void> {
       .insert(schema.learningMaterials)
       .values({
         id: "00000000-0000-7000-8000-000000000070",
-        organizationId: ORG_ID,
+        organizationId: CONTENT_ORG_ID,
         conceptId: materialConceptId,
         kind: "reading",
         title: "가감법 — 한 문자를 없애는 법",
@@ -477,7 +486,7 @@ async function main(): Promise<void> {
       .insert(schema.learningMaterials)
       .values({
         id: "00000000-0000-7000-8000-000000000071",
-        organizationId: ORG_ID,
+        organizationId: CONTENT_ORG_ID,
         conceptId: materialConceptId,
         kind: "video",
         title: "가감법 5분 정리",
@@ -502,7 +511,7 @@ async function main(): Promise<void> {
       .insert(schema.learningMaterials)
       .values({
         id: "00000000-0000-7000-8000-000000000072",
-        organizationId: ORG_ID,
+        organizationId: CONTENT_ORG_ID,
         conceptId: materialConceptId,
         kind: "practice",
         title: "가감법 연습 2문항",
