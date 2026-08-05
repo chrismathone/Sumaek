@@ -375,6 +375,38 @@ function takeContiguous(
   return out;
 }
 
+/**
+ * 한 줄 안에서 **기준선이 같은 식구만** 골라 x 순으로 세운다.
+ *
+ * 단을 무시하고 세운 줄(공통 지시문 찾기용)에는 **다른 곳의 아랫줄이 함께
+ * 붙어 있는 일이 있다.** 왼쪽 단 문항 번호는 글자가 14pt라 세로 띠가 넓고,
+ * 그 띠에 오른쪽 단의 두 줄이 나란히 걸리면 셋이 한 줄이 된다. 그대로
+ * 이어 붙이면 「[0104~x의 크기를 구하시오0105]」처럼 **표식이 두 동강 난다.**
+ *
+ * 줄 세우기 자체를 고치려다 1357문항이 달라졌다 — 그 흡수 규칙은 공통
+ * 지시문의 이어지는 줄을 붙잡는 데 쓰이고 있었다. 그래서 줄은 그대로 두고
+ * **여기서만** 기준선으로 다시 가른다.
+ *
+ * 위첨자는 데려간다. `y=a(x-p)Û의 그래프` 에서 `Û`를 떼면 없는 식이 된다.
+ */
+/** 「[0104~0105]」 — 조각의 **머리**가 표식인지 본다 */
+const MARKER_HEAD = /^\[\s*\d{4}\s*~\s*\d{4}\s*\]/;
+
+function baselineKin(line: Line, anchor: IndexedSpan): IndexedSpan[] {
+  const SAME = 2.5;
+  const kin = line.spans.filter((s) => Math.abs(s.y1 - anchor.y1) <= SAME);
+  const top = Math.min(...kin.map((s) => s.y0));
+  const bottom = Math.max(...kin.map((s) => s.y1));
+  const size = Math.max(...kin.map((s) => s.size));
+  return line.spans
+    .filter((s) => {
+      if (Math.abs(s.y1 - anchor.y1) <= SAME) return true;
+      const center = (s.y0 + s.y1) / 2;
+      return s.size < size * 0.8 && center > top && center < bottom;
+    })
+    .sort((a, b) => a.x0 - b.x0);
+}
+
 function boundsOf(spans: { x0: number; y0: number; x1: number; y1: number }[]): Rect {
   return {
     x0: Math.min(...spans.map((s) => s.x0)),
@@ -837,6 +869,8 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
     /** 지시문에 딸린 보기·조건 상자 — 그 구간의 문항 모두가 쓴다 */
     box?: { label: string; items: ConditionItem[] };
   }[] = [];
+  /** 이미 잡은 번호 구간 — 같은 구간을 두 번 등록하지 않는다 */
+  const registered = new Set<string>();
   for (let i = 0; i < fullWidthLines.length; i += 1) {
     const line = fullWidthLines[i]!;
 
@@ -856,19 +890,53 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
      * 시작으로 삼았기 때문에 그런 대괄호가 앞에 있으면 엉뚱한 자리부터
      * 지시문으로 읽었다. 이제는 조각마다 표식이 맞는지 확인한다. */
     const starts = line.spans.flatMap((s, idx) => (s.text.includes("[") ? [idx] : []));
+    /* 1차 — span 차례로 자른다. 이것이 지금까지 하던 방식이고, 대부분은
+     * 여기서 맞는다. `nextX`는 옆 지시문이 시작하는 자리다 — 이어지는 줄을
+     * 받을 때 옆 단까지 넘어가지 않게 막는다. */
+    const byOrder = starts.map((idx, k) => ({
+      spans: line.spans.slice(idx, starts[k + 1]),
+      nextX: line.spans[starts[k + 1]!]?.x0 ?? Infinity,
+      anchorY1: line.spans[idx]!.y1,
+      sameLineFirst: false,
+    }));
+
+    /* 2차 — **기준선으로** 다시 찾는다. 1차가 놓친 것만 줍는다.
+     *
+     * 줄에 다른 곳의 아랫줄이 섞여 들어와 있으면 span 차례로 이을 때 아랫줄
+     * 글자가 끼어들어 표식이 두 동강 난다 —「[0104~x의 크기를 구하시오0105]」.
+     * 같은 기준선의 식구만 이으면 표식이 온전히 선다.
+     *
+     * **1차를 대신하지 않고 뒤에 세우는 이유**가 있다. 기준선으로 가르면
+     * 기준선이 다른 정상 조각까지 떨어져 나간다 — 「y(km)」의 km, 아래로
+     * 처진 분수. 그것으로 1차를 갈아치웠더니 125문항의 발문이 짧아졌다.
+     * 그래서 **1차가 못 찾은 구간에만** 쓴다. */
+    const kins = line.spans
+      .filter((s) => s.text.includes("["))
+      .map((s) => ({ span: s, kin: baselineKin(line, s).filter((t) => t.x0 >= s.x0 - 0.5) }))
+      .filter((m) =>
+        MARKER_HEAD.test(cleanBodyText(m.kin.map((t) => t.text).join("")).trim()),
+      )
+      .sort((a, b) => a.span.x0 - b.span.x0);
+    const byBaseline = kins.map((m, k) => ({
+      spans: m.kin.filter((s) => s.x0 < (kins[k + 1]?.span.x0 ?? Infinity)),
+      nextX: kins[k + 1]?.span.x0 ?? Infinity,
+      anchorY1: m.span.y1,
+      sameLineFirst: true,
+    }));
+
     let advance = 0;
 
-    for (let k = 0; k < starts.length; k += 1) {
-      const segment = line.spans.slice(starts[k]!, starts[k + 1]);
-      const own = takeContiguous(segment, profile);
+    for (const cand of [...byOrder, ...byBaseline]) {
+      const { nextX, anchorY1, sameLineFirst } = cand;
+      const own = takeContiguous(cand.spans, profile);
       const ownText = cleanBodyText(own.map((s) => s.text).join("")).trim();
       const range = profile.patterns.sharedInstruction.exec(ownText);
       if (!range) continue;
+      const key = `${range[1]}~${range[2]}`;
+      if (registered.has(key)) continue;
+      registered.add(key);
 
       const instructionX = own[0]?.x0 ?? 0;
-      /* 이 지시문의 오른쪽 끝 — 옆 지시문이 시작하는 자리다. 이어지는 줄을
-       * 받을 때 옆 단까지 넘어가지 않게 막는다. */
-      const nextX = line.spans[starts[k + 1]!]?.x0 ?? Infinity;
       const runs = toRuns(own, profile);
       for (const s of own) instructionSpans.add(s.index);
       /* 「[0001~0006]」은 지면에서 묶음을 가리키는 표식이지 문제의 말이 아니다.
@@ -886,10 +954,30 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
        * 넷 모두에 붙어 네 문항이 전부 같은 수를 묻는 꼴이 됐다. 결과만 보면
        * 멀쩡해 보이고, 재현 검사에서 네 문항의 답이 똑같이 나와서야 드러났다. */
       const ended = /[.?!]$/.test(ownText);
-      const next = ended ? undefined : fullWidthLines[i + 1];
-      if (next) {
-        // 이어지는 줄도 지시문이 선 x 구간에서만 읽는다
-        const window = next.spans.filter((s) => s.x0 >= instructionX - 12 && s.x0 < nextX);
+      /* 이어지는 줄은 **같은 줄 안에 들어와 있을 수도 있다** — 옆 단의 큰
+       * 글자가 만든 띠에 두 줄이 함께 걸린 경우다. 그럴 때는 그 아랫줄이
+       * 이어지는 줄이고, 없을 때만 다음 줄을 본다. 어느 쪽이든 지시문이 선
+       * x 구간에서만 읽는다. */
+      const inWindow = (s: IndexedSpan): boolean =>
+        s.x0 >= instructionX - 12 && s.x0 < nextX;
+      const below = line.spans
+        .filter((s) => s.y1 > anchorY1 + 2.5 && inWindow(s))
+        .sort((a, b) => a.y1 - b.y1);
+      /* 2차로 찾은 지시문은 이어지는 줄도 **같은 줄 안에** 들어와 있다 —
+       * 애초에 두 줄이 한 줄로 붙어서 못 찾았던 것이니까. 같은 줄 아래를
+       * 먼저 보고, 안 되면 다음 줄을 본다. 하나만 보고 끝내면 같은 줄에
+       * 엉뚱한 조각이 있을 때 진짜 이어지는 줄을 놓친다. */
+      const candidates = ended
+        ? []
+        : [
+            ...(sameLineFirst && below.length > 0
+              ? [baselineKin(line, below[0]!).filter(inWindow)]
+              : []),
+            fullWidthLines[i + 1]?.spans.filter(inWindow) ?? [],
+          ];
+      for (let c = 0; c < candidates.length; c += 1) {
+        const window = candidates[c]!;
+        if (window.length === 0) continue;
         const nextOwn = takeContiguous(window, profile);
         /* 문항 번호가 **줄 어디에라도** 있으면 그 줄은 이미 문항의 것이다.
          * 「맨 앞에만 없으면 된다」로 봤더니 문항 0003이 지시문에 먹혔다. */
@@ -897,11 +985,26 @@ export function extractPage(page: PageDump, profile: ExtractionProfile): PageExt
           (g) => questionNumberOf(g, profile) !== null,
         );
         const nextText = cleanBodyText(nextOwn.map((s) => s.text).join("")).trim();
-        if (!hasNumber && !profile.patterns.sharedInstruction.test(nextText)) {
-          runs.push(...toRuns(nextOwn, profile));
-          for (const s of nextOwn) instructionSpans.add(s.index);
-          advance = 1;
+        if (hasNumber || profile.patterns.sharedInstruction.test(nextText)) continue;
+        /* 2차로 찾은 지시문의 「같은 줄 아래」는 **한 줄이 아닐 수 있다** —
+         * 애초에 여러 줄이 뭉쳐 있던 자리다. 뒤섞이면 앞줄의 토막이 그대로
+         * 다시 나온다(「온도가 15」가 두 번). 그럴 때는 안 받는다. 번호 글꼴이
+         * 섞여 있어도 안 받는다 — 그건 이미 다른 문항의 것이다. */
+        if (sameLineFirst && c === 0) {
+          const repeats = Array.from({ length: Math.max(0, nextText.length - 5) }, (_, p) =>
+            nextText.slice(p, p + 6),
+          ).some((chunk) => ownText.includes(chunk));
+          const numbered = window.some((s) => profile.fonts.questionNumber.font.test(s.font));
+          /* 이어지는 줄은 지시문과 **같은 왼끝**에서 시작한다. 훨씬 오른쪽에서
+           * 시작하면 그건 옆 단의 다른 문항이다(중3-1 0900이 0909의 식을
+           * 받아 갔다). */
+          const indented = (nextOwn[0]?.x0 ?? 0) > instructionX + 20;
+          if (repeats || numbered || indented) continue;
         }
+        runs.push(...toRuns(nextOwn, profile));
+        for (const s of nextOwn) instructionSpans.add(s.index);
+        if (c === candidates.length - 1) advance = 1;
+        break;
       }
       /* **공유 지시문에 딸린 보기 상자.**
        *
