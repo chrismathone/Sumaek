@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import { getSharedSql } from "@su-maek/db";
 import { DEFAULT_MATRIX, canWrite } from "@su-maek/core/authz";
@@ -82,7 +83,7 @@ export default async function MaterialsPage({
     join content_rights r on r.id = q.content_right_id and r.status = 'usable'
     join question_alignments a on a.question_id = q.id and a.concept_id = c.id
       and a.provenance <> 'ai_suggested'
-    where q.organization_id = ${user.organizationId}
+    where q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
       and q.review_status = 'published'
   ) as usable_questions`;
 

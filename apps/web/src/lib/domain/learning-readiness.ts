@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
 import { resolveAssessmentPolicy } from "@su-maek/db/domain";
@@ -164,7 +165,7 @@ export async function checkMaterialReadiness(input: {
   >`
     select title, kind::text as kind, question_ids
     from learning_materials
-    where id = ${input.materialId} and organization_id = ${input.organizationId}
+    where id = ${input.materialId} and organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
   `;
   if (!material) return report([]);
 
@@ -239,7 +240,7 @@ export async function checkRouteReadiness(input: {
       : await sql<MaterialRow[]>`
           select id::text, concept_id::text, kind::text as kind, title, question_ids
           from learning_materials
-          where organization_id = ${input.organizationId}
+          where organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
             and status = 'published'
             and concept_id = any(${conceptIds}::uuid[])
         `;

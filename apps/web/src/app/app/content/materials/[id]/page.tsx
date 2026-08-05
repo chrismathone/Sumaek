@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -164,7 +165,7 @@ export default async function MaterialDetailPage({
     from learning_materials m
     join canonical_concepts c on c.id = m.concept_id
     left join users u on u.id = m.created_by
-    where m.id = ${id} and m.organization_id = ${user.organizationId}
+    where m.id = ${id} and m.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
   `;
   if (!material) notFound();
 
@@ -175,7 +176,7 @@ export default async function MaterialDetailPage({
         select id::text, title, body, status::text as status
         from learning_materials
         where id = ${material.derived_from_material_id}
-          and organization_id = ${user.organizationId}
+          and organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
       `
     : [];
   const refineReport =
@@ -193,7 +194,7 @@ export default async function MaterialDetailPage({
     join content_rights r on r.id = q.content_right_id and r.status = 'usable'
     join question_alignments a on a.question_id = q.id and a.concept_id = c.id
       and a.provenance <> 'ai_suggested'
-    where q.organization_id = ${user.organizationId}
+    where q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
       and q.review_status = 'published'
   ) as usable_questions`;
 
@@ -239,7 +240,7 @@ export default async function MaterialDetailPage({
           from questions q
           join question_versions v on v.id = q.current_version_id
           join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-          where q.organization_id = ${user.organizationId}
+          where q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
             and q.review_status = 'published'
             and (
               exists (

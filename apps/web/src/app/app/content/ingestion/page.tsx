@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -127,7 +128,7 @@ export default async function IngestionPage({
                    and q.organization_id = sf.organization_id) as question_count
         from source_files sf
         left join users u on u.id = sf.uploaded_by
-        where sf.organization_id = ${user.organizationId}
+        where sf.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           and (${query.q}::text = ''
                or sf.file_name ilike ${`%${query.q}%`}
                or coalesce(u.display_name, '') ilike ${`%${query.q}%`})
@@ -159,7 +160,7 @@ export default async function IngestionPage({
     `,
     sql<{ cnt: number }[]>`
       select count(*)::int as cnt from questions
-      where organization_id = ${user.organizationId}
+      where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
     `,
   ]);
 

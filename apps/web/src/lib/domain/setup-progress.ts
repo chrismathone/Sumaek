@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import { getSharedSql } from "@su-maek/db";
 
 /* ─────────────────────────────────────────────────────────────
@@ -250,7 +251,7 @@ export async function loadSetupFacts(
         where organization_id = ${organizationId} and active_version_id is not null)
         as published_routes,
       (select count(*)::int from learning_materials
-        where organization_id = ${organizationId} and status = 'published') as materials,
+        where organization_id = any(${contentOrganizationIds(organizationId)}::uuid[]) and status = 'published') as materials,
       (select count(*)::int from assessment_policies
         where organization_id = ${organizationId} and is_active = true)
         as assessment_policies

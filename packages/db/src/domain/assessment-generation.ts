@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "../content-org";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "../client";
 import {
@@ -315,7 +316,7 @@ export async function generateDailyTest(options: {
       on a.question_id = q.id
       /* ai_suggested(미검수 제안)는 개념 축이 아니다 — 승인돼야 풀에 잡힌다 */
       and a.provenance <> 'ai_suggested'
-    where q.organization_id = ${organizationId}
+    where q.organization_id = any(${contentOrganizationIds(organizationId)}::uuid[])
       and q.review_status = 'published'
       and q.is_auto_assignable = true
     group by q.id, q.current_version_id, v.difficulty
@@ -755,7 +756,7 @@ export async function generateConfirmationTest(options: {
       on a.question_id = q.id
       /* ai_suggested(미검수 제안)는 개념 축이 아니다 — 승인돼야 풀에 잡힌다 */
       and a.provenance <> 'ai_suggested'
-    where q.organization_id = ${organizationId}
+    where q.organization_id = any(${contentOrganizationIds(organizationId)}::uuid[])
       and q.review_status = 'published'
       and q.is_auto_assignable = true
     group by q.id, q.current_version_id, v.difficulty

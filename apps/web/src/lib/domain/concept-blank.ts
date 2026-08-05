@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "@su-maek/db";
@@ -99,7 +100,7 @@ export async function listBlankSets(input: {
     join canonical_concepts c on c.id = s.concept_id
     left join learner_blank_progress p
       on p.blank_set_id = s.id and p.learner_id = ${input.learnerId}
-    where s.organization_id = ${input.organizationId}
+    where s.organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and s.concept_id = any(${input.conceptIds}::uuid[])
       and s.status = 'published'
     /* 단계 순서를 이름순에 맡기지 않는다 — full·one·two가 되어 3단계가
@@ -166,7 +167,7 @@ export async function submitBlankAnswers(input: {
     select id::text, stage::text as stage, blanks
     from concept_blank_sets
     where id = ${input.blankSetId}
-      and organization_id = ${input.organizationId}
+      and organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and status = 'published'
   `;
   const empty = { graded: {}, found: [], missing: [], correct: 0, total: 0 };
@@ -308,7 +309,7 @@ export async function getBlankStage(input: {
 
   const readings = await sql<{ id: string; title: string; body: unknown }[]>`
     select id::text, title, body from learning_materials
-    where organization_id = ${input.organizationId}
+    where organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and concept_id = ${input.conceptId}
       and kind = 'reading' and status = 'published'
     order by sort_order, created_at
@@ -344,7 +345,7 @@ export async function listStagesForConcept(input: {
   const sql = getSharedSql();
   const rows = await sql<{ stage: string }[]>`
     select stage::text as stage from concept_blank_sets
-    where organization_id = ${input.organizationId}
+    where organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and concept_id = ${input.conceptId} and status = 'published'
     order by case stage when 'one' then 1 when 'two' then 2 else 3 end
   `;

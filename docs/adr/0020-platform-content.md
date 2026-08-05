@@ -1,4 +1,4 @@
-# ADR-0020 — 콘텐츠는 플랫폼 자산이다 (초안)
+# ADR-0020 — 콘텐츠는 플랫폼 자산이다
 
 | 항목 | 값 |
 |---|---|
@@ -12,7 +12,7 @@
 
 소유자 결정(2026-08-05): **콘텐츠는 조직별이 아니라 DB 전체 자산이고, 마스터 계정만 추가한다. 조직별 콘텐츠는 고려하지 않는다.**
 
-지금 코드는 그 반대다. `0001a_rls_core.sql`이 콘텐츠 표 18개를 `*_org_isolation` 정책으로 조직에 묶었고, 스키마도 `organization_id`가 NOT NULL이다. 그래서 **새 조직을 만들면 개념만 알고 보여 줄 것이 없다 — 학생 화면이 빈다.** eywa 중1반을 가져올 때 새 조직을 포기하고 데모 조직에 얹은 이유가 이것이다.
+지금 코드는 그 반대다. `0001a_rls_core.sql`이 콘텐츠 표 18개를(+ 뒤에 붙은 `learning_materials`·`concept_blank_sets`) `*_org_isolation` 정책으로 조직에 묶었고, 스키마도 `organization_id`가 NOT NULL이다. 그래서 **새 조직을 만들면 개념만 알고 보여 줄 것이 없다 — 학생 화면이 빈다.** eywa 중1반을 가져올 때 새 조직을 포기하고 데모 조직에 얹은 이유가 이것이다.
 
 ### 먼저 못 박아야 할 사실 — RLS는 지금 아무것도 막고 있지 않다
 
@@ -71,7 +71,7 @@ select 'platform'::workspace_kind;
 
 **`organization_id`를 nullable로 만들지 않는 이유**는 되돌릴 수 없어서다. NOT NULL을 풀면 유니크 인덱스·FK·`group by`가 전부 NULL 의미론을 타고, 그 뒤에 「역시 조직별이 필요하네」가 되면 되돌릴 길이 없다. 플랫폼 조직은 그냥 조직이라 기존 FK·인덱스·감사 로그가 **한 줄도 바뀌지 않는다.**
 
-### 2. 콘텐츠 표 18개를 옮긴다 — 나머지는 그대로
+### 2. 콘텐츠 표 19개를 옮긴다 — 나머지는 그대로
 
 | 옮긴다 (플랫폼) | 남는다 (조직) |
 |---|---|
@@ -81,20 +81,15 @@ select 'platform'::workspace_kind;
 | `math_expressions` `math_normalization_runs` `math_render_artifacts` | `notifications` `reports` `import_jobs` |
 | `formula_reviews` `diagram_assets` `question_assets` | `document_exports` — **조직의 출력물**이지 콘텐츠가 아니다 |
 | `duplicate_groups` `content_reviews` `content_rights` | |
-| `learning_materials` | |
+| `learning_materials` `concept_blank_sets` | |
 
 학습자 쪽 표는 콘텐츠를 **id로** 가리킨다(`assessment_questions.question_version_id`, `responses` 등). 조직이 달라져도 FK는 그대로 성립한다 — 옮기는 데 학습 기록을 건드릴 일이 없다.
 
 ### 3. 읽기는 질의가, 쓰기는 역할이 가른다
 
-**읽기** — 콘텐츠 질의의 `organization_id = ${orgId}`를 `= ${contentOrgId()}`로 바꾼다. 도우미 하나를 두고 16개 파일이 그것만 부른다.
+**읽기** — 콘텐츠 질의의 `organization_id = ${orgId}`를 `= any(${contentOrganizationIds(orgId)}::uuid[])`로 바꾼다. 도우미는 `packages/db/src/content-org.ts` 한 곳에 있고 18개 파일이 그것만 부른다.
 
-```ts
-/** 콘텐츠가 사는 곳. 학습자 데이터의 organizationId와 절대 섞지 않는다. */
-export function contentOrganizationId(): string
-```
-
-**쓰기** — 플랫폼 조직에 `content_manager`(또는 `owner`) 멤버십이 있는 계정만. 지금 4곳의 쓰기가 `user.organizationId`를 쓰고 있으니 여기를 `contentOrganizationId()` + 권한 검사로 바꾼다.
+**쓰기** — 플랫폼 조직에 `content_manager`(또는 `owner`) 멤버십이 있는 계정만. 지금 4곳의 쓰기가 `user.organizationId`를 쓰고 있으니 여기를 `contentWriteOrganizationId()` + 권한 검사로 바꾼다.
 
 **RLS**는 이중 방어를 유지하되 같은 규칙을 새긴다 — 읽기는 열고, 쓰기는 막는다.
 
@@ -117,7 +112,7 @@ update questions set organization_id = platform_org_id()
 where organization_id = '<데모 조직>';
 ```
 
-표 18개에 같은 문장을 돌린다. 테스트 조직 30곳이 남긴 문항 1건씩은 **옮기지 않는다** — 테스트 잔여물이고, 옮기면 플랫폼 콘텐츠가 더러워진다. `purge:test-data`가 걷어 간다.
+표 19개에 같은 문장을 돌린다. 테스트 조직 30곳이 남긴 문항 1건씩은 **옮기지 않는다** — 테스트 잔여물이고, 옮기면 플랫폼 콘텐츠가 더러워진다. `purge:test-data`가 걷어 간다.
 
 ## 이 결정이 건드리는 제품 표면 — **소유자 판단이 필요한 지점**
 
@@ -174,7 +169,7 @@ where m.concept_id = any($concepts) and m.status = 'published'
 
 **콘텐츠를 조직마다 복사** — 방향과 정반대다. 같은 문항이 학원 수만큼 늘고, 하나를 고치면 전부를 고쳐야 한다.
 
-**뷰로 가린다 (`create view questions_visible as …`)** — 질의 16곳을 안 고쳐도 되지만, 쓰기 경로가 뷰를 우회하고 드리즐 타입이 뷰를 모른다. 고칠 곳을 줄이는 대신 「어디가 진짜인지」가 흐려진다.
+**뷰로 가린다 (`create view questions_visible as …`)** — 질의를 안 고쳐도 되지만, 쓰기 경로가 뷰를 우회하고 드리즐 타입이 뷰를 모른다. 고칠 곳을 줄이는 대신 「어디가 진짜인지」가 흐려진다.
 
 ## 검증 계획
 
@@ -196,7 +191,7 @@ where m.concept_id = any($concepts) and m.status = 'published'
 |---|---|---|
 | **1** | `platform` kind 추가 (마이그레이션 A) → 플랫폼 조직 1행 + `platform_org_id()` (마이그레이션 B, **별도 파일**) | 아무 동작도 안 바뀐다. 아무도 이 조직을 안 본다 |
 | **2** | `contentOrganizationIds()` 도입 + 콘텐츠 읽기 16곳을 이 도우미로. **깃발은 꺼 둔다** | 동작 동일 — 깃발이 꺼져 있으면 자기 조직만 담은 배열이라 생성되는 SQL이 지금과 같다 |
-| **3** | 콘텐츠 18표 이전 **+** `contentOrganizationId()`가 플랫폼을 가리키게 — **한 배포에** | 여기서 실제로 갈린다. 되돌리기는 반대 방향 update 한 문장 |
+| **3** | 콘텐츠 19표 이전 **+** 깃발 켜기 **+** 쓰기 4곳과 「쓰기 권한 확인용 조회」 13곳을 `contentWriteOrganizationId()`로 — **한 배포에** | 여기서 실제로 갈린다. 되돌리기는 반대 방향 update 한 문장 + 깃발 끄기 |
 | **4** | 자료 읽기에 덮어쓰기 규칙(개념·종류) + 화면의 「공용」 표시 | 조직 자료가 아직 없으니 동작 동일 |
 | **5** | 쓰기 4곳에 마스터 게이트 · RLS 정책 교체 | 이중 방어가 질의와 같은 말을 하게 된다 |
 | **6** | purge·시드·E2E 픽스처가 플랫폼을 건드리지 않게 | — |
@@ -217,5 +212,22 @@ export function contentOrganizationIds(organizationId: string): string[] {
 단일 id를 돌려주는 형태(`contentOrganizationId()`)로 하면 2단계가 **무동작이 아니게 된다** — 통합 테스트가 만든 조직 30곳은 자기 콘텐츠를 만들어 자기가 읽는데, 읽는 곳을 데모 조직으로 바꾸면 그 테스트들이 그 자리에서 깨진다. 목록 형태는 깃발이 켜진 뒤에도 그 조직들을 살려 둔다.
 
 **일괄 치환은 금지다.** 한 파일 안에 콘텐츠 필터와 학습자 데이터 필터가 섞여 있다 — `learning-material.ts` 하나에도 `learning_materials`(콘텐츠)와 `learner_material_progress`(학습자 기록)가 같은 `input.organizationId`를 쓴다. 학습자 기록까지 플랫폼을 보게 만들면 **한 학원의 진도가 다른 학원에 보인다.** 줄마다 어느 쪽인지 판단해야 한다.
+
+기계로 표를 알아내려다 두 번 다른 답이 나왔다(55곳 → 30곳). 별칭이 문제다 — `where r.organization_id`의 `r`이 `review_items`인지 `content_rights`인지는 앞쪽 `from`/`join`을 별칭까지 풀어야 알 수 있고, 중간의 `join`이 `from`을 가리기도 한다. **손으로 확인한 목록만 믿는다.**
+
+### 읽기와 「쓰기 권한 확인용 조회」를 가른다
+
+같은 `select`라도 **결과가 update·delete의 근거가 되는 것**은 2단계에서 건드리지 않는다.
+
+```ts
+// 읽기 — 넓힌다
+select … from learning_materials where organization_id = any($contentOrgs)
+
+// 쓰기 권한 확인 — 그대로 둔다
+select id from learning_materials where id = $1 and organization_id = $myOrg
+update learning_materials set … where id = $1 and organization_id = $myOrg
+```
+
+넓히면 **교사가 플랫폼 자료를 고칠 수 있게 된다.** 갈래 C는 「플랫폼 자료는 조직에게 읽기 전용」이 전제다. 이런 자리가 13곳이었다(자료 수정·상태 변경 5, 사용권 차단 1, 반입 중복 검사 7). 전부 쓰기와 **같은 배포**에서 옮긴다.
 
 되돌리기(3단계 이후): `update <t> set organization_id = '<데모 조직>' where organization_id = platform_org_id()` 18문장 + 상수 원복. 학습 기록은 콘텐츠를 id로 가리키므로 어느 방향이든 끊기지 않는다.

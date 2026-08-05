@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -150,7 +151,7 @@ export default async function CurriculumStudioPage({
                     then jsonb_array_length(c.evidence) else 0 end as evidence_count,
                (select count(*)::int from question_alignments qa
                  where qa.concept_id = c.id
-                   and qa.organization_id = ${user.organizationId}
+                   and qa.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
                    /* 커버리지 수는 검증된 정렬만 — 제안으로 부풀리지 않는다 */
                    and qa.provenance <> 'ai_suggested') as question_count
         from canonical_concepts c

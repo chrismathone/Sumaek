@@ -1,4 +1,5 @@
 "use server";
+import { contentOrganizationIds } from "@su-maek/db";
 
 import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
@@ -55,7 +56,7 @@ export async function changeRightStatus(
     }
     const [count] = await sql<{ cnt: number }[]>`
       select count(*)::int as cnt from questions
-      where organization_id = ${user.organizationId}
+      where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
         and (content_right_id = ${right.id}
              or (${right.book_edition_id}::uuid is not null
                  and book_edition_id = ${right.book_edition_id}))

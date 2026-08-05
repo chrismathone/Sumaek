@@ -682,7 +682,7 @@ export function decodeHwpMath(raw: string, font?: string): DecodeResult {
    * `AD ê`로 온다(중1-2 0098 등). 공백을 건너뛰지 않으면 그 자리만 날글자로
    * 남는다. `³`는 여기서도 빼 둔다 — 「AB 3」이 반직선이 되면 안 된다. */
   work = work.replace(
-    /([A-Z][A-ZÕÍ]{0,4})[  ]*([Óòê])/g,
+    /([A-Z][A-ZÕÍ]{0,4})[ \u2009]*([Óòê])/g,
     (whole: string, body: string, end: string) => {
       const letters = body.replace(/[ÕÍ]/g, "");
       return stash(`\\${NAME_MARK.get(end)!}{${letters}}`);

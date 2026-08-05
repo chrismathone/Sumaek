@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { getSharedSql } from "@su-maek/db";
 import {
@@ -308,7 +309,7 @@ async function lookupBookTitles(
            coalesce(b.title, '교재') || ' ' || e.edition_label as label
     from book_editions e
     left join books b on b.id = e.book_id
-    where e.organization_id = ${learner.organizationId}
+    where e.organization_id = any(${contentOrganizationIds(learner.organizationId)}::uuid[])
       and e.id = any(${[...editionIds]}::uuid[])
   `;
   return new Map(rows.map((r) => [r.id, r.label]));

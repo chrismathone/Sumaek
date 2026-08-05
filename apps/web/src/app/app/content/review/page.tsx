@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -139,7 +140,7 @@ export default async function ContentReviewPage({
         left join users u on u.id = fr.assigned_to
         left join math_expressions me on me.id = fr.expression_id
           and me.organization_id = fr.organization_id
-        where fr.organization_id = ${user.organizationId}
+        where fr.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           and fr.status <> 'resolved'
       ),
       base as (
@@ -162,10 +163,10 @@ export default async function ContentReviewPage({
     sql<{ content_count: number; formula_count: number }[]>`
       select
         (select count(*)::int from content_reviews
-          where organization_id = ${user.organizationId}
+          where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
             and status <> 'resolved') as content_count,
         (select count(*)::int from formula_reviews
-          where organization_id = ${user.organizationId}
+          where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
             and status <> 'resolved') as formula_count
     `,
   ]);

@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql, tryMarkInbox, type ClaimedJob } from "@su-maek/db";
 
@@ -37,7 +38,7 @@ export async function handleRightsImpact(job: ClaimedJob): Promise<unknown> {
   /* 영향 문항: 이 권한에 직접 묶였거나 같은 판본에 속한 문항 */
   const affected = await sql<{ id: string }[]>`
     select id from questions
-    where organization_id = ${organizationId}
+    where organization_id = any(${contentOrganizationIds(organizationId)}::uuid[])
       and (content_right_id = ${rightId}
            or (${editionId}::uuid is not null and book_edition_id = ${editionId}))
   `;

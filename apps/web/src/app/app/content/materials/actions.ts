@@ -1,4 +1,5 @@
 "use server";
+import { contentOrganizationIds } from "@su-maek/db";
 
 import { revalidatePath } from "next/cache";
 import { v7 as uuidv7 } from "uuid";
@@ -318,7 +319,7 @@ export async function updateMaterialAction(
       const usable = await sql<{ id: string }[]>`
         select q.id::text from questions q
         join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-        where q.organization_id = ${user.organizationId}
+        where q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           and q.review_status = 'published'
           and q.id = any(${requested}::uuid[])
       `;

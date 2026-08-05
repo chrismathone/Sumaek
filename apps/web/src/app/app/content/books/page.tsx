@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -120,7 +121,7 @@ export default async function BooksPage({
         order by r.updated_at desc
         limit 1
       ) cr on true
-      where b.organization_id = ${user.organizationId}
+      where b.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
       order by b.title, e.published_year nulls last, e.edition_label
     `,
     /* 판본에 묶이지 않은 사용 권한 — 자체 제작·라이선스 일괄 등록분.
@@ -134,7 +135,7 @@ export default async function BooksPage({
                  where q.content_right_id = cr.id
                    and q.organization_id = cr.organization_id) as question_count
         from content_rights cr
-        where cr.organization_id = ${user.organizationId}
+        where cr.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           and cr.book_edition_id is null
           and (${statusFilter}::text = '' or cr.status::text = ${statusFilter})
           and (${query.q}::text = ''

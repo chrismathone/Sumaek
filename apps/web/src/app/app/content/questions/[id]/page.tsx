@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import "katex/dist/katex.min.css";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -228,7 +229,7 @@ export default async function QuestionDetailPage({
       and sf.organization_id = q.organization_id
     left join source_pages sp on sp.id = q.source_page_id
       and sp.organization_id = q.organization_id
-    where q.id = ${id} and q.organization_id = ${user.organizationId}
+    where q.id = ${id} and q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
   `;
   if (!question) notFound();
 

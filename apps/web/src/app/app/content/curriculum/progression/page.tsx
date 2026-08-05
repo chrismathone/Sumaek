@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -69,7 +70,7 @@ export default async function ProgressionPage({
   const selectable = await sql<ConceptRow[]>`
     select c.id, c.slug, c.name, c.school_level, c.grade_band, c.domain_name,
            (select count(*)::int from question_alignments qa
-             where qa.concept_id = c.id and qa.organization_id = ${user.organizationId}
+             where qa.concept_id = c.id and qa.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
                    and qa.provenance <> 'ai_suggested') as question_count
     from canonical_concepts c
     where exists (
@@ -124,7 +125,7 @@ export default async function ProgressionPage({
         select distinct on (c.id) c.id, c.slug, c.name, c.school_level,
                c.grade_band, c.domain_name, up.kind, up.depth, up.rationale,
                (select count(*)::int from question_alignments qa
-                 where qa.concept_id = c.id and qa.organization_id = ${user.organizationId}
+                 where qa.concept_id = c.id and qa.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
                    and qa.provenance <> 'ai_suggested') as question_count
         from up join canonical_concepts c on c.id = up.from_concept_id
         order by c.id, up.depth
@@ -147,7 +148,7 @@ export default async function ProgressionPage({
         select distinct on (c.id) c.id, c.slug, c.name, c.school_level,
                c.grade_band, c.domain_name, down.kind, down.depth, down.rationale,
                (select count(*)::int from question_alignments qa
-                 where qa.concept_id = c.id and qa.organization_id = ${user.organizationId}
+                 where qa.concept_id = c.id and qa.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
                    and qa.provenance <> 'ai_suggested') as question_count
         from down join canonical_concepts c on c.id = down.to_concept_id
         order by c.id, down.depth
@@ -157,7 +158,7 @@ export default async function ProgressionPage({
         select c.id, c.slug, c.name, c.school_level, c.grade_band, c.domain_name,
                'contrasts_with' as kind, 1 as depth, e.rationale,
                (select count(*)::int from question_alignments qa
-                 where qa.concept_id = c.id and qa.organization_id = ${user.organizationId}
+                 where qa.concept_id = c.id and qa.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
                    and qa.provenance <> 'ai_suggested') as question_count
         from concept_edges e
         join canonical_concepts c

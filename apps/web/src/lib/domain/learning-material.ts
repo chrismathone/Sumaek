@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import "server-only";
 import { v7 as uuidv7 } from "uuid";
 import { getSharedSql } from "@su-maek/db";
@@ -84,7 +85,7 @@ export async function listMaterials(input: {
     join canonical_concepts c on c.id = m.concept_id
     left join learner_material_progress p
       on p.material_id = m.id and p.learner_id = ${input.learnerId}
-    where m.organization_id = ${input.organizationId}
+    where m.organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and m.concept_id = any(${input.conceptIds}::uuid[])
       and m.status = 'published'
       and m.kind::text = any(${kinds}::text[])
@@ -135,7 +136,7 @@ export async function recordVideoWatch(input: {
   const sql = getSharedSql();
   const [material] = await sql<{ id: string }[]>`
     select id::text from learning_materials
-    where id = ${input.materialId} and organization_id = ${input.organizationId}
+    where id = ${input.materialId} and organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and kind = 'video' and status = 'published'
   `;
   if (!material) return { ok: false, percent: 0, completed: false };
@@ -201,7 +202,7 @@ export async function markMaterialProgress(input: {
   /* 자료가 이 조직 것인지 확인한다 — materialId를 폼에서 받으므로 */
   const [material] = await sql<{ id: string; title: string }[]>`
     select id::text, title from learning_materials
-    where id = ${input.materialId} and organization_id = ${input.organizationId}
+    where id = ${input.materialId} and organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and status = 'published'
   `;
   if (!material) return { ok: false, message: "학습 자료를 찾을 수 없습니다." };
@@ -298,7 +299,7 @@ export async function listPracticeQuestions(input: {
   >`
     select concept_id::text as concept_id, question_ids
     from learning_materials
-    where id = ${input.materialId} and organization_id = ${input.organizationId}
+    where id = ${input.materialId} and organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
       and kind = 'practice' and status = 'published'
   `;
   if (!material) return [];
@@ -318,7 +319,7 @@ export async function listPracticeQuestions(input: {
         from questions q
         join question_versions v on v.id = q.current_version_id
         join content_rights r on r.id = q.content_right_id and r.status = 'usable'
-        where q.organization_id = ${input.organizationId}
+        where q.organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
           and q.review_status = 'published'
           and q.id = any(${curated}::uuid[])
       `
@@ -333,7 +334,7 @@ export async function listPracticeQuestions(input: {
         join question_alignments a
           on a.question_id = q.id and a.concept_id = ${material.concept_id}
          and a.provenance <> 'ai_suggested'
-        where q.organization_id = ${input.organizationId}
+        where q.organization_id = any(${contentOrganizationIds(input.organizationId)}::uuid[])
           and q.review_status = 'published'
         group by q.id, v.id
         /* 전담 정렬(weight 1.0) 우선 — 한 문항이 여러 개념에 걸치면 weight가

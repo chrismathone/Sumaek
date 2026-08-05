@@ -1,3 +1,4 @@
+import { contentOrganizationIds } from "@su-maek/db";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSharedSql } from "@su-maek/db";
@@ -121,7 +122,7 @@ export default async function QuestionBankPage({
         left join question_versions v on v.id = q.current_version_id
         left join content_rights cr on cr.id = q.content_right_id
           and cr.organization_id = q.organization_id
-        where q.organization_id = ${user.organizationId}
+        where q.organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
           and (${statusFilter}::text = '' or q.review_status::text = ${statusFilter})
           and (${kindFilter}::text = '' or q.kind::text = ${kindFilter})
           and (${query.q}::text = ''
@@ -146,7 +147,7 @@ export default async function QuestionBankPage({
       select count(*)::int as total,
              count(*) filter (where is_auto_assignable)::int as assignable
       from questions
-      where organization_id = ${user.organizationId}
+      where organization_id = any(${contentOrganizationIds(user.organizationId)}::uuid[])
     `,
   ]);
 
