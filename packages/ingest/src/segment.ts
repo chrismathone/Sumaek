@@ -279,7 +279,16 @@ interface Line {
   spans: IndexedSpan[];
 }
 
-/** 인접한 같은 폰트·같은 크기의 span을 붙인다 — 「0」+「131」 → 「0131」 */
+/**
+ * 인접한 같은 폰트·같은 크기의 span을 붙인다 — 「0」+「131」 → 「0131」.
+ *
+ * **뒤로 가는 것은 인접이 아니다.** 「틈이 1.2pt보다 좁으면」만 봤더니 옆
+ * 단이나 아랫줄의 span이 앞엣것보다 **왼쪽에서 시작해도** 틈이 음수라 통과해
+ * 붙었다. 중1-1 p.70에서 오른쪽 단 끝의 부스러기 하나(x=373)가 왼쪽 단
+ * 다음 줄의 번호(x=57)와 한 덩어리가 되어 「0511」이 x=373에 있는 것으로
+ * 읽혔다. 번호의 x가 곧 단의 왼끝이므로 그 쪽은 **3단**이 됐고, 오른쪽 단이
+ * 두 쪽으로 갈려 문항 0513이 발문을 통째로 잃었다.
+ */
 function mergeAdjacent(spans: IndexedSpan[]): IndexedSpan[][] {
   const groups: IndexedSpan[][] = [];
   for (const span of spans) {
@@ -289,7 +298,9 @@ function mergeAdjacent(spans: IndexedSpan[]): IndexedSpan[][] {
       prev &&
       prev.font === span.font &&
       Math.abs(prev.size - span.size) < 0.05 &&
-      span.x0 - prev.x1 < 1.2
+      span.x0 - prev.x1 < 1.2 &&
+      /* 글자끼리는 조금 겹치게 조판된다(「0」62.3~72.8 다음 「131」 72.3) */
+      span.x0 - prev.x1 > -2
     ) {
       last!.push(span);
       continue;
