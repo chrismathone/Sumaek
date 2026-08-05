@@ -69,7 +69,7 @@ APP_READ_ONLY=true
 ```bash
 pnpm --filter @su-maek/db kill-switch enable ai_provider:anthropic --reason "RB-05 DB 부하 경감" --actor <이메일>
 pnpm --filter @su-maek/db kill-switch enable document_export --reason "RB-05 DB 부하 경감" --actor <이메일>
-pnpm --filter @su-maek/db kill-switch enable auto_schedule_recalc --reason "RB-05 DB 부하 경감" --actor <이메일>
+pnpm --filter @su-maek/db kill-switch enable auto_reschedule --reason "RB-05 DB 부하 경감" --actor <이메일>
 ```
 
 **중지해도 반드시 되는 것** (DB가 살아 있는 한):
@@ -320,7 +320,7 @@ node scripts/verify-recovery.mjs --target="$RESTORED_URL"
 
 | # | 검증 | 통과 조건 |
 |---|---|---|
-| V-1 | 불변 조건 20개 | 전부 0행 |
+| V-1 | 검사 31건 (불변 22 + 참조·위생 9) | 전부 0행 |
 | V-2 | 테넌트 격리 (RLS) | 교차 테넌트 0행 (`SET LOCAL ROLE authenticated` 필수) |
 | V-3 | 참조 무결성 | FK 위반 0건 |
 | V-4 | 활성 일정 버전 | 포인터가 `published`를 가리킴 |
@@ -360,7 +360,7 @@ ORDER BY requested_at;
 
 | # | 항목 | 검증 명령·쿼리 | 통과 조건 |
 |---|---|---|---|
-| V-1 | 불변 조건 20개 | `psql -f packages/db/src/checks/invariants.sql` | 전부 0행 |
+| V-1 | 검사 31건 (불변 22 + 참조·위생 9) | `pnpm verify:recovery` | 전부 0행 |
 | V-2 | 테넌트 격리 | `pnpm --filter @su-maek/db test:rls` | 교차 테넌트 0행 |
 | V-3 | 참조 무결성 | `node scripts/verify-recovery.mjs` | FK 위반 0 |
 | V-4 | 활성 일정 버전 | 아래 쿼리 | 0행 |

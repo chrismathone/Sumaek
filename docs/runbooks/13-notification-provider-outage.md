@@ -6,7 +6,7 @@
 | 1차 담당 | 운영 엔지니어(OE) |
 | 에스컬레이션 | 1시간 미확인 → 담당자 / 4시간 지속 → SEV2 승격 + 영향 조직 공지 |
 | 관련 SLO | 최종 일관성 반영 시간 — 알림 30초 이내 |
-| 관련 kill switch | **`external_notification`** |
+| 관련 kill switch | **`external_notifications`** |
 | 관련 문서 | [../phase0/failure-modes.md](../phase0/failure-modes.md) F-08 · [../phase0/event-catalog.md](../phase0/event-catalog.md) |
 
 ---
@@ -302,7 +302,7 @@ WHERE job_type = 'notification.send'
 | V-7 | 테스트 발송 | `node scripts/notification-test.mjs` | 수신 확인 |
 | V-8 | 반송률 | 4-7 | < 3% |
 | V-9 | 도메인 기능 무영향 | 일정 승인·채점 예외 처리 표본 | 정상 |
-| V-10 | kill switch | `kill-switch list` | `external_notification` = `false` |
+| V-10 | kill switch | `kill-switch list` | `external_notifications` = `false` |
 
 ---
 

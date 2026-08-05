@@ -237,7 +237,7 @@ interface ScheduleOutput {
 | F-1 | 무심코 `Date.now()`·`Math.random()` 유입 | ESLint 실패 | CI 게이트. 속성 테스트가 2차 방어 |
 | F-2 | 정렬되지 않은 컬렉션 순회로 비결정론 | 결정성 속성 테스트 간헐 실패 | 입력 조립 시 전부 정렬. `Map` 순회 전 `[...map].sort()` |
 | F-3 | 부동소수점 누적으로 해시 불일치 | 같은 입력에 다른 `output_hash` | 시간·학습량은 정수(분). 비용 함수만 부동소수점이고 결과에 들어가지 않음 |
-| F-4 | 잘못된 일정 대량 생성 | `mass_schedule_change` > 5,000건/시간 | `auto_schedule_recalc` kill switch. 이전 활성 일정은 유지되므로 rollback_token으로 복구 |
+| F-4 | 잘못된 일정 대량 생성 | `mass_schedule_change` > 5,000건/시간 | `auto_reschedule` kill switch. 이전 활성 일정은 유지되므로 rollback_token으로 복구 |
 | F-5 | 하드 제약 위반 결과가 생성됨 | DB EXCLUDE 제약 위반(`23P01`) | apply가 실패하고 이전 일정 유지. 속성 테스트가 사전 검출 |
 | F-6 | stale preview가 적용됨 | 없음 — 이것이 위험 | `input_hash` **재계산** 후 비교. 저장값 비교만 하면 안 됨 |
 | F-7 | lease 만료 중 계산 완료 → 두 결과 경합 | 같은 범위에 `proposed` 2건 | apply 시 `output_hash` 검증이 걸러냄. 나중 것이 409 |

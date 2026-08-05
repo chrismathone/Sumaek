@@ -57,7 +57,7 @@ pnpm --filter @su-maek/db kill-switch enable document_export \
   --reason "RB-01 SEV1 부하 경감" --actor <이메일>
 
 # 3순위: 자동 일정 재계산 중단 (schedule 큐 회수)
-pnpm --filter @su-maek/db kill-switch enable auto_schedule_recalc \
+pnpm --filter @su-maek/db kill-switch enable auto_reschedule \
   --reason "RB-01 SEV1 부하 경감" --actor <이메일>
 ```
 
@@ -249,7 +249,7 @@ WHERE organization_id = $1 AND id = ANY($2::uuid[]);
 ### 5.4 kill switch 해제
 
 ```bash
-pnpm --filter @su-maek/db kill-switch disable auto_schedule_recalc --actor <이메일>
+pnpm --filter @su-maek/db kill-switch disable auto_reschedule --actor <이메일>
 pnpm --filter @su-maek/db kill-switch disable document_export --actor <이메일>
 pnpm --filter @su-maek/db kill-switch disable ai_provider:anthropic --actor <이메일>
 ```

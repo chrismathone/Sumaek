@@ -6,7 +6,7 @@
 | 1차 담당 | 보안 담당 + 운영 엔지니어(OE) |
 | 에스컬레이션 | 즉시 IC / 15분 내 법률 검토 착수(개인정보 접근 시) / 30분 내 경영진 |
 | 관련 SLO | 불변 I-01·I-15 · SEV1 탐지 5분 |
-| 관련 kill switch | `ai_provider:<name>`, `auto_question_publish` (악성 업로드 시) |
+| 관련 kill switch | `ai_provider:<name>`, `auto_publish_questions` (악성 업로드 시) |
 | 관련 문서 | [../phase0/threat-model.md](../phase0/threat-model.md) 3.1·3.6·7장 · [../adr/0010-job-queue-and-ai-abstraction.md](../adr/0010-job-queue-and-ai-abstraction.md) |
 
 ---
@@ -119,7 +119,7 @@ pnpm --filter @su-maek/db kill-switch enable ai_provider:anthropic \
 pnpm --filter @su-maek/db kill-switch enable ai_provider:anthropic \
   --reason "RB-07 프롬프트 인젝션 의심" --actor <이메일>
 
-pnpm --filter @su-maek/db kill-switch enable auto_question_publish \
+pnpm --filter @su-maek/db kill-switch enable auto_publish_questions \
   --reason "RB-07 악성 업로드 — 미검증 결과 게시 차단" --actor <이메일>
 ```
 

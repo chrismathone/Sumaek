@@ -6,7 +6,7 @@
 | 1차 담당 | 수학 프로그램 책임자(도메인 소유자) + 운영 엔지니어(OE) |
 | 에스컬레이션 | 30분 미확인 → 담당자 / 활성 루트·평가에 영향이 확인되면 IC + SEV2 유지 |
 | 관련 SLO | O-12 권위 소스 역추적 누락 0건 · 불변 I-16(역추적)·I-17(순환 없음) |
-| 관련 kill switch | **`curriculum_release_publish`** |
+| 관련 kill switch | **`curriculum_release`** |
 | 관련 문서 | [../phase0/failure-modes.md](../phase0/failure-modes.md) F-14 · [../adr/0011-curriculum-authority-and-releases.md](../adr/0011-curriculum-authority-and-releases.md) · [../phase0/state-machines.md](../phase0/state-machines.md) 5절 |
 
 ---

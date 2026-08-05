@@ -85,6 +85,23 @@ export const KILL_SWITCH_KEYS = [
 /** 카나리 섀도 평가 kill switch 키 — 문자열 중복을 막는 단일 정의처 */
 export const CANARY_KILL_SWITCH_KEY = "ai_model_canary";
 
+/**
+ * 문서·런북에는 있는데 **구현이 없는** 스위치 키.
+ *
+ * `TOPICS_WITHOUT_HANDLER`(worker/registry.ts)와 같은 뜻의 목록이다. 지우는
+ * 대신 적어 두는 이유도 같다: 런북이 이미 그 키로 대응 절차를 적고 있고,
+ * 이름만 지우면 「그 절차가 무효」라는 사실이 어디에도 남지 않는다.
+ *
+ * 여기 있는 키는 `KILL_SWITCH_KEYS`에 없으므로 설정 화면·CLI에 뜨지 않고,
+ * 켜 두어도 아무것도 멈추지 않는다. 구현하면 위 목록으로 옮긴다.
+ */
+export const KILL_SWITCH_KEYS_WITHOUT_IMPLEMENTATION: Readonly<
+  Record<string, string>
+> = {
+  "ai_provider:<name>":
+    "공급자별 차단 — RB-03·F-02가 쓰지만 공급자 이름을 붙인 동적 키를 읽는 코드가 없다. 지금은 AI_PROVIDER 환경변수로 갈아 끼우는 것이 유일한 수단이다",
+};
+
 /** 전역으로 중지된 스위치 키 집합 (만료된 중지는 자동 복구로 간주) */
 export async function loadGloballyDisabledSwitches(
   sql: postgres.Sql,

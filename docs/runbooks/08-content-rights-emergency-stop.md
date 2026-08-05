@@ -6,7 +6,7 @@
 | 1차 담당 | 콘텐츠 관리자 + 운영 엔지니어(OE) |
 | 에스컬레이션 | 침해 신고 접수 시 **즉시 법률 검토** / 24시간 내 `suspended` 전환 필수 / 대량 영향 시 IC |
 | 관련 SLO | 불변 I-07(권한 유효 문항만 평가에 포함) · I-13(격리해도 과거 기록 보존) |
-| 관련 kill switch | `auto_question_publish` |
+| 관련 kill switch | `auto_publish_questions` |
 | 관련 문서 | [../phase0/threat-model.md](../phase0/threat-model.md) 9장 · [../phase0/sequences.md](../phase0/sequences.md) S-8 · [../adr/0014-content-rights-enforcement.md](../adr/0014-content-rights-enforcement.md) |
 
 ---
@@ -67,7 +67,7 @@ WHERE id = $1;
 ### 3.2 대량 영향 시 보조
 
 ```bash
-pnpm --filter @su-maek/db kill-switch enable auto_question_publish \
+pnpm --filter @su-maek/db kill-switch enable auto_publish_questions \
   --reason "RB-08 권한 대량 철회 — 게시 일시 중단" --actor <이메일>
 ```
 

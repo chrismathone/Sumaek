@@ -235,7 +235,7 @@ flowchart LR
 | 렌더러 버전 롤백 | 환경변수 3종 | **즉시** |
 | 게이트 조건 조정 | 게이트 뷰 수정. 신규 게시부터 적용 | 낮음 |
 | 게이트 일시 우회 | **하지 않는다.** 우회 경로를 만들지 않는다 | — |
-| 자동 보정 규칙 중단 | `formula_auto_repair` kill switch | 즉시 |
+| 자동 보정 규칙 중단 | `formula_autofix` kill switch | 즉시 |
 | 출력 형식 중단 | `document_export` kill switch. **온라인 응시는 유지** | 즉시 |
 | 특정 문항 재렌더 | `raw_source`가 보존되어 있어 언제든 | 낮음 |
 | 전체 재렌더 | 배치 작업. 1,000만 문항 × 63 ms = 175 CPU-시간 | 중간 |

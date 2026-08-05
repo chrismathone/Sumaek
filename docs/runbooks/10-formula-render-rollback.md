@@ -6,7 +6,7 @@
 | 1차 담당 | 운영 엔지니어(OE) + 콘텐츠 관리자 |
 | 에스컬레이션 | 5분 미확인 → IC / 시험 시간대면 [RB-01](./01-exam-start-submit-failure.md) 병행 / 30분 → 고객 공지 |
 | 관련 SLO | **O-11 게시 콘텐츠 원시 LaTeX·`katex-error`·필수 수식 누락 0건** · O-06 KaTeX 검증 95% 5초 |
-| 관련 kill switch | **`formula_auto_repair`**, `auto_question_publish`, `document_export` |
+| 관련 kill switch | **`formula_autofix`**, `auto_publish_questions`, `document_export` |
 | 관련 문서 | [../phase0/failure-modes.md](../phase0/failure-modes.md) F-12 · [../adr/0013-renderer-versions-and-publish-gate.md](../adr/0013-renderer-versions-and-publish-gate.md) · [../adr/0012-structured-math-content-and-latex.md](../adr/0012-structured-math-content-and-latex.md) |
 
 ---
@@ -48,11 +48,11 @@
 
 ```bash
 # 1. 자동 보정 규칙 중단 (새 보정이 원인일 때)
-pnpm --filter @su-maek/db kill-switch enable formula_auto_repair \
+pnpm --filter @su-maek/db kill-switch enable formula_autofix \
   --reason "RB-10 SEV1 학생 화면 수식 깨짐" --actor <이메일>
 
 # 2. 자동 게시 중단 (더 이상 깨진 문항이 게시되지 않게)
-pnpm --filter @su-maek/db kill-switch enable auto_question_publish \
+pnpm --filter @su-maek/db kill-switch enable auto_publish_questions \
   --reason "RB-10 SEV1" --actor <이메일>
 
 # 3. 문서 출력 중단 (같은 원인이면 산출물도 깨진다)
@@ -330,8 +330,8 @@ WHERE tgrelid = 'assessment_questions'::regclass AND NOT tgisinternal;
 해제 전 6장 검증 전부 통과 필수.
 
 ```bash
-pnpm --filter @su-maek/db kill-switch disable formula_auto_repair --actor <이메일>
-pnpm --filter @su-maek/db kill-switch disable auto_question_publish --actor <이메일>
+pnpm --filter @su-maek/db kill-switch disable formula_autofix --actor <이메일>
+pnpm --filter @su-maek/db kill-switch disable auto_publish_questions --actor <이메일>
 pnpm --filter @su-maek/db kill-switch disable document_export --actor <이메일>
 ```
 

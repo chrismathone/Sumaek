@@ -6,7 +6,7 @@
 | 1차 담당 | 운영 엔지니어(OE) |
 | 에스컬레이션 | 15분 미확인 → 담당자 호출 / 1시간 → 도메인 소유자(교육과정·콘텐츠) + 경영진(비용) |
 | 관련 SLO | O-05 100페이지 OCR 초벌 95% 20분 · O-08 접수 완료 작업 유실 0건 |
-| 관련 kill switch | **`ai_provider:<name>`** (예: `ai_provider:anthropic`), 보조 `auto_question_publish` |
+| 관련 kill switch | **`ai_provider:<name>`** (예: `ai_provider:anthropic`), 보조 `auto_publish_questions` |
 | 관련 문서 | [../phase0/failure-modes.md](../phase0/failure-modes.md) F-01·F-02 · [../adr/0010-job-queue-and-ai-abstraction.md](../adr/0010-job-queue-and-ai-abstraction.md) · [../phase0/assumptions.md](../phase0/assumptions.md) 3.4 |
 
 ---
@@ -62,7 +62,7 @@ pnpm --filter @su-maek/db kill-switch enable ai_provider:anthropic \
   --reason "RB-03 SEV2 비용 폭주 — 시간당 평균 5배" --actor <이메일>
 
 # 2. 자동 게시도 함께 중단 (품질 미검증 결과가 게시되는 것 방지)
-pnpm --filter @su-maek/db kill-switch enable auto_question_publish \
+pnpm --filter @su-maek/db kill-switch enable auto_publish_questions \
   --reason "RB-03 SEV2" --actor <이메일>
 ```
 
@@ -283,7 +283,7 @@ WHERE id = $1;
 
 | # | 조치 |
 |---|---|
-| 1 | `auto_question_publish` kill switch ON |
+| 1 | `auto_publish_questions` kill switch ON |
 | 2 | 4-5로 어느 모델·프롬프트 버전에서 시작됐는지 특정 |
 | 3 | `AI_MODEL_VERSION` / `AI_PROMPT_VERSION` 이전 버전으로 롤백 |
 | 4 | 골드 데이터셋 회귀 실행: `pnpm --filter @su-maek/core test:ai-golden` |

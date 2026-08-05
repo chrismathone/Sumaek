@@ -6,7 +6,7 @@
 | 1차 담당 | 운영 엔지니어(OE) |
 | 에스컬레이션 | 5분 미확인 → IC / 15분 → 도메인 소유자(학습 경로·계획) / 30분 → 고객 공지 |
 | 관련 SLO | O-03 반 재계산 95% 60초·99% 5분 · 불변 I-05(완료·잠금 보존)·I-06(하드 제약)·I-12(결정론) |
-| 관련 kill switch | **`auto_schedule_recalc`** |
+| 관련 kill switch | **`auto_reschedule`** |
 | 관련 문서 | [../phase0/failure-modes.md](../phase0/failure-modes.md) F-04 · [../phase0/sequences.md](../phase0/sequences.md) S-2 · [../adr/0007-deterministic-schedule-engine.md](../adr/0007-deterministic-schedule-engine.md) |
 
 ---
@@ -44,7 +44,7 @@
 ## 3. 즉시 중지할 기능
 
 ```bash
-pnpm --filter @su-maek/db kill-switch enable auto_schedule_recalc \
+pnpm --filter @su-maek/db kill-switch enable auto_reschedule \
   --reason "RB-02 SEV1 잘못된 일정 대량 생성" --actor <이메일>
 ```
 
@@ -199,7 +199,7 @@ WHERE tgrelid = 'sessions'::regclass AND NOT tgisinternal;
 
 | # | 조치 | 명령·SQL | 예상 소요 |
 |---|---|---|---|
-| 1 | `auto_schedule_recalc` kill switch ON | 3장 | 1분 |
+| 1 | `auto_reschedule` kill switch ON | 3장 | 1분 |
 | 2 | 영향 범위 확정 (4-1·4-5) | 4장 | 5분 |
 | 3 | 불변 위반 확인 (4-2·4-3·4-4) | 4장 | 5분 |
 | 4 | 롤백 대상 선정 (5.1) | — | 5분 |
@@ -297,7 +297,7 @@ WHERE status = 'proposed'
 해제 전 반드시 6장 검증을 전부 통과해야 한다.
 
 ```bash
-pnpm --filter @su-maek/db kill-switch disable auto_schedule_recalc --actor <이메일>
+pnpm --filter @su-maek/db kill-switch disable auto_reschedule --actor <이메일>
 ```
 
 ```sql

@@ -150,7 +150,7 @@ sequenceDiagram
         Web-->>T: 409 STALE_PROPOSAL {expected, actual}
         Note over T: 다시 계산해야 한다. 조용히 적용하지 않는다.
     end
-    Web->>DB: 킬스위치 auto_schedule_recalc 확인
+    Web->>DB: 킬스위치 auto_reschedule 확인
     Web->>DB: BEGIN
     Web->>DB: UPDATE proposals SET status='applying'
     Web->>DB: UPDATE/INSERT sessions (미래만 · baseline_at 이후)

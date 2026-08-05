@@ -64,7 +64,7 @@
 | 구조적 이유 | 새 일정 리비전을 완성·검증한 뒤 활성 포인터를 원자적으로 교체한다. `applying` 중 실패하면 포인터가 바뀌지 않는다 |
 | 탐지 | `schedule_recalc_failure` > 5% (1시간 창), `mass_schedule_change` > 5,000건/시간 |
 | 자동 대응 | `schedule_change_proposals.status='failed'` + `failure_reason` 저장. 이전 활성 유지 |
-| 수동 대응 | `auto_schedule_recalc` kill switch ON. 수동 일정 편집은 계속 가능 |
+| 수동 대응 | `auto_reschedule` kill switch ON. 수동 일정 편집은 계속 가능 |
 | 런북 | [RB-02](../runbooks/02-mass-wrong-schedule.md) |
 
 ### F-05 데이터베이스 장애
@@ -111,7 +111,7 @@
 | 구조적 이유 | 알림은 Outbox 소비자다. 업무함은 원본 테이블(`notifications`) 조회이며 외부 발송과 무관하다 |
 | 탐지 | `notification_provider_down` 발송 실패율 > 30% (15분 창) |
 | 자동 대응 | 발송 작업 재시도(최대 3회, 지수 백오프). 실패해도 `notifications` 행은 생성 완료 |
-| 수동 대응 | `external_notification` kill switch ON. 업무함으로만 운영 |
+| 수동 대응 | `external_notifications` kill switch ON. 업무함으로만 운영 |
 | 런북 | [RB-13](../runbooks/13-notification-provider-outage.md) |
 
 ### F-09 중복·지연·역순 이벤트
@@ -156,7 +156,7 @@
 | 구조적 이유 | 게시 스냅샷에 `renderer_version`·`katex_version`·`normalizer_version`이 고정되어 있다. 재렌더는 저장된 버전으로 수행하므로 업그레이드가 기존 시험을 바꾸지 못한다 |
 | 탐지 | `render_regression` — 골든 회귀 실패 > 0. `formula_broken_in_student_view` > 0 |
 | 자동 대응 | 카나리 승격 중단, 이전 버전으로 트래픽 복귀 |
-| 수동 대응 | `formula_auto_repair` kill switch ON(새 보정 규칙만 중단). 렌더러 버전 롤백 |
+| 수동 대응 | `formula_autofix` kill switch ON(새 보정 규칙만 중단). 렌더러 버전 롤백 |
 | 런북 | [RB-10](../runbooks/10-formula-render-rollback.md) |
 
 ### F-13 PDF·HWP 출력 워커 장애
@@ -178,7 +178,7 @@
 | 구조적 이유 | 릴리스는 원자적 발행 스냅샷이다. 활성 릴리스는 DB에 있고 외부 접근이 필요 없다 |
 | 탐지 | 소스 수집 실패 3회 연속 또는 체크섬 불일치 |
 | 자동 대응 | `curriculum_authority_sources.review_status` 유지, 수집 작업 재시도 |
-| 수동 대응 | `curriculum_release_publish` kill switch ON |
+| 수동 대응 | `curriculum_release` kill switch ON |
 | 런북 | [RB-09](../runbooks/09-curriculum-mapping-rollback.md) |
 
 ---
@@ -265,13 +265,13 @@
 
 | # | 키 | 중지되는 것 | **중지해도 반드시 되는 것** | 기본 |
 |---|---|---|---|---|
-| K-1 | `auto_schedule_recalc` | 일정 변경안 자동 생성·자동 적용 | 수동 일정 편집, 기존 활성 일정 조회·운영, preview 수동 생성, 승인된 제안의 수동 적용 | OFF |
-| K-2 | `auto_question_publish` | 문항 자동 게시(검수 통과 후 자동 전환) | 수동 게시, 문제은행 조회, 이미 게시된 문항의 출제 | OFF |
+| K-1 | `auto_reschedule` | 일정 변경안 자동 생성·자동 적용 | 수동 일정 편집, 기존 활성 일정 조회·운영, preview 수동 생성, 승인된 제안의 수동 적용 | OFF |
+| K-2 | `auto_publish_questions` | 문항 자동 게시(검수 통과 후 자동 전환) | 수동 게시, 문제은행 조회, 이미 게시된 문항의 출제 | OFF |
 | K-3 | `auto_grading` | 자동 채점 워커 실행 | 답안 제출·저장, 수동 채점, 채점 예외 처리, 기존 확정 점수 조회 | OFF |
-| K-4 | `curriculum_release_publish` | 교육과정 릴리스 발행 | 활성 릴리스 읽기, 개념 그래프 탐색, 매핑 검수 작업 | OFF |
-| K-5 | `formula_auto_repair` | 무손실 자동 보정 규칙 적용 | 수식 파싱·KaTeX 검증, 수동 수정, 이미 정규화된 수식 렌더 | OFF |
+| K-4 | `curriculum_release` | 교육과정 릴리스 발행 | 활성 릴리스 읽기, 개념 그래프 탐색, 매핑 검수 작업 | OFF |
+| K-5 | `formula_autofix` | 무손실 자동 보정 규칙 적용 | 수식 파싱·KaTeX 검증, 수동 수정, 이미 정규화된 수식 렌더 | OFF |
 | K-6 | `document_export` | PDF·HWPX 출력 작업 | 온라인 응시, 웹 미리보기, 이미 생성된 산출물 다운로드 | OFF |
-| K-7 | `external_notification` | 외부 알림 발송(이메일 등) | 앱 내 업무함 전체, 알림 생성·조회·처리 | OFF |
+| K-7 | `external_notifications` | 외부 알림 발송(이메일 등) | 앱 내 업무함 전체, 알림 생성·조회·처리 | OFF |
 | K-8 | `ai_provider:<name>` | 해당 공급자 호출 (`ai_provider:anthropic`) | 게시된 콘텐츠, 검수 완료 문제은행, 응시, 수동 채점, 다른 공급자 | OFF |
 
 ### 4.2 구현
@@ -321,18 +321,18 @@ WHERE key = $3;
 | 장애 | 1차 kill switch | 2차 |
 |---|---|---|
 | F-01 AI 공급자 중단 | `ai_provider:<name>` | — |
-| F-02 AI 품질 저하 | `ai_provider:<name>` | `auto_question_publish` |
+| F-02 AI 품질 저하 | `ai_provider:<name>` | `auto_publish_questions` |
 | F-03 큐 적체 | `ai_provider:<name>` (저우선 부하 제거) | `document_export` |
-| F-04 일정 재계산 실패 | `auto_schedule_recalc` | — |
+| F-04 일정 재계산 실패 | `auto_reschedule` | — |
 | F-05 DB 장애 | — (kill switch로 해결 불가) | 전체 쓰기 차단은 배포 레벨 |
 | F-06 캐시·검색 장애 | — | — |
-| F-07 스토리지 장애 | `document_export` | `auto_question_publish` |
-| F-08 알림 장애 | `external_notification` | — |
-| F-10 권한 만료 | `auto_question_publish` | — |
-| F-11 악성 업로드 | `ai_provider:<name>` | `auto_question_publish` |
-| F-12 렌더러 회귀 | `formula_auto_repair` | `auto_question_publish`, `document_export` |
+| F-07 스토리지 장애 | `document_export` | `auto_publish_questions` |
+| F-08 알림 장애 | `external_notifications` | — |
+| F-10 권한 만료 | `auto_publish_questions` | — |
+| F-11 악성 업로드 | `ai_provider:<name>` | `auto_publish_questions` |
+| F-12 렌더러 회귀 | `formula_autofix` | `auto_publish_questions`, `document_export` |
 | F-13 출력 워커 장애 | `document_export` | — |
-| F-14 권위 소스 불가 | `curriculum_release_publish` | — |
+| F-14 권위 소스 불가 | `curriculum_release` | — |
 | F-15 잘못된 자동 채점 | `auto_grading` | — |
 | F-16 교차 테넌트 의심 | — (증거 보존 우선) | 필요 시 조직 `suspended` |
 

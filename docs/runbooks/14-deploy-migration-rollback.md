@@ -331,7 +331,7 @@ ORDER BY 2 DESC;
 psql "$DATABASE_URL" -f packages/db/src/checks/invariants.sql
 ```
 
-I-01~I-20(불변 조건) + R-01~R-09(참조 무결성·테넌시·시각·큐 위생) = **29건**. 각 검사는
+I-01~I-22(불변 조건) + R-01~R-09(참조 무결성·테넌시·시각·큐 위생) = **31건**. 각 검사는
 **위반 행만 반환**하므로 정상이면 전부 0행이다.
 
 > 이 파일은 **실행 가능한 정본**이다. 헤더(16-19행)가 스스로 밝히듯, 런북 본문의 예시
@@ -577,7 +577,7 @@ pnpm kill-switch resume document_export --actor <이메일>
 
 | # | 항목 | 검증 명령·쿼리 | 통과 조건 |
 |---|---|---|---|
-| V-1 | **검사 29건** (불변 I-01~I-20 + 참조·위생 R-01~R-09) | `psql "$DATABASE_URL" -f packages/db/src/checks/invariants.sql` | 전부 0행 |
+| V-1 | **검사 31건** (불변 I-01~I-22 + 참조·위생 R-01~R-09) | `psql "$DATABASE_URL" -f packages/db/src/checks/invariants.sql` | 전부 0행 |
 | V-2 | **트리거 활성** | 4-4 | 첫 쿼리 **정확히 4행·전부 `'O'`**, 둘째 쿼리 **0행** |
 | V-3 | **RLS 정책** | 4-5 | **0행** |
 | V-4 | RLS 격리 하네스 | `DATABASE_URL=… pnpm --filter @su-maek/db test` | 통과. **`rls-isolation.test.ts`가 skip이 아닌지 확인** |

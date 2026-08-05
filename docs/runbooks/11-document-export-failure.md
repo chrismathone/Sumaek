@@ -66,7 +66,7 @@ pnpm --filter @su-maek/db kill-switch enable document_export \
 **원시 LaTeX 노출(SEV1) 시 추가**:
 
 ```bash
-pnpm --filter @su-maek/db kill-switch enable auto_question_publish \
+pnpm --filter @su-maek/db kill-switch enable auto_publish_questions \
   --reason "RB-11 SEV1 산출물에 원시 LaTeX" --actor <이메일>
 ```
 

@@ -178,7 +178,7 @@ flowchart TB
 
 | # | 검증 | 통과 조건 | 쿼리·명령 |
 |---|---|---|---|
-| V-1 | 불변 조건 20개 | 전부 0행 | `psql -f packages/db/src/checks/invariants.sql` |
+| V-1 | 검사 31건 (불변 I-01~I-22 + 참조·위생 R-01~R-09) | 전부 0행 | `pnpm verify:recovery` (또는 `psql -f packages/db/src/checks/invariants.sql`) |
 | V-2 | **테넌트 격리** | 교차 테넌트 조회 0행 | `pnpm --filter @su-maek/db test:rls` (`set local role authenticated` 필수) |
 | V-3 | **참조 무결성** | FK 위반 0건 | 전 FK에 대해 `NOT VALID` 재검증 또는 조인 카운트 대조 |
 | V-4 | **활성 일정 버전** | `route_plans.active_version_id`가 가리키는 `route_versions.status='published'` | 아래 5.2 쿼리 |
@@ -248,7 +248,7 @@ sequenceDiagram
     Cron->>SB: PITR 복원 요청 (7일 전 시점)
     SB->>Tmp: 복원본 생성
     Cron->>CI: verify-recovery --target=<tmp>
-    CI->>Tmp: V-1 불변 조건 20개
+    CI->>Tmp: V-1 검사 31건
     CI->>Tmp: V-2 RLS 격리 (set local role authenticated)
     CI->>Tmp: V-3 참조 무결성
     CI->>Tmp: V-4~V-9
@@ -421,7 +421,7 @@ flowchart LR
 |---|---|
 | `scripts/verify-recovery.mjs` | 5장 V-1~V-10 자동 검증. `--mode=drill`로 월별 자동 실행 |
 | `scripts/dr-drill.mjs` | 분기 훈련용 장애 주입 + 타임스탬프 기록 |
-| `packages/db/src/checks/invariants.sql` | 불변 조건 20개 검증 쿼리 |
+| `packages/db/src/checks/invariants.sql` | 검사 31건 (불변 22 + 참조·위생 9) 검증 쿼리 |
 | `packages/db/src/migrate.ts` | 멱등 마이그레이션 러너 (2갈래 파일 순서 실행) |
 | `scripts/checksum-snapshot.mjs` | Storage 체크섬 목록 일 스냅샷 |
 | `scripts/rebuild-read-models.mjs` | 읽기 모델 전체 재생성 |

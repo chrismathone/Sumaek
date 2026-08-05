@@ -1,6 +1,7 @@
 # 상태 머신과 불변 조건
 
 > 골프롬프트 2F(상태 머신 11종) · 2E(시스템 불변 조건 20개) 이행 문서.
+> 불변 조건은 [ADR-0017](../adr/0017-learner-day-and-session-completion.md)이 I-21·I-22를 더해 **22개**다 (13장).
 > 관련: [erd.md](./erd.md) · [api-contract.md](./api-contract.md) · [event-catalog.md](./event-catalog.md)
 
 ---
@@ -210,7 +211,7 @@ stateDiagram-v2
 | `imported→parsed` | 소스 `review_status='verified'` | |
 | `mapped→expert_review` | AI 제안 매핑은 `origin='ai_suggested'`로 표시됨 | 표본 검토 대상 추출 |
 | `expert_review→validated` | 품질 게이트 6종 전부 0건, 시험 공간 검증 통과 | `quality_gate_report` 저장 |
-| `validated→published` | `curriculum.publish` 권한 + 재확인, kill switch `curriculum_release_publish` OFF | 활성 포인터 전환, `CurriculumReleasePublished` 발행, **영향 분석 생성(활성 루트·평가는 자동 재매핑하지 않음)** |
+| `validated→published` | `curriculum.publish` 권한 + 재확인, kill switch `curriculum_release` OFF | 활성 포인터 전환, `CurriculumReleasePublished` 발행, **영향 분석 생성(활성 루트·평가는 자동 재매핑하지 않음)** |
 
 **권위 소스 접근 불가 시**: `imported` 진입만 차단된다. 이미 `published`인 릴리스는 읽기 전용으로 계속 사용된다.
 
@@ -328,7 +329,7 @@ stateDiagram-v2
 |---|---|
 | `generating→draft` | 블루프린트 요구 문항 수 충족, 전 문항이 자동 출제 자격 통과 |
 | `generating→review_required` | 문항 부족 또는 게이트 실패 |
-| `ready→published` | `assessment.publish` 권한, kill switch `auto_question_publish` 확인, 모든 문항의 `math_render_artifacts` 존재 |
+| `ready→published` | `assessment.publish` 권한, kill switch `auto_publish_questions` 확인, 모든 문항의 `math_render_artifacts` 존재 |
 | `published→cancelled` | `attempts` 0건 |
 | `grading→finalized` | `grading_exceptions` 중 `status IN ('open','assigned','reviewing')` 0건 |
 
@@ -480,9 +481,7 @@ stateDiagram-v2
 `DB` = 데이터베이스 제약·트리거 / `SVC` = 도메인 서비스 / `TEST` = 자동 테스트.
 **세 열 중 최소 두 곳에 구현이 있어야 한다.** UI 검증만으로는 통과로 보지 않는다.
 
-> **I-01~I-20은 구현·검증 완료**(골프롬프트 2E 원안). **I-21·I-22는 [ADR-0017](../adr/0017-learner-day-and-session-completion.md)이 추가한 것으로 아직 구현 전이다** — 참조하는 `learner_day_plans`·`learner_day_plan_items` 테이블이 없다. 따라서 §13.1의 실행 쿼리 중 I-21·I-22는 아래에 문서로만 두고, `packages/db/src/checks/invariants.sql`에는 **T1.2의 마이그레이션과 함께** 넣는다. 지금 넣으면 `psql -f invariants.sql`과 `pnpm verify:recovery`가 없는 테이블을 조회해 실패한다.
->
-> 이 때문에 `docs/phase0/backup-recovery.md`, `docs/runbooks/05-db-failure-pitr.md`, `docs/runbooks/README.md`, `packages/db/src/checks/invariants.sql`의 "불변 조건 20개" 문구가 일시적으로 이 문서와 어긋난다. 정합은 T1.2(하네스 추가)와 T6.4(문서 갱신)에서 맞춘다.
+> **I-01~I-22 전부 구현·검증 완료.** I-21·I-22는 [ADR-0017](../adr/0017-learner-day-and-session-completion.md)이 추가한 것으로, T1.2가 `learner_day_plans`·`learner_day_plan_items`와 함께 하네스에 넣었다. `packages/db/src/checks/invariants.sql`이 I-01~I-22와 보조 검사 R-01~R-09를 합쳐 **31건**을 돌린다 — `pnpm verify:recovery`가 세는 수와 같다.
 
 | # | 불변 조건 | DB 제약 | 도메인 서비스 | 테스트 |
 |---|---|---|---|---|

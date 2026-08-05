@@ -10,18 +10,18 @@
 | # | 런북 | 기본 심각도 | 주 kill switch |
 |---|---|---|---|
 | RB-01 | [시험 시작·제출 장애](./01-exam-start-submit-failure.md) | SEV1 | 없음 (기능 유지가 목표) |
-| RB-02 | [잘못된 일정 대량 생성](./02-mass-wrong-schedule.md) | SEV1 | `auto_schedule_recalc` |
+| RB-02 | [잘못된 일정 대량 생성](./02-mass-wrong-schedule.md) | SEV1 | `auto_reschedule` |
 | RB-03 | [AI·OCR 중단과 비용 폭주](./03-ai-ocr-outage-cost.md) | SEV2 | `ai_provider:<name>` |
 | RB-04 | [큐 적체·워커·DLQ](./04-queue-backlog-dlq.md) | SEV2 | `ai_provider:<name>`, `document_export` |
 | RB-05 | [DB 장애와 시점 복구](./05-db-failure-pitr.md) | SEV1 | 없음 |
 | RB-06 | [교차 테넌트 노출 의심](./06-cross-tenant-exposure.md) | SEV1 | 없음 (증거 보존 우선) |
-| RB-07 | [계정 탈취·비밀 유출·악성 업로드](./07-account-takeover-malicious-upload.md) | SEV1 | `ai_provider:<name>`, `auto_question_publish` |
-| RB-08 | [콘텐츠 권한 만료·긴급 게시 중단](./08-content-rights-emergency-stop.md) | SEV2 | `auto_question_publish` |
-| RB-09 | [잘못된 교육과정 매핑·릴리스 롤백](./09-curriculum-mapping-rollback.md) | SEV2 | `curriculum_release_publish` |
-| RB-10 | [학생 화면 수식 깨짐·렌더러 긴급 롤백](./10-formula-render-rollback.md) | SEV1 | `formula_auto_repair`, `auto_question_publish` |
+| RB-07 | [계정 탈취·비밀 유출·악성 업로드](./07-account-takeover-malicious-upload.md) | SEV1 | `ai_provider:<name>`, `auto_publish_questions` |
+| RB-08 | [콘텐츠 권한 만료·긴급 게시 중단](./08-content-rights-emergency-stop.md) | SEV2 | `auto_publish_questions` |
+| RB-09 | [잘못된 교육과정 매핑·릴리스 롤백](./09-curriculum-mapping-rollback.md) | SEV2 | `curriculum_release` |
+| RB-10 | [학생 화면 수식 깨짐·렌더러 긴급 롤백](./10-formula-render-rollback.md) | SEV1 | `formula_autofix`, `auto_publish_questions` |
 | RB-11 | [PDF·HWPX 대량 출력 오류](./11-document-export-failure.md) | SEV3 | `document_export` |
 | RB-12 | [잘못된 자동 채점과 재처리](./12-wrong-autograding-reprocess.md) | SEV1 | `auto_grading` |
-| RB-13 | [알림 제공자 장애](./13-notification-provider-outage.md) | SEV3 | `external_notification` |
+| RB-13 | [알림 제공자 장애](./13-notification-provider-outage.md) | SEV3 | `external_notifications` |
 | RB-14 | [배포 실패와 마이그레이션 롤백](./14-deploy-migration-rollback.md) | SEV1 | 없음 |
 
 ### 1.1 평시 절차 (장애 아님)
@@ -105,18 +105,18 @@ IC: <이름>  OE: <이름>  DO: <이름>  COM: <이름>
 
 ## 5. Kill switch 9종
 
-> **키 이름 주의**: 아래 5개(`auto_schedule_recalc`·`auto_question_publish`·`curriculum_release_publish`·`formula_auto_repair`·`external_notification`)는 코드의 실제 키 이름과 다르다. CLI가 별칭으로 받아 주므로 이 표에서 복사한 명령도 동작한다(`packages/db/scripts/kill-switch.mts`의 `RUNBOOK_ALIASES`). 이름 통일은 T6.4의 몫이다. `auto_assessment_generation`은 코드와 같은 이름이다.
+> **키 이름 주의**: 아래 5개(`auto_reschedule`·`auto_publish_questions`·`curriculum_release`·`formula_autofix`·`external_notifications`)는 코드의 실제 키 이름과 다르다. CLI가 별칭으로 받아 주므로 이 표에서 복사한 명령도 동작한다(`packages/db/scripts/kill-switch.mts`의 `RUNBOOK_ALIASES`). 이름 통일은 T6.4의 몫이다. `auto_assessment_generation`은 코드와 같은 이름이다.
 
 | 키 | 중지 대상 | **중지해도 반드시 되는 것** |
 |---|---|---|
-| `auto_schedule_recalc` | 일정 변경안 자동 생성·자동 적용 | 수동 일정 편집, 기존 활성 일정 조회·운영, 수동 preview·apply |
-| `auto_question_publish` | 문항 자동 게시 | 수동 게시, 문제은행 조회, 이미 게시된 문항의 출제 |
+| `auto_reschedule` | 일정 변경안 자동 생성·자동 적용 | 수동 일정 편집, 기존 활성 일정 조회·운영, 수동 preview·apply |
+| `auto_publish_questions` | 문항 자동 게시 | 수동 게시, 문제은행 조회, 이미 게시된 문항의 출제 |
 | `auto_grading` | 자동 채점 워커 | 답안 제출·저장, 수동 채점, 예외 처리, 기존 확정 점수 조회 |
 | `auto_assessment_generation` | 일일·확인테스트 **자동** 생성 (워커 생산자·`assessment.generate`) | 교사가 화면에서 직접 누르는 생성, 이미 생성된 테스트의 응시·채점·조회. 중지 중 만들어진 작업은 없고, 이미 큐에 있던 작업은 **버리지 않고** 재개 후 실행된다 |
-| `curriculum_release_publish` | 교육과정 릴리스 발행 | 활성 릴리스 읽기, 개념 그래프 탐색, 매핑 검수 |
-| `formula_auto_repair` | 무손실 자동 보정 규칙 | 수식 파싱·KaTeX 검증, 수동 수정, 이미 정규화된 수식 렌더 |
+| `curriculum_release` | 교육과정 릴리스 발행 | 활성 릴리스 읽기, 개념 그래프 탐색, 매핑 검수 |
+| `formula_autofix` | 무손실 자동 보정 규칙 | 수식 파싱·KaTeX 검증, 수동 수정, 이미 정규화된 수식 렌더 |
 | `document_export` | PDF·HWPX 출력 | **온라인 응시**, 웹 미리보기, 이미 생성된 산출물 다운로드 |
-| `external_notification` | 외부 알림 발송 | 앱 내 업무함 전체, 알림 생성·조회·처리 |
+| `external_notifications` | 외부 알림 발송 | 앱 내 업무함 전체, 알림 생성·조회·처리 |
 | `ai_provider:<name>` | 해당 AI 공급자 호출 | 게시 콘텐츠, 검수 완료 문제은행, 응시, 수동 채점, 다른 공급자 |
 
 ### 5.1 전환 명령
@@ -268,7 +268,7 @@ pnpm --filter @su-maek/worker status
 # kill switch 현황
 pnpm --filter @su-maek/db kill-switch list
 
-# 불변 조건 20개 일괄 검증 (전부 0행이어야 정상)
+# 검사 31건 일괄 검증 — 불변 I-01~I-22 + 참조·위생 R-01~R-09 (전부 0행이어야 정상)
 psql "$DATABASE_URL" -f packages/db/src/checks/invariants.sql
 
 # 복구 후 검증
