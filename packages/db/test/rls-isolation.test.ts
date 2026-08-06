@@ -16,6 +16,8 @@ const hasDb = Boolean(process.env.DATABASE_URL);
  * DATABASE_URL이 없을 때 skipIf 판정 전에 던져 수집 단계가 통째로 깨진다
  * (skip이 아니라 FAIL로 보고된다). */
 let sql: ReturnType<typeof createSql>;
+/** 플랫폼 조직 id — 마이그레이션 0019b가 만든다 */
+let platformOrg: string | null = null;
 
 const orgA = uuidv7();
 const orgB = uuidv7();
@@ -26,6 +28,10 @@ const learnerA = uuidv7();
 const learnerB = uuidv7();
 const rightB = uuidv7();
 const questionB = uuidv7();
+/** 플랫폼(공용) 콘텐츠 — 교사는 봐야 하고 학생은 보면 안 된다 (ADR-0020 V-3) */
+const platformRight = uuidv7();
+const platformQuestion = uuidv7();
+const platformVersion = uuidv7();
 
 /** 특정 사용자로 가장해 RLS가 적용된 상태로 콜백 실행 */
 async function asUser<T>(
@@ -68,11 +74,59 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
       values (${rightB}, ${orgB}, 'B사', 'usable')`;
     await sql`insert into questions (id, organization_id, kind, review_status, content_right_id, is_auto_assignable)
       values (${questionB}, ${orgB}, 'short_answer', 'published', ${rightB}, true)`;
+
+    /* 플랫폼 콘텐츠 한 벌 — 어느 조직에도 속하지 않는 공용 문항이다.
+     * 조직 소유 문항(questionB)으로는 V-3을 잴 수 없다: 학생은 그 조직의
+     * 멤버가 아니라 조직 격리에서 이미 걸리므로, 학생 차단이 실제로 도는지
+     * 알 수 없다(false-green). 공용 문항은 **읽기가 열려 있는** 행이라
+     * 학생 차단만이 유일한 방어다. */
+    const [platform] = await sql<{ id: string }[]>`
+      select platform_org_id()::text as id
+    `;
+    platformOrg = platform?.id ?? null;
+    /* 조용히 넘어가지 않는다 — 플랫폼 조직이 없으면 V-3을 **잴 수 없는데**
+     * 그냥 통과하면 「학생 차단이 확인됐다」로 읽힌다. 0019b가 안 돌았다는
+     * 뜻이므로 그 사실을 말하고 죽는다. */
+    if (!platformOrg) {
+      throw new Error(
+        "플랫폼 조직이 없습니다 — 0019b 마이그레이션을 먼저 적용하세요 (V-3을 잴 수 없습니다).",
+      );
+    }
+    {
+      /* 죽은 실행이 남긴 것을 먼저 치운다. 이 픽스처는 **플랫폼 조직에**
+       * 쓰는데, 플랫폼은 purge 대상이 아니다(ADR-0020 6단계) — 중간에
+       * 프로세스가 죽으면 아무도 못 지우는 공용 콘텐츠가 된다. */
+      await sql`
+        delete from question_versions where question_id in (
+          select id from questions where content_right_id in (
+            select id from content_rights where rights_holder = 'RLS 공용 테스트'))`;
+      await sql`
+        delete from questions where content_right_id in (
+          select id from content_rights where rights_holder = 'RLS 공용 테스트')`;
+      await sql`delete from content_rights where rights_holder = 'RLS 공용 테스트'`;
+
+      await sql`insert into content_rights (id, organization_id, rights_holder, status)
+        values (${platformRight}, ${platformOrg}, 'RLS 공용 테스트', 'usable')`;
+      await sql`insert into questions (id, organization_id, kind, review_status, content_right_id, is_auto_assignable)
+        values (${platformQuestion}, ${platformOrg}, 'short_answer', 'published',
+                ${platformRight}, true)`;
+      await sql`
+        insert into question_versions (
+          id, organization_id, question_id, version_number, body, answer,
+          content_checksum
+        ) values (
+          ${platformVersion}, ${platformOrg}, ${platformQuestion}, 1,
+          ${sql.json([{ type: "text", text: "공용 문항 본문" }] as never)},
+          ${sql.json({ accepted: [{ value: "42", form: "number" }] } as never)},
+          ${`rls-platform-${platformQuestion.slice(0, 8)}`}
+        )`;
+    }
   });
 
   afterAll(async () => {
-    await sql`delete from questions where id = ${questionB}`;
-    await sql`delete from content_rights where id = ${rightB}`;
+    await sql`delete from question_versions where id = ${platformVersion}`;
+    await sql`delete from questions where id in (${questionB}, ${platformQuestion})`;
+    await sql`delete from content_rights where id in (${rightB}, ${platformRight})`;
     await sql`delete from learners where id in (${learnerA}, ${learnerB})`;
     await sql`delete from memberships where organization_id in (${orgA}, ${orgB})`;
     await sql`delete from users where id in (${userA}, ${userB}, ${studentUserA})`;
@@ -115,6 +169,43 @@ describe.skipIf(!hasDb)("RLS 교차 테넌트 격리 (인수 27)", () => {
       (tx) => tx`select id from question_versions`,
     );
     expect(versions).toHaveLength(0);
+  });
+
+  /* ── ADR-0020 V-3 — 콘텐츠를 플랫폼으로 옮겨도 학생은 원본을 못 읽는다 ──
+   *
+   * 옮기기 전에는 조직 격리가 겸사겸사 막아 주었다. 옮긴 뒤에는 **읽기가
+   * 일부러 열려 있는** 행이라(공용 콘텐츠는 모든 학원이 봐야 한다) 학생
+   * 차단만이 유일한 방어다. 실제로 이 자리에서 984건이 열렸었다 —
+   * `*_staff_only`가 「그 행의 조직에서의 내 역할」을 묻는데 학생은 플랫폼
+   * 조직의 멤버가 아니라 역할이 null이라 통과했다. `is_student_only()`가
+   * 사람 기준으로 막는다. 그 함수를 되돌리면 이 테스트가 먼저 깨진다. */
+  it("V-3 학생은 **플랫폼** 문항 원본·정답도 못 읽는다", async () => {
+    const rows = await asUser(
+      studentUserA,
+      (tx) => tx`select id from questions where id = ${platformQuestion}`,
+    );
+    expect(rows).toHaveLength(0);
+    const versions = await asUser(
+      studentUserA,
+      (tx) => tx`select id from question_versions where id = ${platformVersion}`,
+    );
+    expect(versions).toHaveLength(0);
+    const rights = await asUser(
+      studentUserA,
+      (tx) => tx`select id from content_rights where id = ${platformRight}`,
+    );
+    expect(rights).toHaveLength(0);
+  });
+
+  /* 같은 행을 교사는 **봐야 한다.** 안 보이면 콘텐츠를 플랫폼으로 옮긴
+   * 것이 곧 「아무도 못 쓰는 콘텐츠」가 된다 — 막는 쪽만 재고 여는 쪽을
+   * 안 재면 그 상태를 초록으로 보고하게 된다. */
+  it("교사는 플랫폼 문항을 본다 — 공용 읽기는 열려 있다", async () => {
+    const rows = await asUser(
+      userA,
+      (tx) => tx`select id from questions where id = ${platformQuestion}`,
+    );
+    expect(rows.map((r) => r.id)).toContain(platformQuestion);
   });
 
   it("학생은 조직 데이터 중 본인 응시 외 접근 불가 — 타 학습자 없음", async () => {

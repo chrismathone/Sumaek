@@ -89,6 +89,23 @@ export async function purgeTestData(
 ): Promise<PurgeResult> {
   const dryRun = options.dryRun ?? false;
 
+  /* 플랫폼 조직에는 돌지 않는다 (ADR-0020 6단계).
+   *
+   * 이 함수는 이름 규칙(「E2E자료-」·「%테스트%」)으로 고른다. 그 규칙이
+   * 플랫폼에서는 안전하지 않다 — 반입·저작이 만든 공용 자료 중 하나가
+   * 언젠가 그 이름을 갖게 되면 **모든 학원이 함께 보는 자료**가 조용히
+   * 사라진다. `--org=`로 아무 조직이나 넘길 수 있으므로 호출자가 아니라
+   * 여기서 막는다. dry-run이어도 막는다: 「돌려도 되는 곳」이라는 답을
+   * 주면 다음에 진짜로 돌린다. */
+  const [platform] = await sql<{ id: string | null }[]>`
+    select platform_org_id()::text as id
+  `;
+  if (platform?.id && platform.id === organizationId) {
+    throw new Error(
+      "플랫폼 조직은 테스트 정리 대상이 아닙니다 — 모든 학원이 함께 보는 콘텐츠입니다 (ADR-0020).",
+    );
+  }
+
   return (await sql.begin(async (tx) => {
     /* ── 1. 지워도 되는 학습자 — 불변 증거가 전혀 없는 테스트 학습자 ── */
     const purgeableLearners = await tx<{ id: string }[]>`

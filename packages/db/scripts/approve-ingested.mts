@@ -26,6 +26,7 @@ import { config } from "dotenv";
 config({ path: [".env", "../../.env"] });
 
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes("--dry");
@@ -33,6 +34,11 @@ const WITH_RIGHTS = argv.includes("--rights");
 const ORG =
   argv.find((a) => a.startsWith("--org="))?.slice(6) ??
   "00000000-0000-7000-8000-000000000001";
+
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020). 조직 id로 찾으면 이전이 끝나는 순간
+ * **조용히 0건**이 된다 — 「승인할 것이 없습니다」로 보이지 그 이유는 안 보인다.
+ * 감사·이벤트는 그대로 ORG다: 승인한 것은 사람이고 그 사람은 학원에 속한다. */
+const CONTENT_ORGS = contentOrganizationIds(ORG);
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL이 없습니다.");
@@ -53,9 +59,10 @@ const before = await sql<
   select q.review_status::text, r.status::text as right_status, count(*)::int as n
   from questions q
   left join content_rights r on r.id = q.content_right_id
-  where q.organization_id = ${ORG} and q.source_ref ? 'extractedBy'
+  where q.organization_id = any(${CONTENT_ORGS}::uuid[]) and q.source_ref ? 'extractedBy'
   group by 1, 2 order by n desc
 `;
+console.log(`대상 조직: ${CONTENT_ORGS.join(" · ")} (콘텐츠는 플랫폼 포함)`);
 console.log("반입본 현황 (검수상태 / 사용권 / 건수)");
 console.table(before);
 
@@ -84,7 +91,7 @@ if (DRY) {
 
 /* ── 실행 ─────────────────────────────────────────────────────── */
 const WHERE = sql`
-  q.organization_id = ${ORG} and q.source_ref ? 'extractedBy'
+  q.organization_id = any(${CONTENT_ORGS}::uuid[]) and q.source_ref ? 'extractedBy'
   and q.review_status in ('review_required', 'layout_review_required')
 `;
 
@@ -94,7 +101,7 @@ if (WITH_RIGHTS) {
   const r = await sql`
     update content_rights set status = 'usable', status_changed_by = ${actor.id},
            status_changed_at = now(), updated_at = now()
-    where organization_id = ${ORG} and status = 'under_review'
+    where organization_id = any(${CONTENT_ORGS}::uuid[]) and status = 'under_review'
       and exists (select 1 from questions q where q.content_right_id = content_rights.id
                     and q.source_ref ? 'extractedBy')
   `;
@@ -117,7 +124,7 @@ const reviews = await sql`
   update content_reviews
   set status = 'resolved', decision = 'approve', reviewer_id = ${actor.id},
       decided_at = now(), notes = '반입 문항 일괄 승인', updated_at = now()
-  where organization_id = ${ORG} and subject_type = 'question' and status = 'open'
+  where organization_id = any(${CONTENT_ORGS}::uuid[]) and subject_type = 'question' and status = 'open'
     and subject_id = any(${updated.map((r) => r.id)}::uuid[])
 `;
 console.log(`검수 건 해소: ${reviews.count}건`);
@@ -153,7 +160,7 @@ await sql`
 const [after] = await sql<{ published: number; assignable: number }[]>`
   select count(*) filter (where review_status = 'published')::int as published,
          count(*) filter (where is_auto_assignable)::int as assignable
-  from questions where organization_id = ${ORG} and source_ref ? 'extractedBy'
+  from questions where organization_id = any(${CONTENT_ORGS}::uuid[]) and source_ref ? 'extractedBy'
 `;
 console.log(`\n반입본 결과 — 게시 ${after!.published}건 · 자동 출제 가능 ${after!.assignable}건`);
 if (quarantined > 0) {

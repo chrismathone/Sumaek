@@ -24,6 +24,10 @@ config({ path: [".env", "../../.env"] });
 
 import { v7 as uuidv7 } from "uuid";
 import postgres from "postgres";
+import {
+  contentOrganizationIds,
+  contentWriteOrganizationId,
+} from "@su-maek/core/shared";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -33,6 +37,11 @@ if (!url) {
 const sql = postgres(url, { ssl: "require", max: 4 });
 
 const ORG = "00000000-0000-7000-8000-000000000001"; // 수맥 데모 학원
+/* 콘텐츠(자료·문항)는 플랫폼 소유다 (ADR-0020). 데모 세팅이 콘텐츠를 조직
+ * id로 찾으면 **0건을 찾는다** — 이 스크립트가 게시하려는 정제본은 반입이
+ * 만든 것이고 반입은 플랫폼에 쓴다. 학습자·반·세션은 그대로 ORG다. */
+const CONTENT_ORGS = contentOrganizationIds(ORG);
+const CONTENT_ORG = contentWriteOrganizationId(ORG);
 const GROUP_NAME = "1단원 검증반 (중1)";
 const ROUTE_NAME = "1단원 검증 루트";
 const NODE_TITLE = "소인수분해 — 1단원 개념 차시";
@@ -269,9 +278,13 @@ if (cleared.count > 0) {
 }
 
 /* ── 정제본 게시 — 게시 게이트와 같은 기준 ────────────────────── */
-const refinedDrafts = await sql<{ id: string; title: string }[]>`
-  select m.id::text, m.title from learning_materials m
-  where m.organization_id = ${ORG} and m.kind = 'reading' and m.status = 'draft'
+const refinedDrafts = await sql<
+  { id: string; title: string; organization_id: string }[]
+>`
+  select m.id::text, m.title, m.organization_id::text
+  from learning_materials m
+  where m.organization_id = any(${CONTENT_ORGS}::uuid[])
+    and m.kind = 'reading' and m.status = 'draft'
     and m.derived_from_material_id is not null
     and m.source_ref ? 'refineReport'
     and not (m.source_ref ? 'extractedBy')   -- 추출본은 어떤 경로로도 게시 금지
@@ -281,7 +294,7 @@ for (const m of refinedDrafts) {
   await sql.begin(async (tx) => {
     await tx`
       update learning_materials set status = 'published', updated_at = now()
-      where id = ${m.id} and organization_id = ${ORG}
+      where id = ${m.id} and organization_id = ${m.organization_id}
     `;
     await tx`
       insert into audit_events (
@@ -307,7 +320,7 @@ for (const m of refinedDrafts) {
  * 줄어드는데 제목의 숫자는 따라 줄지 않는다. */
 const withPractice = await sql<{ concept_id: string }[]>`
   select distinct concept_id::text as concept_id from learning_materials
-  where organization_id = ${ORG} and kind = 'practice'
+  where organization_id = any(${CONTENT_ORGS}::uuid[]) and kind = 'practice'
     and concept_id = any(${conceptIds}::uuid[])
 `;
 const havePractice = new Set(withPractice.map((r) => r.concept_id));
@@ -318,7 +331,7 @@ for (const slug of CONCEPT_SLUGS) {
   const [order] = await sql<{ next: number }[]>`
     select coalesce(max(sort_order), 0)::int + 1 as next
     from learning_materials
-    where organization_id = ${ORG} and concept_id = ${concept.id}
+    where organization_id = any(${CONTENT_ORGS}::uuid[]) and concept_id = ${concept.id}
   `;
   const materialId = uuidv7();
   const title = `${concept.name} 연습`;
@@ -328,7 +341,7 @@ for (const slug of CONCEPT_SLUGS) {
         id, organization_id, concept_id, kind, title, question_ids,
         sort_order, status, created_by
       ) values (
-        ${materialId}, ${ORG}, ${concept.id}, 'practice', ${title},
+        ${materialId}, ${CONTENT_ORG}, ${concept.id}, 'practice', ${title},
         '[]'::jsonb, ${order!.next}, 'published', ${teacher.id}
       )
     `;
@@ -362,7 +375,7 @@ const [practice] = await sql<{ usable: number; total: number }[]>`
     count(*)::int as total
   from questions q
   join content_rights r on r.id = q.content_right_id
-  where q.organization_id = ${ORG}
+  where q.organization_id = any(${CONTENT_ORGS}::uuid[])
     and exists (
       select 1 from question_alignments a
       where a.question_id = q.id and a.concept_id = any(${conceptIds}::uuid[])
@@ -371,12 +384,14 @@ const [practice] = await sql<{ usable: number; total: number }[]>`
 
 const publishedNow = await sql<{ cnt: number }[]>`
   select count(*)::int as cnt from learning_materials
-  where organization_id = ${ORG} and kind = 'reading' and status = 'published'
+  where organization_id = any(${CONTENT_ORGS}::uuid[])
+    and kind = 'reading' and status = 'published'
     and concept_id = any(${conceptIds}::uuid[])
 `;
 const practiceNow = await sql<{ cnt: number }[]>`
   select count(*)::int as cnt from learning_materials
-  where organization_id = ${ORG} and kind = 'practice' and status = 'published'
+  where organization_id = any(${CONTENT_ORGS}::uuid[])
+    and kind = 'practice' and status = 'published'
     and concept_id = any(${conceptIds}::uuid[])
 `;
 

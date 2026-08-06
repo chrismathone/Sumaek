@@ -27,12 +27,16 @@ import { config } from "dotenv";
 config({ path: [".env", "../../.env"] });
 
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 
 const args = process.argv.slice(2);
 const arg = (name: string): string | undefined =>
   args.find((a) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 
 const organizationId = arg("org") ?? "00000000-0000-7000-8000-000000000001";
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020) — 조직 id로 찾으면 이전이 끝나는 순간
+ * 조용히 0건이 된다. 예외도 오류도 없이 「검사할 것이 없다」로 보인다. */
+const contentOrgs = contentOrganizationIds(organizationId);
 const verbose = args.includes("--verbose");
 
 const sql = postgres(process.env.DATABASE_URL!, { prepare: false });
@@ -51,7 +55,7 @@ const rows = await sql<Row[]>`
     q.printed_number,
     coalesce(q.source_ref->'figureLabels', '[]'::jsonb) as labels
   from questions q
-  where q.organization_id = ${organizationId}
+  where q.organization_id = any(${contentOrgs}::uuid[])
     and q.source_ref ? 'book'
     and jsonb_array_length(coalesce(q.source_ref->'figureBoxes', '[]'::jsonb)) > 0
   order by book, q.printed_number

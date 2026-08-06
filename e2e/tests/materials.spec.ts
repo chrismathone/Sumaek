@@ -41,6 +41,9 @@ const DEMO_GROUP = "00000000-0000-7000-8000-000000000010";
 const ELIMINATION_NODE = "00000000-0000-7000-8000-000000000403"; // 가감법 차시
 /** 시드와 **같은 고정 ID** — 둘이 서로를 덮어써도 행은 하나뿐이다 */
 const SCHEDULE_ITEM = "00000000-0000-7000-8000-000000000080";
+/** 시드가 만드는 **공용(플랫폼)** 읽기 자료 — 「가감법 — 한 문자를 없애는 법」 */
+const SHARED_MATERIAL = "00000000-0000-7000-8000-000000000070";
+const SHARED_MATERIAL_TITLE = "가감법 — 한 문자를 없애는 법";
 
 /* 오늘 학생이 가감법을 배우도록 개별 일정을 세운다. 반 일정은 건드리지
  * 않는다(불변 조건 4) — 개별 일정은 그 학생에게만 붙는다.
@@ -221,19 +224,18 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
   await teacher.getByRole("button", { name: "찾기", exact: true }).click();
   const videoForm = teacher.locator("form").filter({ hasText: "초안으로 만들기" });
   await videoForm.getByLabel("개념", { exact: true }).selectOption({ label: CONCEPT });
-  /* 종류를 고르면 그 종류의 입력만 남는다 — 그런데 이 폼은 useState로
-   * 제어되고, 「찾기」가 부른 서버 갱신이 늦게 도착하면 select의 DOM 값은
-   * video인데 React 상태는 reading으로 남는다(실측: 종류가 「개념 인강」으로
-   * 보이는데 본문 칸이 그대로였다). 그 상태로 진행하면 유튜브 칸을 90초
-   * 기다리다 죽는다.
+  /* 종류를 고르면 그 종류의 입력만 남는다. **입력 칸이 실제로 바뀌었는지**로
+   * 확인한다 — select의 값이 아니라. 눈에 보이는 것이 곧 React 상태다.
    *
-   * 그래서 **입력 칸이 실제로 바뀌었는지**로 확인한다 — select의 값이 아니라.
-   * 눈에 보이는 것이 곧 React 상태다. */
+   * 여기가 오래 빨간불이었다. 「찾기」로 쪽이 새로 오면 폼은 수화 전이고,
+   * 그 사이에 고른 개념·종류를 controlled select가 수화 직후 되돌려
+   * 놓았다(실측: 화면엔 「가감법·개념 인강」인데 상태는 ""·reading이라
+   * required 셀렉트가 빈 채로 제출이 막혔다 — 토스트도 오류도 없이). 스펙을
+   * 재시도로 감싸 두었지만 그건 증상만 가린 것이었다. 제품 쪽에서
+   * 수화 전 선택을 살려 받도록 고쳤다(MaterialForms.tsx의 preHydration). */
   const youtube = videoForm.getByLabel("유튜브 주소");
-  await expect(async () => {
-    await videoForm.getByLabel("종류").selectOption("video");
-    await expect(youtube).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
+  await videoForm.getByLabel("종류").selectOption("video");
+  await expect(youtube).toBeVisible({ timeout: 30_000 });
   await videoForm.getByLabel("제목").fill(videoTitle);
   await youtube.fill("https://www.youtube.com/watch?v=E2EVIDEO001");
   await videoForm.getByRole("button", { name: "초안으로 만들기" }).click();
@@ -261,13 +263,22 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
 
   /* 개념 학습은 **한 쪽에 한 개념**을 낸다 — 방금 만든 자료의 개념이 기본
    * 쪽이라는 보장이 없으므로(첫 미완료 개념이 기본이다) 개념 차례에서
-   * 개념명으로 찾아 연다. */
+   * 개념명으로 찾아 연다.
+   *
+   * 다만 **차례는 개념이 둘 이상일 때만 그려진다.** 오늘이 개별 일정
+   * 하나뿐인 날이면 개념도 하나고, 그 쪽은 이미 열려 있다 — 차례를 전제로
+   * 두면 그런 날 스펙이 깨진다(실측: 화면에는 가감법과 방금 만든 자료가
+   * 다 있는데 차례가 없어 죽었다). 있으면 쓰고, 없으면 열려 있는 쪽을 본다. */
   await student.goto("/learn/study");
+  await expect(
+    student.getByRole("heading", { name: "개념 학습", level: 1 }),
+  ).toBeVisible({ timeout: 30_000 });
   const pageLink = student.locator(
     `nav[aria-label="개념 차례"] a[title="${CONCEPT}"]`,
   );
-  await expect(pageLink).toBeVisible({ timeout: 30_000 });
-  await pageLink.click();
+  if ((await pageLink.count()) > 0) {
+    await pageLink.click();
+  }
 
   /* **이 스펙의 요지**: 방금 만든 읽기 자료와 인강이 **같은 쪽**에 함께 있다.
    * 개념이 쪽의 단위이므로 둘은 갈릴 수 없다 — 갈리면 여기서 깨진다. */
@@ -441,4 +452,95 @@ test("시드 자료: 개념 한 쪽에 설명·인강·연습이 함께 오고 �
   await expect(
     page.getByRole("link", { name: "← 설명·인강 다시 보기" }),
   ).toBeVisible();
+});
+
+/**
+ * 공용(플랫폼) 자료는 **읽기 전용**이다 — ADR-0020 갈래 C.
+ *
+ * 콘텐츠가 플랫폼으로 간 뒤 교사 목록에는 우리 자료와 공용 자료가 함께
+ * 뜬다. 공용은 쓰기 액션이 조직으로 좁혀 있어 눌러도 되지 않는데, 화면이
+ * 그 말을 안 하면 교사는 「게시」를 누르고 아무 일도 안 일어나는 것을 본다.
+ * 그래서 표시(「공용」)와 버튼 없음, 상세의 안내를 함께 못 박는다.
+ */
+test("공용 자료는 읽기 전용 — 표시가 붙고 고치기·게시가 없다", async ({ page }) => {
+  await login(page, TEACHER);
+  await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
+
+  /* 목록 — 「공용」 표시가 붙고, 그 줄에는 상태 버튼이 없다.
+   * 우리 자료(위 왕복 테스트가 만드는 것)에는 버튼이 있다는 것과 대비된다. */
+  const row = (
+    await gotoTableRow(page, "/app/content/materials", SHARED_MATERIAL_TITLE)
+  ).first();
+  await expect(row).toBeVisible();
+  await expect(row.getByText("공용", { exact: true })).toBeVisible();
+  await expect(row.getByRole("button", { name: "게시", exact: true })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "보관", exact: true })).toHaveCount(0);
+
+  /* 상세 — 고치기 폼도 게시 버튼도 없고, **왜 없는지**와 대신 무엇을 하면
+   * 되는지가 있다. 이유 없는 읽기 전용은 고장으로 읽힌다. */
+  await page.goto(`/app/content/materials/${SHARED_MATERIAL}`);
+  await expect(
+    page.getByRole("heading", { name: SHARED_MATERIAL_TITLE }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("heading", { name: "공용 자료입니다" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "자료 고치기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "게시", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "게시 취소" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "저장" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "같은 개념·같은 종류로 우리 자료를 만드세요" }),
+  ).toBeVisible();
+});
+
+/**
+ * **수화(hydration) 전에 고른 값이 살아남는가.**
+ *
+ * 만들기 폼의 개념·종류는 controlled select다. 자바스크립트가 붙기 전에
+ * 고르면 수화 직후 React가 초기 상태를 DOM에 다시 써서 선택이 조용히
+ * 풀렸다 — 화면에는 골라진 것처럼 보이는데 required 셀렉트가 비어 제출이
+ * 막히고, 토스트도 오류도 뜨지 않았다. 왕복 스펙이 여기서 빨간불이었지만
+ * **경합이라 매번 재현되지 않는다**(수화가 빠른 실행에서는 그냥 통과한다).
+ *
+ * 그래서 창을 **일부러 만든다**: 청크를 늦춰 수화 전 상태를 붙들고, 그
+ * 사이에 고른 값이 수화 뒤에도 남는지 본다. 늦추기가 듣지 않아 이미
+ * 수화된 상태라면 「아직 유튜브 칸이 없다」에서 먼저 깨진다 — 전제가
+ * 무너진 채로 통과하지 않는다.
+ */
+test("수화 전에 고른 개념·종류가 수화 뒤에도 남는다", async ({ page }) => {
+  test.setTimeout(60_000);
+  await login(page, TEACHER);
+  await expect(page).toHaveURL(/\/app\/today/, { timeout: 30_000 });
+
+  // 로그인 뒤에 건다 — 로그인 화면까지 늦출 이유는 없다
+  await page.route("**/_next/static/chunks/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    await route.continue();
+  });
+
+  /* 「찾기」 클릭도 자바스크립트 없이 되지만(GET 폼), 창을 아끼려고 쿼리로
+   * 바로 연다. commit까지만 기다린다 — load를 기다리면 늦춰 둔 청크가
+   * 다 올 때까지 기다려 창이 사라진다. */
+  await page.goto(`/app/content/materials?cq=${encodeURIComponent(CONCEPT)}`, {
+    waitUntil: "commit",
+  });
+  const createForm = page.locator("form").filter({ hasText: "초안으로 만들기" });
+  const concept = createForm.getByLabel("개념", { exact: true });
+  await expect(concept).toBeVisible({ timeout: 30_000 });
+
+  await concept.selectOption({ label: CONCEPT });
+  await createForm.getByLabel("종류").selectOption("video");
+
+  /* 전제 확인 — 아직 수화 전이라 종류를 바꿔도 화면은 안 바뀐다.
+   * (수화가 끝난 뒤였다면 유튜브 칸이 이미 떠 있고, 이 테스트는 아무것도
+   * 증명하지 못한 채 통과했을 것이다.) */
+  await expect(createForm.getByLabel("유튜브 주소")).toHaveCount(0);
+
+  /* 수화가 끝나면 **고른 값이 반영된 화면**이 되어야 한다 — 유튜브 칸이
+   * 나타나고(종류=인강), 개념은 풀리지 않고 그대로다. */
+  await expect(createForm.getByLabel("유튜브 주소")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(concept).toHaveValue(/^[0-9a-f-]{8}-/);
 });

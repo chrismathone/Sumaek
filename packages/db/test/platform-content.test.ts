@@ -16,6 +16,7 @@ import { v7 as uuidv7 } from "uuid";
 const { getSharedSql, contentOrganizationIds, PLATFORM_ORGANIZATION_ID } =
   await import("../src");
 const { purgeOrganizationRows } = await import("../src/testing/purge-workspace");
+const { purgeTestData } = await import("../src/testing/purge-test-data");
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 let sql: ReturnType<typeof getSharedSql>;
@@ -113,5 +114,18 @@ describe.skipIf(!hasDb)("플랫폼 콘텐츠", () => {
       where organization_id = ${PLATFORM_ORGANIZATION_ID}
     `;
     expect(q!.n).toBeGreaterThan(0);
+  });
+
+  it("V-5' 테스트 잔재 정리도 플랫폼에는 돌지 않는다", async () => {
+    /* purgeTestData는 **이름 규칙**으로 고른다(「E2E자료-」·「%테스트%」).
+     * 그 규칙은 플랫폼에서 안전하지 않다 — 공용 자료 하나가 언젠가 그 이름을
+     * 가지면 모든 학원이 함께 보는 자료가 조용히 사라진다. --org=로 아무
+     * 조직이나 넘길 수 있으므로 함수 안에서 막는다.
+     *
+     * dry-run으로 부른다: 「세기만 하는 것도 막는가」가 요점이다. 돌려도
+     * 되는 곳이라는 답을 주면 다음에 진짜로 돌린다. */
+    await expect(
+      purgeTestData(sql, PLATFORM_ORGANIZATION_ID, { dryRun: true }),
+    ).rejects.toThrow(/플랫폼 조직은 테스트 정리 대상이 아닙니다/);
   });
 });

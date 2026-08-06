@@ -242,32 +242,36 @@ export default async function MaterialsPage({
           {
             key: "actions",
             label: "",
-            render: (r: MaterialRow) => (
-              <span className="flex flex-wrap gap-1">
-                {r.status !== "published" && (
-                  <MaterialStatusButton
-                    materialId={r.id}
-                    status="published"
-                    label="게시"
-                    primary
-                  />
-                )}
-                {r.status === "published" && (
-                  <MaterialStatusButton
-                    materialId={r.id}
-                    status="draft"
-                    label="게시 취소"
-                  />
-                )}
-                {r.status !== "archived" && (
-                  <MaterialStatusButton
-                    materialId={r.id}
-                    status="archived"
-                    label="보관"
-                  />
-                )}
-              </span>
-            ),
+            /* 공용 자료에는 버튼을 두지 않는다 — 게시·보관은 우리 조직
+             * 자료에만 통한다(액션이 organization_id로 좁힌다). 두면 눌리는데
+             * 아무 일도 안 일어나는 버튼이 된다. */
+            render: (r: MaterialRow) =>
+              r.is_shared ? null : (
+                <span className="flex flex-wrap gap-1">
+                  {r.status !== "published" && (
+                    <MaterialStatusButton
+                      materialId={r.id}
+                      status="published"
+                      label="게시"
+                      primary
+                    />
+                  )}
+                  {r.status === "published" && (
+                    <MaterialStatusButton
+                      materialId={r.id}
+                      status="draft"
+                      label="게시 취소"
+                    />
+                  )}
+                  {r.status !== "archived" && (
+                    <MaterialStatusButton
+                      materialId={r.id}
+                      status="archived"
+                      label="보관"
+                    />
+                  )}
+                </span>
+              ),
           } as Column<MaterialRow>,
         ]
       : []),

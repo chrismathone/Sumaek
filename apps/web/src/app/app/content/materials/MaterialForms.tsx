@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { ActionToast } from "@/components/ActionToast";
 import { DisclosureField, MetaPasteField, VideoFields } from "./MetaPasteField";
 import type { ConceptOption } from "./shared";
@@ -32,6 +32,34 @@ export function CreateMaterialForm({
    * 0개면 **만들기 전에** 말해 주기 위해서다. 지금까지 교사는 만들고 게시한
    * 뒤 학생이 「낼 수 있는 문항이 없습니다」를 보고 알려 줘야 알았다. */
   const [conceptId, setConceptId] = useState("");
+
+  /* ── 수화(hydration) 전에 고른 값을 잃지 않는다 ────────────────
+   *
+   * 이 두 칸은 controlled다. 그래서 자바스크립트가 붙기 전에 교사가 개념을
+   * 고르면, 수화 직후 React가 상태값("")을 DOM에 다시 써서 **선택이 조용히
+   * 풀린다.** 그 뒤 「초안으로 만들기」를 누르면 required 셀렉트가 비어 있어
+   * 브라우저가 제출을 막고, 화면에는 개념이 골라진 것처럼 보이는데 아무 일도
+   * 일어나지 않는다 — 실측으로 E2E가 여기서 죽었다(제목·유튜브 칸은
+   * uncontrolled라 값이 남아 있어 더 헷갈렸다).
+   *
+   * 그래서 **커밋 전에** DOM의 실제 값을 훔쳐 두었다가 마운트 직후 상태로
+   * 받아들인다. 렌더 단계에서 읽는 이유가 이것이다 — 커밋(=React가 덮어쓰는
+   * 시점) 뒤에 읽으면 이미 지워져 있다. 첫 렌더가 내는 화면은 서버와 같으므로
+   * 수화 불일치는 생기지 않는다. */
+  const [preHydration] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const read = (id: string) =>
+      (document.getElementById(id) as HTMLSelectElement | null)?.value ?? "";
+    return { kind: read("createKind"), conceptId: read("createConceptId") };
+  });
+  useEffect(() => {
+    if (!preHydration) return;
+    const { kind: preKind, conceptId: preConcept } = preHydration;
+    if (preKind === "video" || preKind === "practice") setKind(preKind);
+    if (preConcept) setConceptId(preConcept);
+    // 한 번만 — 이후의 값은 onChange가 맡는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const usableQuestions =
     concepts.find((c) => c.id === conceptId)?.usable_questions ?? null;
 
@@ -74,11 +102,17 @@ export function CreateMaterialForm({
       <form action={action} className="mt-4 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label htmlFor="conceptId" className="block text-sm">
+            {/* id는 이 폼에만 있는 이름이어야 한다 — 상세 화면의 고치기 폼도
+                개념 셀렉트를 갖고 있고, 그 화면에서 목록으로 **클라이언트
+                이동**하면 새 트리를 그리는 동안 옛 DOM이 아직 붙어 있다.
+                아래 preHydration이 id로 찾으므로, 이름이 같으면 남의 화면
+                값을 자기 초기값으로 삼는다(= 방금 보던 자료의 개념이 조용히
+                골라져 있다). name은 conceptId 그대로라 서버는 그대로 받는다. */}
+            <label htmlFor="createConceptId" className="block text-sm">
               개념
             </label>
             <select
-              id="conceptId"
+              id="createConceptId"
               name="conceptId"
               required
               value={conceptId}
@@ -95,11 +129,16 @@ export function CreateMaterialForm({
           </div>
 
           <div>
-            <label htmlFor="kind" className="block text-sm">
+            {/* id가 `kind`가 아니다 — 아래 목록 필터의 종류 셀렉트가 같은 id를
+                쓰고 있었다. 한 문서에 같은 id가 둘이면 라벨이 **둘 다 첫
+                번째 것**에 붙어(실측: 이 셀렉트의 접근성 이름이 「종류 종류」),
+                필터 셀렉트는 이름 없는 콤보박스가 된다. 이름은 name=kind
+                그대로라 서버가 받는 값은 바뀌지 않는다. */}
+            <label htmlFor="createKind" className="block text-sm">
               종류
             </label>
             <select
-              id="kind"
+              id="createKind"
               name="kind"
               value={kind}
               onChange={(e) => setKind(e.target.value as typeof kind)}
