@@ -263,13 +263,22 @@ test("자료 왕복: 저작 → 고치기 → 게시 → 학생이 본다", asyn
 
   /* 개념 학습은 **한 쪽에 한 개념**을 낸다 — 방금 만든 자료의 개념이 기본
    * 쪽이라는 보장이 없으므로(첫 미완료 개념이 기본이다) 개념 차례에서
-   * 개념명으로 찾아 연다. */
+   * 개념명으로 찾아 연다.
+   *
+   * 다만 **차례는 개념이 둘 이상일 때만 그려진다.** 오늘이 개별 일정
+   * 하나뿐인 날이면 개념도 하나고, 그 쪽은 이미 열려 있다 — 차례를 전제로
+   * 두면 그런 날 스펙이 깨진다(실측: 화면에는 가감법과 방금 만든 자료가
+   * 다 있는데 차례가 없어 죽었다). 있으면 쓰고, 없으면 열려 있는 쪽을 본다. */
   await student.goto("/learn/study");
+  await expect(
+    student.getByRole("heading", { name: "개념 학습", level: 1 }),
+  ).toBeVisible({ timeout: 30_000 });
   const pageLink = student.locator(
     `nav[aria-label="개념 차례"] a[title="${CONCEPT}"]`,
   );
-  await expect(pageLink).toBeVisible({ timeout: 30_000 });
-  await pageLink.click();
+  if ((await pageLink.count()) > 0) {
+    await pageLink.click();
+  }
 
   /* **이 스펙의 요지**: 방금 만든 읽기 자료와 인강이 **같은 쪽**에 함께 있다.
    * 개념이 쪽의 단위이므로 둘은 갈릴 수 없다 — 갈리면 여기서 깨진다. */
