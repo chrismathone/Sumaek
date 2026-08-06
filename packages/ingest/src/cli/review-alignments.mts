@@ -20,6 +20,7 @@ import { config } from "dotenv";
 config({ path: [".env", "../../.env"] });
 
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import { questionBodyToMixedText } from "../align";
 
@@ -59,6 +60,12 @@ if (!url) {
   console.error("DATABASE_URL이 없습니다.");
   process.exit(1);
 }
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020) — 정렬 행을 조직 id로 찾으면 이전 뒤에
+ * 조용히 0건이 된다(「검수할 제안이 없습니다」로 보인다). 갱신·삭제도 같은
+ * 범위로 한다: 화면에 보여 준 그 행을 그대로 다뤄야 한다.
+ * 감사 이벤트 조회는 그대로 이 조직이다 — 제안을 남긴 것이 이 조직이므로. */
+const CONTENT_ORGS = contentOrganizationIds(organizationId!);
+
 const sql = postgres(url, { ssl: "require", max: 4 });
 
 interface PendingRow {
@@ -84,7 +91,7 @@ const pending = await sql<PendingRow[]>`
   join questions q on q.id = qa.question_id
   join question_versions v on v.id = q.current_version_id
   join canonical_concepts c on c.id = qa.concept_id
-  where qa.organization_id = ${organizationId!}
+  where qa.organization_id = any(${CONTENT_ORGS}::uuid[])
     and qa.provenance = 'ai_suggested' and qa.reviewed_by is null
   order by q.created_at, q.printed_number, qa.weight desc
 `;
@@ -123,7 +130,8 @@ if (mutating) {
           set provenance = 'human', reviewed_by = ${actorUserId!}, updated_at = now()
           from canonical_concepts c
           where c.id = qa.concept_id
-            and qa.question_id = ${qid} and qa.organization_id = ${organizationId!}
+            and qa.question_id = ${qid}
+            and qa.organization_id = any(${CONTENT_ORGS}::uuid[])
             and qa.provenance = 'ai_suggested' and qa.reviewed_by is null
             and c.slug = any(${slugs})
         `;
@@ -133,7 +141,8 @@ if (mutating) {
           delete from question_alignments qa
           using canonical_concepts c
           where c.id = qa.concept_id
-            and qa.question_id = ${qid} and qa.organization_id = ${organizationId!}
+            and qa.question_id = ${qid}
+            and qa.organization_id = any(${CONTENT_ORGS}::uuid[])
             and qa.provenance = 'ai_suggested' and qa.reviewed_by is null
             and c.slug = any(${slugs})
         `;

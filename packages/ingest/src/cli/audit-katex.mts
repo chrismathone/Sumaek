@@ -15,6 +15,7 @@ import { config } from "dotenv";
 config({ path: [".env", "../../.env"] });
 
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { renderMixedText } from "@su-maek/core/math";
 
 const args = process.argv.slice(2);
@@ -22,6 +23,9 @@ const arg = (name: string): string | undefined =>
   args.find((a) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 
 const organizationId = arg("org") ?? "00000000-0000-7000-8000-000000000001";
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020) — 조직 id로 찾으면 이전이 끝나는 순간
+ * 조용히 0건이 된다. 예외도 오류도 없이 「검사할 것이 없다」로 보인다. */
+const contentOrgs = contentOrganizationIds(organizationId);
 const verbose = args.includes("--verbose");
 
 const url = process.env.DATABASE_URL;
@@ -63,7 +67,7 @@ const rows = await sql<Row[]>`
   select q.printed_number, q.source_ref->>'book' as book,
          q.kind, qv.body, qv.choices, qv.answer, qv.explanation, qv.rubric
   from questions q join question_versions qv on qv.id = q.current_version_id
-  where q.organization_id = ${organizationId} and q.source_ref is not null
+  where q.organization_id = any(${contentOrgs}::uuid[]) and q.source_ref is not null
   order by q.source_ref->>'book', q.printed_number
 `;
 

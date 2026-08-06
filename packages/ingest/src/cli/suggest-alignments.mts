@@ -30,6 +30,7 @@ config({ path: [".env", "../../.env"] });
 import { readFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import {
@@ -87,6 +88,11 @@ if (!url) {
   console.error("DATABASE_URL이 없습니다.");
   process.exit(1);
 }
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020) — 조직 id로 문항을 찾으면 이전 뒤에
+ * 조용히 0건이 된다. 정렬 행은 **그 문항이 사는 곳에** 쓴다(row.organization_id);
+ * 감사 이벤트는 그대로 이 조직이다 — 제안한 것은 우리 자동화다. */
+const CONTENT_ORGS = contentOrganizationIds(organizationId!);
+
 const sql = postgres(url, { ssl: "require", max: 4 });
 
 interface QuestionRow {
@@ -101,6 +107,8 @@ interface QuestionRow {
   } | null;
   body: unknown;
   grade_band: string | null;
+  /** 이 문항이 실제로 사는 조직 — 정렬 행도 **같은 곳에** 써야 한다 */
+  organization_id: string;
   has_any: boolean;
   has_settled: boolean;
 }
@@ -111,6 +119,7 @@ interface QuestionRow {
 const rows = await sql<QuestionRow[]>`
   select q.id::text as id, q.printed_number, q.kind::text as kind,
          q.source_ref, v.body, b.grade_band,
+         q.organization_id::text as organization_id,
          exists(
            select 1 from question_alignments a where a.question_id = q.id
          ) as has_any,
@@ -123,7 +132,7 @@ const rows = await sql<QuestionRow[]>`
   join question_versions v on v.id = q.current_version_id
   left join book_editions be on be.id = q.book_edition_id
   left join books b on b.id = be.book_id
-  where q.organization_id = ${organizationId!}
+  where q.organization_id = any(${CONTENT_ORGS}::uuid[])
   order by q.created_at, q.printed_number
 `;
 
@@ -365,12 +374,12 @@ for (const row of targets) {
      * for update가 경합을 못 막는다. */
     await tx`
       select id from questions
-      where id = ${row.id} and organization_id = ${organizationId!}
+      where id = ${row.id} and organization_id = ${row.organization_id}
       for update
     `;
     const existing = await tx<{ provenance: string; reviewed_by: string | null }[]>`
       select provenance, reviewed_by from question_alignments
-      where question_id = ${row.id} and organization_id = ${organizationId!}
+      where question_id = ${row.id} and organization_id = ${row.organization_id}
     `;
     const settled = existing.some(
       (e) => !(e.provenance === "ai_suggested" && e.reviewed_by === null),
@@ -381,7 +390,7 @@ for (const row of targets) {
       /* --force: 미검수 제안만 갈아 끼운다 */
       await tx`
         delete from question_alignments
-        where question_id = ${row.id} and organization_id = ${organizationId!}
+        where question_id = ${row.id} and organization_id = ${row.organization_id}
           and provenance = 'ai_suggested' and reviewed_by is null
       `;
     }
@@ -390,7 +399,7 @@ for (const row of targets) {
         insert into question_alignments (
           id, organization_id, question_id, concept_id, weight, confidence, provenance
         ) values (
-          ${uuidv7()}, ${organizationId!}, ${row.id},
+          ${uuidv7()}, ${row.organization_id}, ${row.id},
           ${conceptIdBySlug.get(a.slug)!}, ${toNumeric3(a.weight)},
           ${toNumeric3(a.confidence)},
           /* AI 제안이다 — 승인 전에는 숙련도·출제·학생 화면 어디에도 쓰이지

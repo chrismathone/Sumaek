@@ -23,6 +23,7 @@ config({ path: [".env", "../../.env"] });
 import { readFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import postgres from "postgres";
+import { contentOrganizationIds } from "@su-maek/core/shared";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import {
@@ -68,6 +69,12 @@ if (!url) {
   console.error("DATABASE_URL이 없습니다.");
   process.exit(1);
 }
+/* 콘텐츠는 플랫폼 소유다 (ADR-0020) — 추출본을 조직 id로 찾으면 이전 뒤에
+ * 조용히 0건이 된다. 정제본은 **원본이 사는 곳에** 쓴다(row.organization_id):
+ * 원본과 정제본이 다른 조직에 흩어지면 나란히 보기가 원본을 못 찾는다.
+ * 감사 이벤트는 그대로 이 조직이다. */
+const CONTENT_ORGS = contentOrganizationIds(organizationId!);
+
 const sql = postgres(url, { ssl: "require", max: 4 });
 
 interface SourceRow {
@@ -86,6 +93,8 @@ interface SourceRow {
     teacherNotes?: string[];
   } | null;
   has_live_child: boolean;
+  /** 이 추출본이 실제로 사는 조직 — 정제본도 **같은 곳에** 만든다 */
+  organization_id: string;
 }
 
 /* 대상: 추출본(= source_ref.extractedBy가 있는 reading). 정제본에는
@@ -93,7 +102,7 @@ interface SourceRow {
 const rows = await sql<SourceRow[]>`
   select m.id::text as id, m.title, m.body, m.concept_id::text as concept_id,
          c.name as concept_name, m.sort_order, m.status::text as status,
-         m.source_ref,
+         m.source_ref, m.organization_id::text as organization_id,
          exists(
            select 1 from learning_materials ch
            where ch.derived_from_material_id = m.id
@@ -102,7 +111,7 @@ const rows = await sql<SourceRow[]>`
          ) as has_live_child
   from learning_materials m
   join canonical_concepts c on c.id = m.concept_id
-  where m.organization_id = ${organizationId!} and m.kind = 'reading'
+  where m.organization_id = any(${CONTENT_ORGS}::uuid[]) and m.kind = 'reading'
     and m.source_ref ? 'extractedBy'
   order by m.sort_order, m.created_at
 `;
@@ -336,7 +345,7 @@ for (const row of targets) {
       const [live] = await tx<{ id: string }[]>`
         select id::text from learning_materials
         where derived_from_material_id = ${row.id}
-          and organization_id = ${organizationId!}
+          and organization_id = ${row.organization_id}
           and status <> 'archived'
         limit 1
       `;
@@ -348,7 +357,7 @@ for (const row of targets) {
         status, disclosure, source_job_id, created_by,
         derived_from_material_id, source_ref
       ) values (
-        ${newId}, ${organizationId!}, ${row.concept_id}, 'reading',
+        ${newId}, ${row.organization_id}, ${row.concept_id}, 'reading',
         ${refined.title}, ${tx.json(storedBlocks as never)}, ${row.sort_order},
         'draft', ${REFINE_DISCLOSURE}, ${jobId}, ${actorUserId!},
         ${row.id}, ${tx.json({ refinedFrom: row.id, refineReport } as never)}
@@ -358,7 +367,7 @@ for (const row of targets) {
     if (row.status !== "archived") {
       await tx`
         update learning_materials set status = 'archived', updated_at = now()
-        where id = ${row.id} and organization_id = ${organizationId!}
+        where id = ${row.id} and organization_id = ${row.organization_id}
       `;
     }
     /* 웹 액션과 같은 감사 흔적 — 「이 draft 어디서 왔나」「원본 왜

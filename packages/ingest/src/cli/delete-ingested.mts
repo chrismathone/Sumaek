@@ -107,8 +107,28 @@ const elsewhere = await sql<{ organization_id: string; n: number }[]>`
   select organization_id, count(*)::int as n from questions
   where source_ref->>'book' = ${bookTitle} and organization_id <> ${organizationId}
   group by organization_id`;
+/* 플랫폼은 이름으로 부른다 — 반입 콘텐츠가 사는 **정상 위치**라서
+ * (ADR-0020), uuid만 찍히면 남의 학원처럼 보인다. */
+const [platformRow] = await sql<{ platform: string | null }[]>`
+  select platform_org_id()::text as platform
+`;
+const platform = platformRow?.platform ?? null;
 for (const row of elsewhere) {
-  console.log(`  (조직 ${row.organization_id} 에 같은 교재 ${row.n}개 — 건드리지 않습니다)`);
+  const label =
+    row.organization_id === platform
+      ? "플랫폼(공용 콘텐츠)"
+      : `조직 ${row.organization_id}`;
+  console.log(`  (${label} 에 같은 교재 ${row.n}개 — 건드리지 않습니다)`);
+}
+/* 지울 것이 0인데 플랫폼에 있다면, 그건 「없다」가 아니라 「여기가 아니다」다.
+ * 이 줄이 없으면 재반입하려던 사람이 조용한 0을 보고 헤맨다. */
+if (before!.n === 0 && elsewhere.some((r) => r.organization_id === platform)) {
+  console.log(
+    `
+이 조직에는 지울 것이 없습니다 — 반입 콘텐츠는 플랫폼 조직에 삽니다.
+` +
+      `지우려면: --org=${platform}`,
+  );
 }
 
 const counts = await sql.begin(async (tx) => {
